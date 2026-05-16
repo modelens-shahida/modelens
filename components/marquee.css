@@ -1,0 +1,45 @@
+.marquee-wrapper {
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.marquee-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3rem;
+  animation: scrollLeft 30s linear infinite;
+}
+
+.marquee-wrapper.reverse .marquee-group {
+  animation: scrollRight 30s linear infinite;
+}
+
+.marquee-group Image {
+  height: 28px;
+  width: auto;
+  transition: filter 0.3s ease;
+}
+
+.marquee-group Image:hover {
+  filter: brightness(1) grayscale(0);
+}
+
+/* 🔁 Perfectly seamless infinite scroll */
+@keyframes scrollLeft {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes scrollRight {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
