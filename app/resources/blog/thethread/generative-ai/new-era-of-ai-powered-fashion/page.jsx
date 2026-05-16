@@ -394,7 +394,7 @@ export default function BlogArticle() {
           transition={{ delay: 0.2, duration: 0.4 }}
           className="text-gray-700 mb-6"
         >
-          In the world of fashion, novelty is nice. But reliability wins. Every day that a SKU sits un-photographed, it's a lost revenue opportunity. Every day your visuals are inconsistent, you erode brand trust. Every time you re-shoot or fix images, you add cost and delay.
+          In the world of fashion, novelty is nice. But reliability wins. Every day that a SKU sits un-photographed, it is a lost revenue opportunity. Every day your visuals are inconsistent, you erode brand trust. Every time you re-shoot or fix images, you add cost and delay.
         </motion.p>
 
         <motion.p
