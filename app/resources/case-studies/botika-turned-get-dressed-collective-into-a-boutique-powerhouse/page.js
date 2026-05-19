@@ -32,7 +32,7 @@ const GetDressedCaseStudy = () => {
               </p>
 
               <h2 className="text-4xl md:text-5xl font-bold text-white leading-snug mb-6">
-                Botika turned Get Dressed Collective into a boutique powerhouse
+                ModeLens turned Get Dressed Collective into a boutique powerhouse
               </h2>
             </div>
           </div>
@@ -48,7 +48,7 @@ const GetDressedCaseStudy = () => {
 
             {/* Intro */}
             <p className="text-lg text-gray-700">
-              Discover how Get Dressed Collective saved time, cut costs and boosted their online performance by switching to Botika’s streamlined photo solution.
+              Discover how Get Dressed Collective saved time, cut costs and boosted their online performance by switching to ModeLens streamlined photo solution.
             </p>
 
             {/* Challenges */}
@@ -74,7 +74,7 @@ const GetDressedCaseStudy = () => {
               <h2 className="text-2xl font-semibold mb-2">The solution</h2>
 
               <p className="text-gray-700">
-                Botika gave Get Dressed Collective the tools they needed to tackle their biggest challenges. Here`s how we helped:
+                ModeLens gave Get Dressed Collective the tools they needed to tackle their biggest challenges. Here`s how we helped:
               </p>
 
               <h3 className="font-semibold mt-4">Customization:</h3>
@@ -231,7 +231,7 @@ const GetDressedCaseStudy = () => {
         </p>
 
         <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-          JUAN & ME scales content with Botika’s AI — 
+          JUAN & ME scales content with ModeLens AI — 
           <span> 128% more conversions</span>
         </h3>
       </motion.div>
@@ -256,7 +256,7 @@ const GetDressedCaseStudy = () => {
         </p>
 
         <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-          Need lots of images fast? BLVCK turns to Botika for the win
+          Need lots of images fast? BLVCK turns to ModeLens for the win
         </h3>
       </motion.div>
     </Link>
@@ -280,7 +280,7 @@ const GetDressedCaseStudy = () => {
         </p>
 
         <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-          Jordache embraces AI: Cutting costs & boosting visuals with Botika
+          Jordache embraces AI: Cutting costs & boosting visuals with ModeLens
         </h3>
       </motion.div>
     </Link>
@@ -300,7 +300,7 @@ const GetDressedCaseStudy = () => {
     </h2>
 
     <p className="text-gray-300 text-lg md:text-xl mb-8 leading-relaxed">
-      Sign up for our free trial to see how Botika can revolutionize your brand`s
+      Sign up for our free trial to see how ModeLens can revolutionize your brand`s
       visuals and save you time and money!
     </p>
 

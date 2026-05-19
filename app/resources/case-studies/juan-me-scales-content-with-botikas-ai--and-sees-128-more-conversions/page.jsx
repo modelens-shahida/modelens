@@ -32,7 +32,7 @@ const GetDressedCaseStudy = () => {
               </p>
 
               <h2 className="text-4xl md:text-5xl font-bold text-white leading-snug mb-6">
-JUAN & ME scales content with Botika’s AI—and sees 128% more conversions           </h2>
+JUAN & ME scales content with ModeLens AI—and sees 128% more conversions           </h2>
             </div>
           </div>
         </motion.div>
@@ -86,11 +86,11 @@ JUAN & ME scales content with Botika’s AI—and sees 128% more conversions    
               <h2 className="text-2xl font-semibold mb-2">The solution</h2>
 
               <p className="text-gray-700">
-               JUAN & ME turned to Botika to rethink how content gets made. What once took weeks—now took hours. From the moment samples arrive, the team can generate on-model images and campaign-ready content in as little as 15 minutes, using just a photo. <br /> <br />
+               JUAN & ME turned to ModeLens to rethink how content gets made. What once took weeks—now took hours. From the moment samples arrive, the team can generate on-model images and campaign-ready content in as little as 15 minutes, using just a photo. <br /> <br />
 
-By replacing traditional photoshoots with Botika’s AI-powered f platform, JUAN & ME created high-quality visuals for eCommerce, social media, and wholesale—at scale. The results? Up to 90% cost savings and near-instant production speed. <br /> <br />
+By replacing traditional photoshoots with ModeLens AI-powered f platform, JUAN & ME created high-quality visuals for eCommerce, social media, and wholesale—at scale. The results? Up to 90% cost savings and near-instant production speed. <br /> <br />
 
-Even better, the brand is now building its first fully AI fashion model generated campaign using Botika, pushing boundaries and proving what’s possible when creativity meets technology. <br /> <br />
+Even better, the brand is now building its first fully AI fashion model generated campaign using ModeLens, pushing boundaries and proving what’s possible when creativity meets technology. <br /> <br />
 
 The platform also sparked conversations across JUAN & ME’s creative network—photographers, stylists, and wholesale teams—about how AI can amplify, not replace, creative storytelling. For JUAN & ME, AI isn’t about shortcuts. It’s about storytelling at speed, with authenticity and intention. <br /> <br />
                
@@ -124,7 +124,7 @@ The platform also sparked conversations across JUAN & ME’s creative network—
             <div>
               <h2 className="text-2xl font-semibold mb-2">The results</h2>
               <p className="text-gray-700">
-With Botika in their toolkit, JUAN & ME no longer has to choose between creativity and efficiency. The team is now producing more content, more consistently, while spending far less—freeing them up to focus on storytelling, not logistics.              </p>
+With ModeLens in their toolkit, JUAN & ME no longer has to choose between creativity and efficiency. The team is now producing more content, more consistently, while spending far less—freeing them up to focus on storytelling, not logistics.              </p>
 
               <h3 className="font-semibold mt-4">Time Savings</h3>
               <ul className="list-disc ml-6 text-gray-700">
@@ -138,7 +138,7 @@ With Botika in their toolkit, JUAN & ME no longer has to choose between creativi
               </ul>
 
               <h3 className="font-semibold mt-4">Cost  Savings</h3>
-              <p>Botika replaced the need for full production crews and logistics and reduced production costs by 90%:</p>
+              <p>ModeLens replaced the need for full production crews and logistics and reduced production costs by 90%:</p>
               <ul className="list-disc ml-6 text-gray-700">
                 <li>Location: $2,000–$6,000</li>
                 <li>Models: $3,000–$6,000</li>
@@ -195,7 +195,7 @@ With Botika in their toolkit, JUAN & ME no longer has to choose between creativi
             <div className="mt-10 flex items-start gap-4">
               <div>
                 <p className="text-gray-700 italic leading-relaxed">
-                  “Botika has revolutionized how we create visual content—streamlining everything from eCommerce imagery to social media. Since using it, our online conversion rate jumped 128%, and our wholesale launch beat sales goals by 46%, landing us in 22 retail doors.”
+                  “ModeLens has revolutionized how we create visual content—streamlining everything from eCommerce imagery to social media. Since using it, our online conversion rate jumped 128%, and our wholesale launch beat sales goals by 46%, landing us in 22 retail doors.”
                 </p>
 
                 <div className="flex items-start gap-4 mt-6">
@@ -262,7 +262,7 @@ Faster time to market</p>
               <p className="text-sm font-semibold text-gray-700 mt-4 uppercase">Case study</p>
 
               <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-                Botika turned Get Dressed Collective into a boutique powerhouse
+                ModeLens turned Get Dressed Collective into a boutique powerhouse
               </h3>
             </motion.div>
           </Link>
@@ -281,7 +281,7 @@ Faster time to market</p>
               <p className="text-sm font-semibold text-gray-700 mt-4 uppercase">Case study</p>
 
               <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-                Need lots of images fast? BLVCK turns to Botika for the win
+                Need lots of images fast? BLVCK turns to ModeLens for the win
               </h3>
             </motion.div>
           </Link>
@@ -300,7 +300,7 @@ Faster time to market</p>
               <p className="text-sm font-semibold text-gray-700 mt-4 uppercase">Case study</p>
 
               <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-                Jordache embraces AI: Cutting costs & boosting visuals with Botika
+                Jordache embraces AI: Cutting costs & boosting visuals with ModeLens
               </h3>
             </motion.div>
           </Link>
@@ -319,7 +319,7 @@ Faster time to market</p>
     </h2>
 
     <p className="text-gray-300 text-lg md:text-xl mb-8 leading-relaxed">
-      Sign up for our free trial to see how Botika can revolutionize your brand`s
+      Sign up for our free trial to see how ModeLens can revolutionize your brand`s
       visuals and save you time and money!
     </p>
 

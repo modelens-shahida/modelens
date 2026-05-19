@@ -38,7 +38,7 @@ const FAQAccordion = () => {
           <p>
           ‍
 
-To estimate how many credits you`ll need for your plan, multiply the number of products or SKUs you plan to render with Botika by the average number of photos and videos per SKU on your website.
+To estimate how many credits you`ll need for your plan, multiply the number of products or SKUs you plan to render with ModeLens by the average number of photos and videos per SKU on your website.
           </p>
           <br />
           <p>
@@ -130,9 +130,9 @@ const pricingPlans = {
   monthly: [
     {
       title: "Lite",
-      subtitle: "A great way to explore the Botika platform.",
+      subtitle: "A great way to explore the ModeLens platform.",
       features: [
-        "No Botika watermarks",
+        "No ModeLens watermarks",
         "Limited selection of AI models",
         "Limited selection of backgrounds",
         "HD image resolution",
@@ -171,10 +171,10 @@ const pricingPlans = {
   annual: [
     {
       title: "Lite",
-      subtitle: "A great way to explore the Botika platform.",
+      subtitle: "A great way to explore the ModeLens platform.",
       features: [
         "Access all credits upfront",
-        "No Botika watermarks",
+        "No ModeLens watermarks",
         "Limited selection of AI models",
         "Limited selection of backgrounds",
         "HD image resolution",
@@ -424,7 +424,7 @@ const PricingPage = () => {
         >
           <motion.img
             src="https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/67769c4c79b7a48aabb46b98_Botika_Pricing_Main.avif"
-            alt="Botika Pricing Showcase"
+            alt="ModeLens Pricing Showcase"
             className="rounded-[40px] w-[95vw] md:w-[85vw] lg:w-[80vw] h-[70vh] md:h-[80vh] object-cover"
             whileHover={{ scale: 1.08, rotate: 0.3 }}
             transition={{ type: "spring", stiffness: 100, damping: 10 }}
@@ -440,7 +440,7 @@ const PricingPage = () => {
       Transform your fashion business with AI.
     </h2>
     <p className="text-gray-600 text-lg mb-12">
-      Use Botika`s generative AI fashion model solution to publish collections faster and stay on budget.
+      Use ModeLens generative AI fashion model solution to publish collections faster and stay on budget.
     </p>
 
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -448,13 +448,13 @@ const PricingPage = () => {
       {[
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f01180eafc1c0240497ef_27dbc279bca377e0d6c2ffd39d76fa26_Botika_AIGeneratedFashionModels_Feature_BeforeAfter.webp",
-          title: "No Botika watermarks",
-          desc: "Show off your new Botika photos in your online shop and on social media.",
+          title: "No ModeLens watermarks",
+          desc: "Show off your new ModeLens photos in your online shop and on social media.",
         },
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f0118f796b5690d5ffb09_e5387e2a426bf8a7db7cebffdc36dd9d_Botika_AIGeneratedFashionModels_Feature_ModelPortfolio.webp",
           title: "Stunning AI model gallery",
-          desc: "Access all of Botika's unique AI fashion models.",
+          desc: "Access all of ModeLens unique AI fashion models.",
         },
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f01184314f55d5e8e295e_bff58ee04eb9cc85659553dfb258467d_Botika_AIGeneratedFashionModels_Feature_BackgroundSelection.webp",
@@ -464,7 +464,7 @@ const PricingPage = () => {
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f0118a93179f4bcbb0c71_ef352fa715ebb23ae2280b9441cb818b_Botika_AIGeneratedFashionModels_Feature_EnhanceCroppedPhotos.webp",
           title: "Restore cropped photos",
-          desc: "Botika blends its AI fashion models into your cropped pictures naturally.",
+          desc: "ModeLens blends its AI fashion models into your cropped pictures naturally.",
         },
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f01181b6bcbf650a4c6e2_58689482f79827385def2fa807dca94a_Botika_AIGeneratedFashionModels_Feature_FlatLayProcess.webp",
@@ -484,12 +484,12 @@ const PricingPage = () => {
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f0118594137306534d368_9b5a7230f1d229787a63de16aed1b7af_Botika_AIGeneratedFashionModels_PerfectYourProductPhotos.webp",
           title: "White-glove quality control",
-          desc: "Top-tier photo quality with Botika’s human-based review system.",
+          desc: "Top-tier photo quality with ModeLens human-based review system.",
         },
         {
           img: "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/675f01183a136e7b24eccc50_Botika_AIGeneratedFashionModels_Feature_SocialMediaPosts.avif",
           title: "White-glove quality control",
-          desc: "Top-tier photo quality with Botika’s human-based review system.",
+          desc: "Top-tier photo quality with ModeLens human-based review system.",
         },
       ].map((card, index) => (
         <div

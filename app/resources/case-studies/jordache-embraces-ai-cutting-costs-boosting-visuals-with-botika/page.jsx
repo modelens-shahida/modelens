@@ -32,7 +32,7 @@ const GetDressedCaseStudy = () => {
               </p>
 
               <h2 className="text-4xl md:text-5xl font-bold text-white leading-snug mb-6">
-Jordache embraces AI: Cutting costs & boosting visuals with Botika         </h2>
+Jordache embraces AI: Cutting costs & boosting visuals with ModeLens         </h2>
             </div>
           </div>
         </motion.div>
@@ -73,7 +73,7 @@ Jordache embraces AI: Cutting costs & boosting visuals with Botika         </h2>
               <h2 className="text-2xl font-semibold mb-2">The solution</h2>
 
               <p className="text-gray-700">
-                Thanks to Botika`s AI, Jordache could skip hiring pricey models and photographers. They used AI-generated fashion models and backgrounds to speed up their photography and create stunning images in record time.
+                Thanks to ModeLens AI, Jordache could skip hiring pricey models and photographers. They used AI-generated fashion models and backgrounds to speed up their photography and create stunning images in record time.
               </p>
 {/* 
               <h3 className="font-semibold mt-4">Customization:</h3>
@@ -104,12 +104,12 @@ Jordache embraces AI: Cutting costs & boosting visuals with Botika         </h2>
             <div>
               <h2 className="text-2xl font-semibold mb-2">The results</h2>
               <p className="text-gray-700">
-Here’s how Jordache managed to cut expenses and speed up production with Botika’s AI solution.              </p>
+Here’s how Jordache managed to cut expenses and speed up production with ModeLens AI solution.              </p>
 
               <h3 className="font-semibold mt-4">Model costs saved
 </h3>
               <ul className="list-disc ml-6 text-gray-700">
-                <li>‍Traditional models cost $200-$250 per hour, easily adding up to more than $1,000 for a few hours. Jordache saved thousands by switching to Botika`s AI models.</li>
+                <li>‍Traditional models cost $200-$250 per hour, easily adding up to more than $1,000 for a few hours. Jordache saved thousands by switching to ModeLens AI models.</li>
                 {/* <li>Collections now rank on Google’s first or second page</li>
                 <li>Better conversion rates, quicker purchases, higher order values</li> */}
               </ul>
@@ -117,7 +117,7 @@ Here’s how Jordache managed to cut expenses and speed up production with Botik
               <h3 className="font-semibold mt-4">Photographer costs saved
 </h3>
               <ul className="list-disc ml-6 text-gray-700">
-                <li>‍With photographers charging $25-$35 an hour and retouchers $39/hour, costs can get steep. Jordache cut these expenses with Botika’s AI.</li>
+                <li>‍With photographers charging $25-$35 an hour and retouchers $39/hour, costs can get steep. Jordache cut these expenses with ModeLens AI.</li>
                 {/* <li>No more 15–30 day delays for shoots</li>
                 <li>No dependency on schedules or editing bottlenecks</li> */}
               </ul>
@@ -131,7 +131,7 @@ Here’s how Jordache managed to cut expenses and speed up production with Botik
                 {/* <li>New revenue stream through consulting</li> */}
               </ul>
               <ul className="list-disc ml-6 text-gray-700">
-                <li>Jordache saved a lot of time and money by using Botika`s Generative AI solution. They can now quickly produce thousands of high-quality photos at a fraction of the cost and time, revolutionizing their visual content production.</li>
+                <li>Jordache saved a lot of time and money by using ModeLens Generative AI solution. They can now quickly produce thousands of high-quality photos at a fraction of the cost and time, revolutionizing their visual content production.</li>
                
               </ul>
       
@@ -167,7 +167,7 @@ Here’s how Jordache managed to cut expenses and speed up production with Botik
             <div className="mt-10 flex items-start gap-4">
               <div>
                 <p className="text-gray-700 italic leading-relaxed">
-                  “Using Botika`s AI models has transformed our approach to fashion photography. We`ve cut costs and reduced our production time significantly, all while maintaining the high-quality standards our brand is known for.”
+                  “Using ModeLens AI models has transformed our approach to fashion photography. We`ve cut costs and reduced our production time significantly, all while maintaining the high-quality standards our brand is known for.”
                 </p>
 
                 <div className="flex items-start gap-4 mt-6">
@@ -241,7 +241,7 @@ Savings on image licensing</p>
     </p>
 
     <h3 className="text-lg font-semibold mt-2 hover:underline transition">
- JUAN & ME scales content with Botika’s AI — 
+ JUAN & ME scales content with ModeLens AI — 
                 <span > 128% more conversions</span>    </h3>
   {/* </Link> */}
 </motion.div>
@@ -270,7 +270,7 @@ Savings on image licensing</p>
         <h3
           className="text-lg font-semibold mt-2 hover:underline cursor-pointer transition"
         >
-Botika turned Get Dressed Collective into a boutique powerhouse        </h3>
+ModeLens turned Get Dressed Collective into a boutique powerhouse        </h3>
       {/* </Link> */}
     </motion.div>
   </Link>
@@ -297,7 +297,7 @@ Botika turned Get Dressed Collective into a boutique powerhouse        </h3>
         <h3
           className="text-lg font-semibold mt-2 hover:underline cursor-pointer transition"
         >
-Need lots of images fast? BLVCK turns to Botika for the win
+Need lots of images fast? BLVCK turns to ModeLens for the win
         </h3>
       {/* </Link> */}
     </motion.div>
@@ -317,7 +317,7 @@ Need lots of images fast? BLVCK turns to Botika for the win
     </h2>
 
     <p className="text-gray-300 text-lg md:text-xl mb-8 leading-relaxed">
-      Sign up for our free trial to see how Botika can revolutionize your brand`s
+      Sign up for our free trial to see how ModeLens can revolutionize your brand`s
       visuals and save you time and money!
     </p>
 

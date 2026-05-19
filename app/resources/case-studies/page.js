@@ -15,7 +15,7 @@ const CaseStudiesPage = () => {
         </h1>
 
         <p className="text-lg md:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-          See how our clients transformed their fashion brands with Botika.
+          See how our clients transformed their fashion brands with ModeLens.
           From cutting production costs to speeding up time to market, these
           stories highlight the real impact of our AI-generated fashion models.
         </p>
@@ -49,7 +49,7 @@ const CaseStudiesPage = () => {
           </p>
 
           <h2 className="text-4xl md:text-5xl font-bold text-white leading-snug mb-6">
-            JUAN & ME scales content with Botika’s AI — 
+            JUAN & ME scales content with ModeLens AI — 
             <span className="text-purple-300"> 128% more conversions</span>
           </h2>
 
@@ -96,7 +96,7 @@ const CaseStudiesPage = () => {
     </p>
 
     <h3 className="text-lg font-semibold mt-2 hover:underline transition">
-      Botika turned Get Dressed Collective into a boutique powerhouse
+      ModeLens turned Get Dressed Collective into a boutique powerhouse
     </h3>
   </Link>
 </motion.div>
@@ -123,7 +123,7 @@ const CaseStudiesPage = () => {
         <h3
           className="text-lg font-semibold mt-2 hover:underline cursor-pointer transition"
         >
-          Need lots of images fast? BLVCK turns to Botika for the win
+          Need lots of images fast? BLVCK turns to ModeLens for the win
         </h3>
       </Link>
     </motion.div>
@@ -149,7 +149,7 @@ const CaseStudiesPage = () => {
         <h3
           className="text-lg font-semibold mt-2 hover:underline cursor-pointer transition"
         >
-          Jordache embraces AI: Cutting costs & boosting visuals with Botika
+          Jordache embraces AI: Cutting costs & boosting visuals with ModeLens
         </h3>
       </Link>
     </motion.div>
@@ -167,7 +167,7 @@ const CaseStudiesPage = () => {
     </h2>
 
     <p className="text-lg md:text-xl opacity-80 text-center mb-10">
-      With Botika’s app, you have our AI generated models for fashion right in your pocket.
+      With ModeLens app, you have our AI generated models for fashion right in your pocket.
       Snap, upload, and get stunning, realistic photos in minutes, all on your phone.
     </p>
 

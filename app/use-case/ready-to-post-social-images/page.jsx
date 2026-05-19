@@ -28,14 +28,14 @@ const FAQAccordion = () => {
       ),
     },
     {
-      question: "What types of photos and poses can I use with Botika?",
+      question: "What types of photos and poses can I use with ModeLens?",
       answer: (
         <>
-          <p>Botika offers three main workflows to create high-quality visuals:</p>
+          <p>ModeLens offers three main workflows to create high-quality visuals:</p>
           <br />
           <p>
             <strong>On-model photos:</strong> Upload a photo of someone wearing
-            the clothing. The pose and body type stay the same while Botika
+            the clothing. The pose and body type stay the same while ModeLens
             replaces the person with one of our AI models and updates the
             background for a clean, realistic look.
           </p>
@@ -65,13 +65,13 @@ const FAQAccordion = () => {
       ),
     },
     {
-      question: "Does Botika have kids or baby models?",
+      question: "Does ModeLens have kids or baby models?",
       answer: (
         <p>
           Not yet, but we may in the future. If you`re interested, let us know
           via{" "}
-          <a href="mailto:info@botika.io" className="text-[#A855F7]">
-            info@botika.io
+          <a href="mailto:info@ModeLens.io" className="text-[#A855F7]">
+            info@ModeLens.io
           </a>{" "}
           or our in-app chat service.
         </p>
@@ -190,7 +190,7 @@ const ReadyToPostSocialImages = () => {
       <section className="text-center max-w-3xl mx-auto px-4 mt-10">
         <h1 className="text-4xl text-black font-bold mb-4">Ready to post social images</h1>
         <p className="text-lg text-gray-600 mb-6">
-        Botika makes social media marketing a breeze. Export images that fit perfectly to all your digital channels` marketing campaigns.
+        ModeLens makes social media marketing a breeze. Export images that fit perfectly to all your digital channels` marketing campaigns.
         </p>
         <button className="bg-black text-white px-6 py-3 rounded-full hover:bg-gray-800 transition">
           Try Now
@@ -212,10 +212,10 @@ const ReadyToPostSocialImages = () => {
       <section className="mt-24 mb-40">
         <div className="text-center mb-16 px-4">
           <h2 className="text-4xl text-black font-bold mb-4">
-            Why Fashion Brands Use Botika
+            Why Fashion Brands Use ModeLens
           </h2>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-Sizing images for social media is a hassle. With Botika, export perfectly sized images in one click.          </p>
+Sizing images for social media is a hassle. With ModeLens, export perfectly sized images in one click.          </p>
         </div>
 
         <div className="relative flex flex-col md:flex-row max-w-7xl mx-auto px-6 gap-10">
@@ -322,7 +322,7 @@ Sizing images for social media is a hassle. With Botika, export perfectly sized 
         >
           <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/6771023a4170e7aa6bff8de1_Botika_UseCases_ReadytoPostSocialImages_HowFashionBrandsBoostDigitalPresence.avif"
-            alt="How fashion brands increase diversity using Botika"
+            alt="How fashion brands increase diversity using ModeLens"
             width={600}
             height={500}
             className="rounded-2xl object-cover shadow-lg"
@@ -371,7 +371,7 @@ Sizing images for social media is a hassle. With Botika, export perfectly sized 
             Case Study
           </p>
           <h2 className="text-5xl font-bold text-white mb-4 leading-snug">
-            JUAN & ME scales content with Botika’s AI—and sees 128% more
+            JUAN & ME scales content with ModeLens AI—and sees 128% more
             conversions
           </h2>
           <button className="bg-white text-black px-6 py-3 rounded-full font-semibold hover:bg-gray-200 transition">
@@ -384,7 +384,7 @@ Sizing images for social media is a hassle. With Botika, export perfectly sized 
       <section className="bg-white py-24 px-6 md:px-16">
         <h2 className="text-4xl md:text-5xl text-black font-semibold text-center mb-16">
           Explore more ways to use{" "}
-          <span className="text-[#A855F7]">Botika</span>
+          <span className="text-[#A855F7]">ModeLens</span>
         </h2>
 
         <div className="grid grid-cols-1 text-black sm:grid-cols-2 lg:grid-cols-4 gap-10 max-w-7xl mx-auto">
@@ -458,7 +458,7 @@ Sizing images for social media is a hassle. With Botika, export perfectly sized 
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.2 }}
         >
-          With Botika’s app, you have our AI-generated models for fashion right
+          With ModeLens app, you have our AI-generated models for fashion right
           in your pocket. Snap, upload, and get stunning, realistic photos in
           minutes — all on your phone.
         </motion.p>

@@ -234,7 +234,7 @@ export default function BlogArticle() {
 
   {/* Intro Paragraph */}
   <p className="mb-6">
-    This is where a platform like Botika comes in. We built our system not as a generic
+    This is where a platform like ModeLens comes in. We built our system not as a generic
     “type a prompt” engine, but as a purpose-built AI powered fashion workflow for brands.
     Here’s how we turned AI from a creative experiment into a production-ready tool for fashion brands.
   </p>
@@ -346,7 +346,7 @@ export default function BlogArticle() {
 
   {/* Botika workflow */}
   <h3 className="text-2xl font-semibold text-gray-800 mb-3">
-    How the AI powered fashion workflow works at Botika
+    How the AI powered fashion workflow works at ModeLens
   </h3>
   <ul className="list-decimal list-inside space-y-4 mb-6">
     <li>
@@ -364,7 +364,7 @@ export default function BlogArticle() {
     <li>
       <strong>Step 3: Generation & Review</strong>
       <p>
-        Hit ‘Generate’. The platform uses Botika’s fashion-trained AI engine to map the product photo onto the chosen model + pose + background, adjusting fit, lighting, drape, and preserving brand aesthetic. Results are stronger than generic AI outputs.
+        Hit ‘Generate’. The platform uses ModeLens fashion-trained AI engine to map the product photo onto the chosen model + pose + background, adjusting fit, lighting, drape, and preserving brand aesthetic. Results are stronger than generic AI outputs.
       </p>
     </li>
     <li>
@@ -403,7 +403,7 @@ export default function BlogArticle() {
           transition={{ delay: 0.3, duration: 0.4 }}
           className="text-gray-700 mb-6"
         >
-          When I explain our approach at Botika, I often say: it’s not enough to be able to generate one perfect image. You need to repeat that perfect image dozens or hundreds of times, across channels and launch contexts.
+          When I explain our approach at ModeLens, I often say: it’s not enough to be able to generate one perfect image. You need to repeat that perfect image dozens or hundreds of times, across channels and launch contexts.
         </motion.p>
 
         {/* ---------- BULLETS ---------- */}

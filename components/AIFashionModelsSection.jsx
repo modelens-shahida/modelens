@@ -40,7 +40,7 @@ const BotikaInAction = () => {
         {/* After Image (Background) */}
         <Image
           src="https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/67b1d25ccf7d399e089c6896_b120939f8d4beae5d45606d699d96f42_Botika_AIGeneratedModel_ComparisonAfter.avif"
-          alt="After Botika"
+          alt="After ModeLens"
           fill
           className="object-cover"
         />
@@ -52,7 +52,7 @@ const BotikaInAction = () => {
         >
           <Image
             src="https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/67b1d23f0649fa2a908026c6_67393b2efb5ad528a7eaa9d6699e56fa_Botika_AIGeneratedModel_ComparisonBefore.avif"
-            alt="Before Botika"
+            alt="Before ModeLens"
             fill
             className="object-cover"
           />

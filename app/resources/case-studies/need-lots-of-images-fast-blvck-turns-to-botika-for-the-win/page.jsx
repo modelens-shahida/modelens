@@ -32,7 +32,7 @@ const GetDressedCaseStudy = () => {
               </p>
 
               <h2 className="text-4xl md:text-5xl font-bold text-white leading-snug mb-6">
-Need lots of images fast? BLVCK turns to Botika for the win              </h2>
+Need lots of images fast? BLVCK turns to ModeLens for the win              </h2>
             </div>
           </div>
         </motion.div>
@@ -47,7 +47,7 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
 
             {/* Intro */}
             <p className="text-lg text-gray-700">
-              Blvck Paris, a premium lifestyle brand, struggled with producing a large volume of high-quality images. Botika helped them streamline this process, maintaining quality while saving time and costs.
+              Blvck Paris, a premium lifestyle brand, struggled with producing a large volume of high-quality images. ModeLens helped them streamline this process, maintaining quality while saving time and costs.
             </p>
 
             {/* Challenges */}
@@ -73,7 +73,7 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
               <h2 className="text-2xl font-semibold mb-2">The solution</h2>
 
               <p className="text-gray-700">
-                Botika helped BLVCK streamline their image production by providing high-quality visuals without the need for time-consuming photoshoots. With realistic AI generated fashion models?, BLVCK was able to quickly create consistent product images at a fraction of the cost, speeding up their time to market while staying on budget.
+                ModeLens helped BLVCK streamline their image production by providing high-quality visuals without the need for time-consuming photoshoots. With realistic AI generated fashion models?, BLVCK was able to quickly create consistent product images at a fraction of the cost, speeding up their time to market while staying on budget.
               </p>
 {/* 
               <h3 className="font-semibold mt-4">Customization:</h3>
@@ -104,12 +104,12 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
             <div>
               <h2 className="text-2xl font-semibold mb-2">The results</h2>
               <p className="text-gray-700">
-             Here’s how BLVCK cut costs and streamlined their image creation process using Botika’s AI:
+             Here’s how BLVCK cut costs and streamlined their image creation process using ModeLens AI:
               </p>
 
               <h3 className="font-semibold mt-4">Cost savings</h3>
               <ul className="list-disc ml-6 text-gray-700">
-                <li>By cutting out costs for hair, makeup, models, and location fees, BLVCK was able to see major savings in production.</li>
+                <li>By cutting out costs for hair, makeup, models, and location fees, BLACK was able to see major savings in production.</li>
                 {/* <li>Collections now rank on Google’s first or second page</li>
                 <li>Better conversion rates, quicker purchases, higher order values</li> */}
               </ul>
@@ -124,14 +124,14 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
               <h3 className="font-semibold mt-4">Scalability
 </h3>
               <ul className="list-disc ml-6 text-gray-700">
-                <li>BLVCK needs thousands of product images every year for its signature style. Thanks to Botika’s realistic AI fashion models, they found a way to scale up—faster and more affordably.</li>
+                <li>BLVCK needs thousands of product images every year for its signature style. Thanks to ModeLens realistic AI fashion models, they found a way to scale up—faster and more affordably.</li>
                 {/* <li>Built expertise in digital retail optimization</li>
                 <li>New revenue stream through consulting</li> */}
               </ul>
               <h3 className="font-semibold mt-4">Consistent quality
 </h3>
               <ul className="list-disc ml-6 text-gray-700">
-                <li>Keeping image quality and style consistent is tough for any fashion brand, especially when producing at scale. Botika’s realistic AI fashion models made it easy for BLVCK to solve this problem.</li>
+                <li>Keeping image quality and style consistent is tough for any fashion brand, especially when producing at scale. ModeLens realistic AI fashion models made it easy for BLVCK to solve this problem.</li>
                 {/* <li>Built expertise in digital retail optimization</li>
                 <li>New revenue stream through consulting</li> */}
               </ul>
@@ -239,7 +239,7 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
     </p>
 
     <h3 className="text-lg font-semibold mt-2 hover:underline transition">
- JUAN & ME scales content with Botika’s AI — 
+ JUAN & ME scales content with ModeLens AI — 
                 <span > 128% more conversions</span>    </h3>
   {/* </Link> */}
 </motion.div>
@@ -268,7 +268,7 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
         <h3
           className="text-lg font-semibold mt-2 hover:underline cursor-pointer transition"
         >
-          Need lots of images fast? BLVCK turns to Botika for the win
+          Need lots of images fast? BLVCK turns to ModeLens for the win
         </h3>
       {/* </Link> */}
     </motion.div>
@@ -296,7 +296,7 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
         <h3
           className="text-lg font-semibold mt-2 hover:underline cursor-pointer transition"
         >
-          Jordache embraces AI: Cutting costs & boosting visuals with Botika
+          Jordache embraces AI: Cutting costs & boosting visuals with ModeLens
         </h3>
       {/* </Link> */}
     </motion.div> 
@@ -316,7 +316,7 @@ Need lots of images fast? BLVCK turns to Botika for the win              </h2>
     </h2>
 
     <p className="text-gray-300 text-lg md:text-xl mb-8 leading-relaxed">
-      Sign up for our free trial to see how Botika can revolutionize your brand`s
+      Sign up for our free trial to see how ModeLens can revolutionize your brand`s
       visuals and save you time and money!
     </p>
 

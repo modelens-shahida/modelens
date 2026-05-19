@@ -5,7 +5,7 @@ import Wrapper from "@/components/Wrapper";
 import Providers from "./providers";
 
 export const metadata = {
-  title: "Botika Clone",
+  title: "ModeLens",
   description: "AI Fashion Store Clone",
 };
 

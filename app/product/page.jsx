@@ -10,14 +10,14 @@ const FAQAccordion = () => {
 
   const faqs = [
     {
-      question: "What types of photos and poses can I use with Botika?",
+      question: "What types of photos and poses can I use with ModeLens?",
       answer: (
         <>
-          <p>Botika offers three main workflows to create high-quality visuals:</p>
+          <p>ModeLens offers three main workflows to create high-quality visuals:</p>
           <br />
           <p>
             <strong>On-model photos:</strong> Upload a photo of someone wearing
-            the clothing. Botika replaces the person with one of our AI models
+            the clothing. ModeLens replaces the person with one of our AI models
             and updates the background for a realistic look.
           </p>
           <br />
@@ -39,7 +39,7 @@ const FAQAccordion = () => {
       answer: (
         <>
           <p>
-            Photo fixes are included with Botika&apos;s paid subscriptions.
+            Photo fixes are included with ModeLens&apos;s paid subscriptions.
             Request a revision directly via the “Photo Issue” button on your
             image.
           </p>
@@ -61,7 +61,7 @@ const FAQAccordion = () => {
       question: "Can I use your service for jewelry, footwear, or cosmetics?",
       answer: (
         <p>
-          Currently, Botika focuses on clothing for realistic results. More
+          Currently, ModeLens focuses on clothing for realistic results. More
           categories may come in the future.
         </p>
       ),
@@ -173,7 +173,7 @@ export default function ProductPage() {
       step: "Step 1",
       title: "Upload Your Photos",
       description:
-        "Choose the photos you want to produce with Botika. You can use photos of someone wearing your products or simple product flat lays. Make sure they’re well-lit and show off your products naturally.",
+        "Choose the photos you want to produce with ModeLens. You can use photos of someone wearing your products or simple product flat lays. Make sure they’re well-lit and show off your products naturally.",
       video:
         "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1%2F678614737cabbc39557af192_Botika_Product_UploadYourPhotos-transcode.mp4",
     },
@@ -209,7 +209,7 @@ export default function ProductPage() {
       step: "Step 5",
       title: "Refine Your Photos",
       description:
-        "Perfect your images with Botika&apos;s AI-powered touch-ups. Highlight the areas you’d like us to review. Quick and simple for flawless results.",
+        "Perfect your images with ModeLens&apos;s AI-powered touch-ups. Highlight the areas you’d like us to review. Quick and simple for flawless results.",
       video:
         "https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1%2F6786149df1b58ef3ba91aae3_Botika_Product_RefineYourPhotos-transcode.mp4",
     },

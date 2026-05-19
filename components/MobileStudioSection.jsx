@@ -28,7 +28,7 @@ const MobileStudioSection = () => {
         <div className="md:w-1/2 flex justify-center">
           <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67767cb06d84ad05c0ef8e0a_Botika_MobileAppPreview.webp"
-            alt="Botika mobile app"
+            alt="ModeLens mobile app"
             width={400}
             height={400}
             className="rounded-3xl shadow-xl object-cover"

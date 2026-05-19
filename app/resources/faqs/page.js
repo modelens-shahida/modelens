@@ -8,14 +8,14 @@ const faqData = [
     title: "General FAQs",
     items: [
       {
-        question: "What is Botika?",
+        question: "What is ModeLens?",
         answer:
-          "Botika is a generative AI platform that helps clothing brands and retailers make beautiful and realistic fashion photos using virtual models. It simplifies the photo creation process, saves money, and helps you get your clothing collections out to customers quicker.",
+          "ModeLens is a generative AI platform that helps clothing brands and retailers make beautiful and realistic fashion photos using virtual models. It simplifies the photo creation process, saves money, and helps you get your clothing collections out to customers quicker.",
       },
       {
         question: "How do I get started?",
         answer:
-          "Getting started with Botika is simple – just upload photos of your clothing products. You can take them with your smartphone, get them from suppliers, or even use customer photos. No need for professional photography. Start with a free trial today.",
+          "Getting started with ModeLens is simple – just upload photos of your clothing products. You can take them with your smartphone, get them from suppliers, or even use customer photos. No need for professional photography. Start with a free trial today.",
       },
       {
         question: "What are credits and how many do I need?",
@@ -30,7 +30,7 @@ const faqData = [
       {
         question: "Can I upload headless or cropped images?",
         answer:
-          "Definitely. Upload your cropped photo, and Botika will perfectly blend the AI model into it, keeping things natural and realistic.",
+          "Definitely. Upload your cropped photo, and ModeLens will perfectly blend the AI model into it, keeping things natural and realistic.",
       },
     ],
   },
@@ -39,12 +39,12 @@ const faqData = [
     title: "Product FAQs",
     items: [
       {
-        question: "What types of photos and poses can I use with Botika?",
+        question: "What types of photos and poses can I use with ModeLens?",
         answer:
-          "Botika offers three main workflows: On-model photos, Flat lays and Mannequin, and AI Video. Each lets you create high-quality visuals easily without a studio setup.",
+          "ModeLens offers three main workflows: On-model photos, Flat lays and Mannequin, and AI Video. Each lets you create high-quality visuals easily without a studio setup.",
       },
       {
-        question: "Where do Botika AI fashion models come from?",
+        question: "Where do ModeLens AI fashion models come from?",
         answer:
           "All our models are 100% AI-generated—no stock models, no real people, no photo references. Every detail is built from scratch by our tech, from the subtle features in each model’s face to their skin texture and makeup style.",
       },
@@ -87,7 +87,7 @@ const faqData = [
       {
         question: "Do I need to pay usage rights fees to use the generated photos?",
         answer:
-          "No. All of the photos you generate on the Botika platform are free from usage rights fees and can be used freely for commercial use.",
+          "No. All of the photos you generate on the ModeLens platform are free from usage rights fees and can be used freely for commercial use.",
       },
     ],
   },
