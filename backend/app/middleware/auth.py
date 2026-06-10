@@ -122,9 +122,9 @@ async def get_current_user(
         except JWTError:
             raise credentials_exception
 
-        query = select(User).where(User.email == email)
-        result = await db.execute(query)
-        user = result.scalars().first()
+        user_query = select(User).where(User.email == email)
+        user_result = await db.execute(user_query)
+        user = user_result.scalars().first()
         if user is None:
             raise credentials_exception
         return user

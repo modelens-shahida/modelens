@@ -136,7 +136,8 @@ async def create_asset(
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
     # Save the file
-    file_ext = os.path.splitext(file.filename)[1]
+    filename = file.filename or "file"
+    file_ext = os.path.splitext(filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
@@ -249,21 +250,21 @@ async def add_asset_embedding(
         )
 
     # Check if a tag mapping already exists for this asset and tag
-    query = select(AssetTag).where(AssetTag.asset_id == id, AssetTag.tag == payload.tag)
-    result = await db.execute(query)
-    asset_tag = result.scalars().first()
+    tag_query = select(AssetTag).where(AssetTag.asset_id == id, AssetTag.tag == payload.tag)
+    tag_result = await db.execute(tag_query)
+    existing_tag = tag_result.scalars().first()
 
-    if asset_tag:
+    if existing_tag:
         # Update existing embedding
-        asset_tag.embedding = payload.embedding
+        existing_tag.embedding = payload.embedding
     else:
         # Create a new tag-embedding record
-        asset_tag = AssetTag(
+        new_tag = AssetTag(
             asset_id=id,
             tag=payload.tag,
             embedding=payload.embedding
         )
-        db.add(asset_tag)
+        db.add(new_tag)
 
     await db.commit()
 
