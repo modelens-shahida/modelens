@@ -8,8 +8,8 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.db import get_db, Asset, AssetTag, User, Brand
-from app.middleware.auth import get_current_user
+from app.models.db import get_db, Asset, AssetTag, User, Brand, BrandMember
+from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 
 router = APIRouter(
     prefix="/api/v1/assets",
@@ -43,7 +43,6 @@ async def list_assets(
     owned_result = await db.execute(owned_query)
     accessible_brand_ids = set(owned_result.scalars().all())
 
-    from app.models.db import BrandMember
     member_query = select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id)
     member_result = await db.execute(member_query)
     accessible_brand_ids.update(member_result.scalars().all())
@@ -110,13 +109,11 @@ async def create_asset(
     if not brand:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found")
 
-    from app.middleware.auth import ROLE_HIERARCHY
     # Enforce editor or higher role
     is_owner = brand.owner_id == current_user.id
     
     is_member = False
     if not is_owner:
-        from app.models.db import BrandMember
         member_query = select(BrandMember).where(
             BrandMember.brand_id == brand_id,
             BrandMember.user_id == current_user.id
