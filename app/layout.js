@@ -1,5 +1,4 @@
 import "./globals.css";
-import Footer from "@/components/Footer";
 import LandingSections from "@/components/LandingSections";
 import Wrapper from "@/components/Wrapper";
 import Providers from "./providers";
@@ -18,7 +17,6 @@ export default function RootLayout({ children }) {
             {children}
             <LandingSections />
           </Wrapper>
-          <Footer />
         </Providers>
       </body>
     </html>

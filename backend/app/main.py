@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import os
 from app.routers.auth import router as auth_router
 from app.routers.assets import router as assets_router
 from app.routers.brands import router as brands_router
@@ -8,6 +10,10 @@ app = FastAPI(
     description="Backend API for ModeLens — Fashion AI Platform",
     version="1.0.0",
 )
+
+# Ensure uploads directory exists and mount it
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Include Routers
 app.include_router(auth_router)

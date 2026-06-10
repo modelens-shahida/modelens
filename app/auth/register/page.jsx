@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "react-hot-toast";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Lock, User, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 
-export default function LoginPage() {
-  const { login } = useAuth();
+export default function RegisterPage() {
+  const { register } = useAuth();
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -16,17 +17,22 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!fullName || !email || !password) {
       toast.error("Please fill in all fields");
+      return;
+    }
+
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters long");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await login(email, password);
-      toast.success("Welcome back to ModeLens!");
+      await register(email, password, fullName);
+      toast.success("Welcome to ModeLens! Account created successfully 🎉");
     } catch (error) {
-      toast.error(error.message || "Invalid credentials");
+      toast.error(error.message || "Registration failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -38,7 +44,7 @@ export default function LoginPage() {
       <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-[500px] h-[500px] bg-indigo-900/20 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Main Login Card */}
+      {/* Main Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -63,12 +69,32 @@ export default function LoginPage() {
             </span>
           </div>
           <p className="text-sm text-zinc-400">
-            Sign in to manage your AI fashion assets & brands
+            Create an account to start generating fashion catalog assets
           </p>
         </div>
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Register Form */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Full Name input */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-zinc-300 tracking-wide block uppercase">
+              Full Name
+            </label>
+            <div className="relative group">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-zinc-500 group-focus-within:text-purple-400 transition-colors">
+                <User size={18} />
+              </span>
+              <input
+                type="text"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="John Doe"
+                className="w-full bg-zinc-950/60 border border-zinc-800 focus:border-purple-500/80 focus:ring-1 focus:ring-purple-500/80 rounded-xl pl-11 pr-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+
           {/* Email input */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-zinc-300 tracking-wide block uppercase">
@@ -91,14 +117,9 @@ export default function LoginPage() {
 
           {/* Password input */}
           <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-zinc-300 tracking-wide block uppercase">
-                Password
-              </label>
-              <a href="#" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
-                Forgot password?
-              </a>
-            </div>
+            <label className="text-xs font-semibold text-zinc-300 tracking-wide block uppercase">
+              Password
+            </label>
             <div className="relative group">
               <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-zinc-500 group-focus-within:text-purple-400 transition-colors">
                 <Lock size={18} />
@@ -108,7 +129,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Min. 6 characters"
                 className="w-full bg-zinc-950/60 border border-zinc-800 focus:border-purple-500/80 focus:ring-1 focus:ring-purple-500/80 rounded-xl pl-11 pr-12 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all"
               />
               <button
@@ -125,28 +146,28 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-950/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-950/30 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
             {isSubmitting ? (
               <Loader2 className="animate-spin" size={18} />
             ) : (
               <>
-                Sign In
+                Create Account
                 <ArrowRight size={16} />
               </>
             )}
           </button>
         </form>
 
-        {/* Footer info */}
+        {/* Footer link */}
         <div className="mt-8 text-center border-t border-zinc-800/80 pt-6">
           <p className="text-sm text-zinc-400">
-            Don't have an account?{" "}
+            Already have an account?{" "}
             <Link
-              href="/auth/register"
+              href="/auth/login"
               className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
             >
-              Sign up
+              Sign in
             </Link>
           </p>
         </div>
