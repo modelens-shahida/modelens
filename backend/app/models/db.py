@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 import sqlalchemy as sa
 from sqlalchemy import (
     String,
@@ -104,7 +105,7 @@ class AssetTag(Base):
         ForeignKey("assets.id", ondelete="CASCADE")
     )
     tag: Mapped[str] = mapped_column(String(255), index=True)
-    embedding: Mapped[list[float]] = mapped_column(Vector(1536))
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1536), nullable=True)
 
     asset = relationship("Asset")
 

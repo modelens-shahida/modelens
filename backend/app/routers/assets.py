@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field, field_validator
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,12 +14,12 @@ router = APIRouter(
 # --- Request Schemas ---
 class AssetEmbeddingRequest(BaseModel):
     tag: str = Field(..., description="Semantic tag name associated with the asset")
-    embedding: list[float] = Field(..., description="1536-dimensional float embedding vector")
+    embedding: Optional[list[float]] = Field(default=None, description="1536-dimensional float embedding vector (optional for 2-step flow)")
 
     @field_validator("embedding")
     @classmethod
-    def validate_embedding_dimensions(cls, v: list[float]) -> list[float]:
-        if len(v) != 1536:
+    def validate_embedding_dimensions(cls, v: Optional[list[float]]) -> Optional[list[float]]:
+        if v is not None and len(v) != 1536:
             raise ValueError("Embedding must be exactly 1536 dimensions.")
         return v
 
