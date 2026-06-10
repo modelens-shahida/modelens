@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: modelens-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: modelens
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d modelens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: modelens-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: app/Dockerfile
+    container_name: modelens-api
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/modelens
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=generate-a-secure-secret-key-for-production-here
+      - ALGORITHM=HS256
+      - STORAGE_BACKEND=local
+      - MLFLOW_URI=http://mlflow:5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: app/Dockerfile
+    container_name: modelens-worker
+    restart: unless-stopped
+    command: celery -A app.worker.celery_app worker --loglevel=info
+    environment:
+      - POSTGRES_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/modelens
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BACKEND=local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  flower:
+    image: mher/flower:latest
+    container_name: modelens-flower
+    restart: unless-stopped
+    command: celery flower --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: modelens-mlflow
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql://postgres:postgres@postgres:5432/modelens --default-artifact-root /mlflow-artifacts
+    volumes:
+      - mlflow_artifacts:/mlflow-artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:

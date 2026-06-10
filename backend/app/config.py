@@ -1,0 +1,42 @@
+import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+from typing import Optional
+
+# Resolve the absolute path of the .env file in the same directory as config.py
+ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+class Settings(BaseSettings):
+    # Database
+    POSTGRES_URL: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/modelens"
+    )
+
+    # Redis / Celery
+    REDIS_URL: str = Field(default="redis://localhost:6379/0")
+
+    # Security
+    SECRET_KEY: str = Field(default="generate-a-secure-secret-key-for-production-here")
+    ALGORITHM: str = Field(default="HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30)
+
+    # Storage Configurations
+    STORAGE_BACKEND: str = Field(default="local")  # Can be 'local' or 's3'
+
+    # AWS S3 (Optional if STORAGE_BACKEND='local', required for 's3')
+    AWS_ACCESS_KEY_ID: Optional[str] = Field(default=None)
+    AWS_SECRET_ACCESS_KEY: Optional[str] = Field(default=None)
+    AWS_STORAGE_BUCKET_NAME: Optional[str] = Field(default=None)
+    AWS_S3_REGION_NAME: Optional[str] = Field(default=None)
+
+    # MLflow Tracking
+    MLFLOW_URI: str = Field(default="http://localhost:5000")
+
+    # Load configuration settings from the resolved .env file path
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILE_PATH,
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+settings = Settings()
