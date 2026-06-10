@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.models.db import get_db, Asset, AssetTag
 
 router = APIRouter(
-    prefix="/assets",
+    prefix="/api/v1/assets",
     tags=["Assets & Metadata"]
 )
 
