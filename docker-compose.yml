@@ -94,6 +94,19 @@ services:
       postgres:
         condition: service_healthy
 
+  frontend:
+    image: node:18-alpine
+    container_name: modelens-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   mlflow_artifacts:
