@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = Field(default="HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30)
 
+    # CORS Configuration
+    ALLOWED_ORIGINS: list[str] = Field(default=["*"])
+
     # Storage Configurations
     STORAGE_BACKEND: str = Field(default="local")  # Can be 'local' or 's3'
 

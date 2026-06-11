@@ -2,7 +2,7 @@ import os
 import shutil
 import json
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, status, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, Depends, status, File, UploadFile, Form, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,8 @@ from sqlalchemy import select
 
 from app.models.db import get_db, Asset, AssetTag, User, Brand, BrandMember
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
+from app.services.storage import storage_service
+from app.middleware.rate_limit import RateLimiter
 
 router = APIRouter(
     prefix="/api/v1/assets",
@@ -17,6 +19,17 @@ router = APIRouter(
 )
 
 # --- Request Schemas ---
+class AssetUploadUrlRequest(BaseModel):
+    filename: str
+    brand_id: int
+    asset_type: str = "image"
+    metadata_json: Optional[str] = None
+
+
+class AssetConfirmRequest(BaseModel):
+    asset_id: int
+
+
 class AssetEmbeddingRequest(BaseModel):
     tag: str = Field(..., description="Semantic tag name associated with the asset")
     embedding: Optional[list[float]] = Field(default=None, description="1536-dimensional float embedding vector (optional for 2-step flow)")
@@ -74,10 +87,7 @@ async def list_assets(
 
     resp = []
     for asset in assets:
-        tags_query = select(AssetTag.tag).where(AssetTag.asset_id == asset.id)
-        tags_result = await db.execute(tags_query)
-        tags = list(tags_result.scalars().all())
-
+        tags = [t.tag for t in asset.tags]
         resp.append({
             "id": asset.id,
             "brand_id": asset.brand_id,
@@ -89,6 +99,7 @@ async def list_assets(
             "tags": tags
         })
     return resp
+
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -258,7 +269,7 @@ async def add_asset_embedding(
         # Update existing embedding
         existing_tag.embedding = payload.embedding
     else:
-        # Create a new tag-embedding record
+        # Create a new tag-embedding record  
         new_tag = AssetTag(
             asset_id=id,
             tag=payload.tag,
@@ -273,3 +284,186 @@ async def add_asset_embedding(
         "asset_id": id,
         "tag": payload.tag
     }
+
+
+@router.post("/upload-url", status_code=status.HTTP_200_OK, dependencies=[Depends(RateLimiter(requests_limit=20, window_seconds=60))])
+async def get_upload_url(
+    payload: AssetUploadUrlRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Step 10: Generates a pre-signed S3 URL or a local upload endpoint (based on config)
+    for uploading a new asset. Registers the asset as 'pending' in the database.
+    """
+    # Verify brand exists and user has at least 'editor' role
+    brand_query = select(Brand).where(Brand.id == payload.brand_id)
+    brand_result = await db.execute(brand_query)
+    brand = brand_result.scalars().first()
+    if not brand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found")
+
+    # Enforce editor or higher role
+    is_owner = brand.owner_id == current_user.id
+    is_member = False
+    if not is_owner:
+        member_query = select(BrandMember).where(
+            BrandMember.brand_id == payload.brand_id,
+            BrandMember.user_id == current_user.id
+        )
+        member_result = await db.execute(member_query)
+        membership = member_result.scalars().first()
+        if membership:
+            user_level = ROLE_HIERARCHY.get(membership.role, 0)
+            if user_level >= ROLE_HIERARCHY.get("editor", 0):
+                is_member = True
+
+    if not is_owner and not is_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires at least 'editor' role on this brand."
+        )
+
+    # Generate unique filename
+    file_ext = os.path.splitext(payload.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+
+    # Get upload params from storage service
+    params = storage_service.generate_upload_params(unique_filename, payload.asset_type)
+
+    # Parse metadata json if any
+    meta_dict = {}
+    if payload.metadata_json:
+        try:
+            meta_dict = json.loads(payload.metadata_json)
+        except Exception:
+            pass
+
+    # Record status as pending
+    meta_dict["status"] = "pending"
+    meta_dict["unique_filename"] = unique_filename
+
+    # Save asset to database
+    asset = Asset(
+        brand_id=payload.brand_id,
+        name=payload.filename,
+        filename=payload.filename,
+        storage_path=params["storage_path"],
+        asset_type=payload.asset_type,
+        meta=meta_dict
+    )
+    db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+
+    return {
+        "asset_id": asset.id,
+        "upload_url": params["upload_url"],
+        "method": params["method"],
+        "headers": params["headers"]
+    }
+
+
+@router.post("/confirm", dependencies=[Depends(RateLimiter(requests_limit=20, window_seconds=60))])
+async def confirm_upload(
+    payload: AssetConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Step 10: Confirms upload of the asset, moves status to active, parses tags,
+    and fires off a Celery processing task.
+    """
+    query = select(Asset).where(Asset.id == payload.asset_id)
+    result = await db.execute(query)
+    asset = result.scalars().first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    # Verify user has access to the brand
+    brand_query = select(Brand).where(Brand.id == asset.brand_id)
+    brand_result = await db.execute(brand_query)
+    brand = brand_result.scalars().first()
+    if not brand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found")
+
+    is_owner = brand.owner_id == current_user.id
+    is_member = False
+    if not is_owner:
+        member_query = select(BrandMember).where(
+            BrandMember.brand_id == asset.brand_id,
+            BrandMember.user_id == current_user.id
+        )
+        member_result = await db.execute(member_query)
+        is_member = member_result.scalars().first() is not None
+
+    if not is_owner and not is_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this brand's assets."
+        )
+
+    # Extract unique filename to verify existence
+    unique_filename = asset.meta.get("unique_filename")
+    if not unique_filename:
+        # Fallback to parsing from storage_path
+        unique_filename = os.path.basename(asset.storage_path)
+
+    # Verify file is uploaded
+    if not storage_service.verify_file_exists(unique_filename):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Asset upload could not be verified. Please ensure the upload has completed."
+        )
+
+    # Mark status as active
+    new_meta = dict(asset.meta)
+    new_meta["status"] = "active"
+    asset.meta = new_meta
+    
+    # Automatically extract/add tags from metadata categories
+    for cat, val in asset.meta.items():
+        if cat in ["status", "unique_filename"]:
+            continue
+        if isinstance(val, str) and val:
+            tag_rec = AssetTag(asset_id=asset.id, tag=val)
+            db.add(tag_rec)
+        elif isinstance(val, list):
+            for v in val:
+                if isinstance(v, str) and v:
+                    tag_rec = AssetTag(asset_id=asset.id, tag=v)
+                    db.add(tag_rec)
+
+    await db.commit()
+
+    # Trigger Celery processing task
+    from app.worker import process_asset_upload
+    process_asset_upload.delay(asset.id)
+
+    return {
+        "message": "Asset upload confirmed and processing started",
+        "asset": {
+            "id": asset.id,
+            "name": asset.name,
+            "storage_path": asset.storage_path,
+            "status": "active"
+        }
+    }
+
+
+@router.put("/upload-mock/{unique_filename}")
+async def upload_mock_file(unique_filename: str, request: Request):
+    """
+    Mock PUT endpoint that accepts binary raw files and saves them to local uploads folder.
+    Enables local development upload simulation without S3.
+    """
+    UPLOAD_DIR = "uploads"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    with open(file_path, "wb") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+            
+    return {"message": "Mock file upload successful"}
+

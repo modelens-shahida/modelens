@@ -84,6 +84,7 @@ class Asset(Base):
     meta: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     brand = relationship("Brand")
+    tags = relationship("AssetTag", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
 
     __table_args__ = (
         Index("idx_assets_metadata_gin", "metadata", postgresql_using="gin"),
@@ -107,7 +108,8 @@ class AssetTag(Base):
     tag: Mapped[str] = mapped_column(String(255), index=True)
     embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1536), nullable=True)
 
-    asset = relationship("Asset")
+    asset = relationship("Asset", back_populates="tags")
+
 
     __table_args__ = (
         Index(
@@ -131,7 +133,47 @@ class Campaign(Base):
 
     brand = relationship("Brand")
 
+
+class CampaignAsset(Base):
+    __tablename__ = "campaign_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE")
+    )
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE")
+    )
+
+    campaign = relationship("Campaign")
+    asset = relationship("Asset")
+
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "asset_id", name="uq_campaign_asset"),
+    )
+
+
+class CampaignWorkflow(Base):
+    __tablename__ = "campaign_workflows"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE")
+    )
+    workflow_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_templates.id", ondelete="CASCADE")
+    )
+
+    campaign = relationship("Campaign")
+    workflow = relationship("WorkflowTemplate")
+
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "workflow_id", name="uq_campaign_workflow"),
+    )
+
+
 class AIJob(Base):
+
     __tablename__ = "ai_jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -190,8 +232,16 @@ class APIKey(Base):
     user = relationship("User")
 
 # --- Production Ready Database Session Management ---
-# Create async database engine
-engine = create_async_engine(settings.POSTGRES_URL, echo=False)
+# Create async database engine with optimized connection pooling parameters for scaling
+engine = create_async_engine(
+    settings.POSTGRES_URL,
+    echo=False,
+    pool_size=20,            # 20 standard persistent connections
+    max_overflow=100,        # Up to 100 extra temporary connections under heavy load spikes
+    pool_timeout=30,          # Fail fast if connection queue is blocked
+    pool_recycle=1800,        # Cycle connections every 30 minutes to prevent stale DB state
+    pool_pre_ping=True        # Pre-verify connection status before executing queries
+)
 
 # Create session maker
 async_session_maker = async_sessionmaker(

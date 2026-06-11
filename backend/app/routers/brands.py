@@ -261,3 +261,78 @@ async def list_members(
         )
         for member, email in rows
     ]
+
+
+@router.delete("/{brand_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_brand(
+    brand_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete a brand. Only the owner of the brand can delete it.
+    """
+    query = select(Brand).where(Brand.id == brand_id)
+    result = await db.execute(query)
+    brand = result.scalars().first()
+    if brand is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Brand not found",
+        )
+    if brand.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the brand owner can delete this brand.",
+        )
+    await db.delete(brand)
+    await db.commit()
+    return
+
+
+@router.delete("/{brand_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(
+    brand_id: int,
+    user_id: int,
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Remove a member from a brand.
+    Requires at least **admin** role on the brand.
+    Cannot remove the owner of the brand.
+    """
+    # Fetch the brand to verify owner
+    brand_query = select(Brand).where(Brand.id == brand_id)
+    brand_result = await db.execute(brand_query)
+    brand = brand_result.scalars().first()
+    if brand is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Brand not found",
+        )
+    
+    if brand.owner_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove the owner from their own brand",
+        )
+
+    # Find membership
+    member_query = select(BrandMember).where(
+        BrandMember.brand_id == brand_id,
+        BrandMember.user_id == user_id,
+    )
+    member_result = await db.execute(member_query)
+    member = member_result.scalars().first()
+    
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User is not a member of this brand",
+        )
+    
+    await db.delete(member)
+    await db.commit()
+    return
+

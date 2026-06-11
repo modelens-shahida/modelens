@@ -15,6 +15,7 @@ from app.middleware.auth import (
     hash_api_key,
     get_current_user,
 )
+from app.middleware.rate_limit import RateLimiter
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -48,7 +49,7 @@ class APIKeyRequest(BaseModel):
 
 # --- Endpoints ---
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RateLimiter(requests_limit=5, window_seconds=60))])
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """
     Register a new user.
@@ -96,7 +97,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     }
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))])
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
     Authenticate user with email + password.
@@ -222,6 +223,47 @@ async def create_api_key(
 @router.get("/me")
 async def get_me(current_user: User = Depends(get_current_user)):
     """Retrieve profile information of the authenticated user."""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+    }
+
+
+class ProfileUpdateRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+
+
+@router.patch("/me")
+async def update_me(
+    payload: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update user profile information."""
+    if payload.email is not None and payload.email != current_user.email:
+        # Check email uniqueness
+        query = select(User).where(User.email == payload.email)
+        result = await db.execute(query)
+        if result.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
+        current_user.email = payload.email
+
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name
+
+    if payload.password is not None:
+        current_user.hashed_password = hash_password(payload.password)
+
+    await db.commit()
+    await db.refresh(current_user)
+
     return {
         "id": current_user.id,
         "email": current_user.email,

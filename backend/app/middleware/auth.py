@@ -1,7 +1,7 @@
 import hashlib
+import bcrypt
 from typing import Optional
 from app.config import settings
-from passlib.context import CryptContext
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
@@ -28,12 +28,6 @@ api_key_header = APIKeyHeader(
 # ---------------------------------------------------------------------------
 # Password hashing — bcrypt cost factor 12 (2^12 = 4096 iterations)
 # ---------------------------------------------------------------------------
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-    bcrypt__rounds=12,
-)
-
 # ---------------------------------------------------------------------------
 # RBAC role hierarchy: owner > admin > editor > viewer
 # ---------------------------------------------------------------------------
@@ -49,12 +43,16 @@ ROLE_HIERARCHY: dict[str, int] = {
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password with bcrypt (cost=12)."""
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt(rounds=12)
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against its bcrypt hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def create_access_token(data: dict) -> str:

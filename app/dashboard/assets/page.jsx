@@ -288,6 +288,7 @@ export default function AssetsPage() {
                     <img
                       src={asset.storage_path}
                       alt={asset.name}
+                      loading="lazy"
                       onError={(e) => {
                         // fallback mock vector icon
                         e.target.style.display = 'none';
