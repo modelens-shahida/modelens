@@ -16,9 +16,11 @@ from app.routers.auth import router as auth_router
 from app.routers.assets import router as assets_router
 from app.routers.brands import router as brands_router
 from app.routers.campaigns import router as campaigns_router
+from app.routers.jobs import router as jobs_router
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+
 
 # Configure Logging
 class RequestIdFilter(logging.Filter):
@@ -92,6 +94,8 @@ app.include_router(auth_router)
 app.include_router(assets_router)
 app.include_router(brands_router)
 app.include_router(campaigns_router)
+app.include_router(jobs_router)
+
 
 
 # --- Global Exception Handlers ---

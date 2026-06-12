@@ -354,3 +354,55 @@ async def unlink_workflow(
     await db.delete(link)
     await db.commit()
     return {"message": "Workflow successfully unlinked from campaign"}
+
+
+@router.get("/{campaign_id}/assets", response_model=List[dict])
+async def list_campaign_assets(
+    campaign_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all assets linked to a campaign. Requires 'viewer' role."""
+    campaign = await check_campaign_access(campaign_id, "viewer", current_user, db)
+
+    query = select(Asset).join(CampaignAsset).where(CampaignAsset.campaign_id == campaign.id)
+    result = await db.execute(query)
+    assets = result.scalars().all()
+
+    return [
+        {
+            "id": a.id,
+            "brand_id": a.brand_id,
+            "name": a.name,
+            "filename": a.filename,
+            "storage_path": a.storage_path,
+            "asset_type": a.asset_type,
+            "meta": a.meta
+        }
+        for a in assets
+    ]
+
+
+@router.get("/{campaign_id}/workflows", response_model=List[dict])
+async def list_campaign_workflows(
+    campaign_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all workflow templates linked to a campaign. Requires 'viewer' role."""
+    campaign = await check_campaign_access(campaign_id, "viewer", current_user, db)
+
+    query = select(WorkflowTemplate).join(CampaignWorkflow).where(CampaignWorkflow.campaign_id == campaign.id)
+    result = await db.execute(query)
+    workflows = result.scalars().all()
+
+    return [
+        {
+            "id": w.id,
+            "name": w.name,
+            "description": w.description,
+            "workflow_json": w.workflow_json
+        }
+        for w in workflows
+    ]
+

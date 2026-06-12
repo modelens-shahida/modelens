@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LayoutDashboard, FolderKanban, Image as ImageIcon, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -15,6 +15,8 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Overview", path: "/dashboard", icon: LayoutDashboard },
     { name: "Brands", path: "/dashboard/brands", icon: FolderKanban },
     { name: "Assets", path: "/dashboard/assets", icon: ImageIcon },
+    { name: "Campaigns", path: "/dashboard/campaigns", icon: Megaphone },
+    { name: "AI Generator", path: "/dashboard/jobs", icon: Sparkles },
   ];
 
   const sidebarContent = (

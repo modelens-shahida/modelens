@@ -34,6 +34,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50))
+    credits: Mapped[int] = mapped_column(Integer, default=100)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -173,16 +174,35 @@ class CampaignWorkflow(Base):
 
 
 class AIJob(Base):
-
     __tablename__ = "ai_jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    asset_id: Mapped[int] = mapped_column(
-        ForeignKey("assets.id", ondelete="CASCADE")
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
     )
-    status: Mapped[str] = mapped_column(String(50))
-    job_type: Mapped[str] = mapped_column(String(100))
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE")
+    )
+    workflow_template_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_templates.id", ondelete="CASCADE")
+    )
+    asset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    job_type: Mapped[str] = mapped_column(String(100), default="generation")
+    
+    inputs: Mapped[dict] = mapped_column(JSONB, default=dict)
+    outputs: Mapped[dict] = mapped_column(JSONB, default=dict)
+    callback_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    user = relationship("User")
+    brand = relationship("Brand")
+    workflow = relationship("WorkflowTemplate")
     asset = relationship("Asset")
 
 class WorkflowTemplate(Base):
