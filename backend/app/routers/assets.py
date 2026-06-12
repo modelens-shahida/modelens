@@ -175,8 +175,7 @@ async def create_asset(
         meta=meta
     )
     db.add(asset)
-    await db.commit()
-    await db.refresh(asset)
+    await db.flush()
 
     # Automatically extract/add tags from metadata categories
     for cat, val in meta.items():
@@ -190,6 +189,7 @@ async def create_asset(
                     db.add(tag_rec)
     
     await db.commit()
+    await db.refresh(asset)
 
     return {
         "id": asset.id,
