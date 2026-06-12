@@ -37,9 +37,14 @@ celery_app.conf.update(
 import asyncio
 import json
 import httpx
+import hashlib
+import io
+from PIL import Image
+from PIL.ExifTags import TAGS
 from sqlalchemy import select
 from app.models.db import async_session_maker, Asset, AIJob
 from app.middleware.rate_limit import redis_client
+from app.services.storage import storage_service
 
 @celery_app.task
 def test_task(x, y):
@@ -48,7 +53,7 @@ def test_task(x, y):
 
 async def _process_asset_upload_async(asset_id: int):
     async with async_session_maker() as db:
-        # Retrieve asset
+        # 1. Retrieve asset
         result = await db.execute(
             select(Asset).where(Asset.id == asset_id)
         )
@@ -59,7 +64,7 @@ async def _process_asset_upload_async(asset_id: int):
 
         print(f"[Worker] Processing asset {asset_id} (name: {asset.name})...")
         
-        # Create an AI Job record to track processing
+        # 2. Create an AI Job record to track processing
         job = AIJob(
             asset_id=asset.id,
             status="processing",
@@ -69,13 +74,116 @@ async def _process_asset_upload_async(asset_id: int):
         await db.commit()
         await db.refresh(job)
 
-        # Simulate metadata validation / processing time
-        await asyncio.sleep(2)
+        try:
+            # 3. Extract unique filename from storage path or metadata
+            unique_filename = asset.meta.get("unique_filename") or os.path.basename(asset.storage_path)
 
-        # Update job status
-        job.status = "completed"
-        await db.commit()
-        print(f"[Worker] Processing for asset {asset_id} completed successfully.")
+            # 4. Load file bytes via the storage service
+            file_bytes = storage_service.read_file_bytes(unique_filename)
+
+            # 5. Calculate SHA-256 for de-duplication
+            sha256 = hashlib.sha256(file_bytes).hexdigest()
+
+            # Detect duplicates (excluding ourselves)
+            dup_query = select(Asset).where(
+                Asset.id != asset.id,
+                Asset.brand_id == asset.brand_id
+            )
+            dup_result = await db.execute(dup_query)
+            existing_assets = dup_result.scalars().all()
+            
+            duplicate_id = None
+            for exist_asset in existing_assets:
+                if exist_asset.meta.get("sha256") == sha256:
+                    duplicate_id = exist_asset.id
+                    break
+
+            # 6. Load image and validate MIME
+            try:
+                img = Image.open(io.BytesIO(file_bytes))
+                # Validate image structure
+                img.verify()
+                # Re-open after verify() (Pillow verify disables further operations)
+                img = Image.open(io.BytesIO(file_bytes))
+            except Exception as img_err:
+                raise ValueError(f"Invalid image file or unsupported format: {str(img_err)}")
+
+            mime_type = Image.MIME.get(img.format) or f"image/{img.format.lower()}" if img.format else "image/png"
+            if not mime_type.startswith("image/"):
+                raise ValueError(f"MIME type '{mime_type}' is not a valid image format.")
+
+            # 7. Extract EXIF tags
+            exif_data = {}
+            if hasattr(img, "_getexif"):
+                exif = img._getexif()
+                if exif:
+                    for tag, value in exif.items():
+                        decoded = TAGS.get(tag, tag)
+                        if isinstance(value, bytes):
+                            value = value.decode("utf-8", errors="ignore")
+                        elif not isinstance(value, (str, int, float, bool, list, dict, type(None))):
+                            value = str(value)
+                        exif_data[str(decoded)] = value
+
+            # 8. Generate 256px and 512px thumbnails
+            file_ext = os.path.splitext(unique_filename)[1] or ".png"
+            base_name = os.path.splitext(unique_filename)[0]
+
+            # Generate 256px thumb
+            thumb_256_img = img.copy()
+            thumb_256_img.thumbnail((256, 256))
+            thumb_256_buf = io.BytesIO()
+            thumb_256_img.save(thumb_256_buf, format=img.format or "PNG")
+            thumb_256_bytes = thumb_256_buf.getvalue()
+            thumb_256_filename = f"thumb_256_{base_name}{file_ext}"
+            thumb_256_path = storage_service.save_file_bytes(thumb_256_filename, thumb_256_bytes)
+
+            # Generate 512px thumb
+            thumb_512_img = img.copy()
+            thumb_512_img.thumbnail((512, 512))
+            thumb_512_buf = io.BytesIO()
+            thumb_512_img.save(thumb_512_buf, format=img.format or "PNG")
+            thumb_512_bytes = thumb_512_buf.getvalue()
+            thumb_512_filename = f"thumb_512_{base_name}{file_ext}"
+            thumb_512_path = storage_service.save_file_bytes(thumb_512_filename, thumb_512_bytes)
+
+            # 9. Update asset metadata
+            updated_meta = dict(asset.meta)
+            updated_meta.update({
+                "status": "active",
+                "sha256": sha256,
+                "mime_type": mime_type,
+                "width": img.size[0],
+                "height": img.size[1],
+                "exif": exif_data,
+                "thumbnail_256": thumb_256_path,
+                "thumbnail_512": thumb_512_path,
+            })
+            if duplicate_id:
+                updated_meta["duplicate_of"] = duplicate_id
+
+            asset.meta = updated_meta
+            db.add(asset)
+
+            # 10. Update job status to completed
+            job.status = "completed"
+            await db.commit()
+            print(f"[Worker] Processing for asset {asset_id} completed successfully.")
+
+        except Exception as e:
+            # 11. Update job status to failed on error
+            job.status = "failed"
+            job.error_message = str(e)
+            
+            # Also update asset metadata with failure
+            updated_meta = dict(asset.meta)
+            updated_meta["status"] = "failed"
+            updated_meta["error"] = str(e)
+            asset.meta = updated_meta
+            db.add(asset)
+            
+            await db.commit()
+            print(f"[Worker] Processing for asset {asset_id} failed: {e}")
 
 
 @celery_app.task(name="app.worker.process_asset_upload")

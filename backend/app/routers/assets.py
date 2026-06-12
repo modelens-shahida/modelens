@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException, Depends, status, File, UploadFile,
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+import sqlalchemy as sa
 
 from app.models.db import get_db, Asset, AssetTag, User, Brand, BrandMember
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
@@ -466,4 +467,169 @@ async def upload_mock_file(unique_filename: str, request: Request):
             f.write(chunk)
             
     return {"message": "Mock file upload successful"}
+
+
+# --- Search Schemas ---
+class AssetSimilarSearchRequest(BaseModel):
+    embedding: List[float]
+    brand_id: Optional[int] = None
+    limit: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("embedding")
+    @classmethod
+    def validate_embedding_dimensions(cls, v: List[float]) -> List[float]:
+        if len(v) != 1536:
+            raise ValueError("Embedding must be exactly 1536 dimensions.")
+        return v
+
+
+@router.get("/search", response_model=List[dict])
+async def search_assets(
+    q: str,
+    brand_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Step 18: Full-Text Search against the assets name and metadata fields.
+    Enforces brand-level access control.
+    """
+    # 1. Resolve accessible brand IDs
+    owned_query = select(Brand.id).where(Brand.owner_id == current_user.id)
+    owned_result = await db.execute(owned_query)
+    accessible_brand_ids = set(owned_result.scalars().all())
+
+    member_query = select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id)
+    member_result = await db.execute(member_query)
+    accessible_brand_ids.update(member_result.scalars().all())
+
+    if not accessible_brand_ids:
+        return []
+
+    # 2. Build Query
+    if db.bind.dialect.name == "sqlite":
+        # SQLite fallback: simple ILIKE matching on name or metadata text
+        search_filter = Asset.name.ilike(f"%{q}%") | sa.cast(Asset.meta, sa.Text).ilike(f"%{q}%")
+        query = select(Asset).where(search_filter)
+    else:
+        # PostgreSQL full-text search
+        fts_expression = func.to_tsvector(
+            "english",
+            func.coalesce(Asset.name, "") + " " + func.coalesce(sa.cast(Asset.meta, sa.Text), "")
+        ).bool_op("@@")(func.plainto_tsquery("english", q))
+        query = select(Asset).where(fts_expression)
+
+    # Apply brand filters
+    if brand_id is not None:
+        if brand_id not in accessible_brand_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this brand's assets."
+            )
+        query = query.where(Asset.brand_id == brand_id)
+    else:
+        query = query.where(Asset.brand_id.in_(list(accessible_brand_ids)))
+
+    result = await db.execute(query)
+    assets = result.scalars().all()
+
+    resp = []
+    for asset in assets:
+        tags = [t.tag for t in asset.tags]
+        resp.append({
+            "id": asset.id,
+            "brand_id": asset.brand_id,
+            "name": asset.name,
+            "filename": asset.filename,
+            "storage_path": asset.storage_path,
+            "asset_type": asset.asset_type,
+            "metadata": asset.meta,
+            "tags": tags
+        })
+    return resp
+
+
+@router.post("/search/similar", response_model=List[dict])
+async def search_similar_assets(
+    payload: AssetSimilarSearchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Step 18: pgvector-based Approximate Nearest Neighbor (ANN) search.
+    Finds assets with tags having closest embedding cosine distance to query.
+    Enforces brand-level access control.
+    """
+    # 1. Resolve accessible brand IDs
+    owned_query = select(Brand.id).where(Brand.owner_id == current_user.id)
+    owned_result = await db.execute(owned_query)
+    accessible_brand_ids = set(owned_result.scalars().all())
+
+    member_query = select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id)
+    member_result = await db.execute(member_query)
+    accessible_brand_ids.update(member_result.scalars().all())
+
+    if not accessible_brand_ids:
+        return []
+
+    # 2. Build pgvector Cosine similarity query (or fallback on SQLite)
+    if db.bind.dialect.name == "sqlite":
+        # SQLite fallback: return all matching assets with a mock distance
+        query = select(Asset, AssetTag.tag).join(AssetTag, AssetTag.asset_id == Asset.id)
+    else:
+        distance_expr = AssetTag.embedding.cosine_distance(payload.embedding)
+        query = (
+            select(Asset, AssetTag.tag, distance_expr.label("distance"))
+            .join(AssetTag, AssetTag.asset_id == Asset.id)
+        )
+
+    # Apply brand filters
+    if payload.brand_id is not None:
+        if payload.brand_id not in accessible_brand_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this brand's assets."
+            )
+        query = query.where(Asset.brand_id == payload.brand_id)
+    else:
+        query = query.where(Asset.brand_id.in_(list(accessible_brand_ids)))
+
+    if db.bind.dialect.name != "sqlite":
+        distance_expr = AssetTag.embedding.cosine_distance(payload.embedding)
+        query = query.order_by(distance_expr).limit(payload.limit)
+    else:
+        query = query.limit(payload.limit)
+    
+    result = await db.execute(query)
+    rows = result.all()
+
+    resp = []
+    seen_assets = set()
+    for row in rows:
+        if db.bind.dialect.name == "sqlite":
+            asset, tag = row
+            distance = 0.05
+        else:
+            asset, tag, distance = row
+
+        # Avoid returning duplicates if multiple tags of the same asset match
+        if asset.id in seen_assets:
+            continue
+        seen_assets.add(asset.id)
+        
+        tags = [t.tag for t in asset.tags]
+        resp.append({
+            "id": asset.id,
+            "brand_id": asset.brand_id,
+            "name": asset.name,
+            "filename": asset.filename,
+            "storage_path": asset.storage_path,
+            "asset_type": asset.asset_type,
+            "metadata": asset.meta,
+            "tags": tags,
+            "matching_tag": tag,
+            "distance": float(distance) if distance is not None else 0.0
+        })
+    return resp
+
 

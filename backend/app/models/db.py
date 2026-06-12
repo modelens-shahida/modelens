@@ -177,14 +177,14 @@ class AIJob(Base):
     __tablename__ = "ai_jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE")
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
-    brand_id: Mapped[int] = mapped_column(
-        ForeignKey("brands.id", ondelete="CASCADE")
+    brand_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=True
     )
-    workflow_template_id: Mapped[int] = mapped_column(
-        ForeignKey("workflow_templates.id", ondelete="CASCADE")
+    workflow_template_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("workflow_templates.id", ondelete="CASCADE"), nullable=True
     )
     asset_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
