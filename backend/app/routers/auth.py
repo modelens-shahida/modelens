@@ -1,3 +1,4 @@
+from typing import Optional
 from app.config import settings
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, EmailStr
