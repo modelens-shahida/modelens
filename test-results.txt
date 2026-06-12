@@ -1,0 +1,54 @@
+=== Testing Mode Lens APIs ===
+
+1. Brands GET:
+[]
+
+2. Assets GET:
+[]
+
+3. Campaigns GET:
+[]
+
+4. Characters GET:
+[]
+
+5. Collections GET:
+[]
+
+6. Workflows GET:
+[]
+
+7. Prompts GET:
+[]
+
+8. Tags GET:
+[]
+
+9. Search GET (q=test):
+[]
+
+10. Hybrid Search POST:
+{"results":[],"total":0}
+
+11. Semantic Search POST:
+
+
+12. Qdrant Status GET:
+{"success":true,"collections":[{"name":"assets"},{"name":"brand_memory"},{"name":"campaign_memory"},{"name":"characters"},{"name":"prompts"}]}
+
+13. Sync Status GET:
+{"stats":{"assets":{"points":0,"status":"green"},"brand_memory":{"points":0,"status":"green"},"campaign_memory":{"points":0,"status":"green"},"characters":{"points":0,"status":"green"},"prompts":{"points":0,"status":"green"}}}
+
+14. Metadata Schema GET:
+{"version":"1.0","categories":8,"schema":{"lighting":["natural-daylight","golden-hour","blue-hour","soft-studio","hard-studio","backlit","rim-light","low-key","high-key","neon"],"camera":["wide-angle","standard","portrait-lens","telephoto","macro","drone","overhead","eye-level","low-angle","high-angle"],"mood":["aspirational","playful","editorial","minimal","romantic","bold","nostalgic","raw","serene","dramatic"],"location":["studio","urban-street","urban-rooftop","interior-home","interior-hotel","nature-forest","nature-beach","nature-desert"],"pose":["standing-front","standing-side","walking","sitting-casual","lying-down","candid-motion","close-up-face"],"character":["single-subject","duo","group","model-female","model-male","adult-young","adult-mid","adult-senior"],"garment":["casual-daywear","smart-casual","formal-wear","activewear","swimwear","outerwear","eveningwear","streetwear"],"campaign":["hero-shot","supporting","social-cutdown","product-focus","lifestyle","behind-the-scenes"]}}
+
+15. Benchmark POST:
+{"query":"test","benchmarks":{"text_search_ms":245},"qdrant_stats":{"assets":{"points":0,"status":"green"},"brand_memory":{"points":0,"status":"green"},"campaign_memory":{"points":0,"status":"green"},"characters":{"points":0,"status":"green"},"prompts":{"points":0,"status":"green"}},"note":"OpenAI quota exceeded — vector search benchmarks skipped"}
+
+16. Brand Memory GET (no brand_id - should error):
+{"error":"No brand_id"}
+
+17. Campaign Memory GET (no campaign_id - should error):
+{"error":"No campaign_id"}
+
+=== Test Complete ===

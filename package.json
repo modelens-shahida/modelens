@@ -9,11 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@qdrant/js-client-rest": "^1.18.0",
+    "@supabase/supabase-js": "^2.107.0",
     "framer-motion": "^12.23.24",
     "lucide-react": "^0.552.0",
     "next": "^15.5.18",
     "next-auth": "^4.24.13",
     "nodemailer": "^7.0.11",
+    "openai": "^6.42.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.6.0",
@@ -23,9 +26,13 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
     "baseline-browser-mapping": "^2.9.6",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
