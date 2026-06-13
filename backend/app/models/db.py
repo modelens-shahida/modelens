@@ -69,6 +69,7 @@ class BrandMember(Base):
 
     __table_args__ = (
         UniqueConstraint("brand_id", "user_id", name="uq_brand_member"),
+        Index("idx_brand_members_user_id", "user_id"),
     )
 
 class Asset(Base):
@@ -88,6 +89,7 @@ class Asset(Base):
     tags = relationship("AssetTag", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
 
     __table_args__ = (
+        Index("idx_assets_brand_id", "brand_id"),
         Index("idx_assets_metadata_gin", "metadata", postgresql_using="gin"),
         Index(
             "idx_assets_name_metadata_fts",
@@ -205,6 +207,11 @@ class AIJob(Base):
     workflow = relationship("WorkflowTemplate")
     asset = relationship("Asset")
 
+    __table_args__ = (
+        Index("idx_ai_jobs_brand_id", "brand_id"),
+        Index("idx_ai_jobs_user_id", "user_id"),
+    )
+
 class WorkflowTemplate(Base):
     __tablename__ = "workflow_templates"
 
@@ -232,6 +239,10 @@ class Character(Base):
     image_path: Mapped[str] = mapped_column(String(1000))
 
     brand = relationship("Brand")
+
+    __table_args__ = (
+        Index("idx_characters_brand_id", "brand_id"),
+    )
 
 class APIKey(Base):
     __tablename__ = "api_keys"

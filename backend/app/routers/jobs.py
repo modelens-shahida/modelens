@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List
 from datetime import datetime
@@ -16,7 +16,7 @@ from app.models.db import (
     WorkflowTemplate
 )
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
-from app.middleware.rate_limit import redis_client
+from app.middleware.rate_limit import redis_client, RateLimiter
 from app.worker import process_generation_job
 
 logger = logging.getLogger("modelens.jobs")
@@ -55,7 +55,7 @@ class JobResponse(BaseModel):
 
 # --- Endpoints ---
 
-@router.post("/generate", status_code=status.HTTP_201_CREATED, response_model=JobResponse)
+@router.post("/generate", status_code=status.HTTP_201_CREATED, response_model=JobResponse, dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))])
 async def generate_job(
     payload: JobGenerateRequest,
     current_user: User = Depends(get_current_user),
@@ -173,11 +173,13 @@ async def generate_job(
 @router.get("", response_model=List[JobResponse])
 async def list_jobs(
     brand_id: Optional[int] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List all AI jobs for brands the user belongs to.
+    List all AI jobs for brands the user belongs to with pagination.
     """
     # Find brands user has access to
     owned_query = select(Brand.id).where(Brand.owner_id == current_user.id)
@@ -202,7 +204,7 @@ async def list_jobs(
     else:
         query = query.where(AIJob.brand_id.in_(list(accessible_brand_ids)))
 
-    query = query.order_by(AIJob.created_at.desc())
+    query = query.order_by(AIJob.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
     return list(result.scalars().all())
 

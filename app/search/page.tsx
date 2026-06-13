@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { api } from '@/lib/api'
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
@@ -9,10 +10,14 @@ export default function SearchPage() {
   async function handleSearch() {
     if (!query) return
     setLoading(true)
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
-    const data = await res.json()
-    setResults(data)
-    setLoading(false)
+    try {
+      const data = await api.get(`/api/v1/assets/search?q=${encodeURIComponent(query)}`)
+      setResults(data)
+    } catch (err: any) {
+      setResults({ error: err.message || err })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -39,3 +44,4 @@ export default function SearchPage() {
     </div>
   )
 }
+

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,10 +149,12 @@ async def create_campaign(
 @router.get("", response_model=List[CampaignResponse])
 async def list_campaigns(
     brand_id: Optional[int] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all campaigns matching the brand_id or those accessible to the caller."""
+    """List all campaigns matching the brand_id or those accessible to the caller with pagination."""
     # Find brands the user has access to
     owned_query = select(Brand.id).where(Brand.owner_id == current_user.id)
     owned_res = await db.execute(owned_query)
@@ -176,6 +178,7 @@ async def list_campaigns(
     else:
         query = query.where(Campaign.brand_id.in_(list(accessible_brand_ids)))
 
+    query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     return list(result.scalars().all())
 

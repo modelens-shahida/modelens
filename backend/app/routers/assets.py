@@ -2,7 +2,8 @@ import os
 import shutil
 import json
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, status, File, UploadFile, Form, Request
+import anyio
+from fastapi import APIRouter, HTTPException, Depends, status, File, UploadFile, Form, Request, Query
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,10 +49,12 @@ async def list_assets(
     brand_id: Optional[int] = None,
     tag: Optional[str] = None,
     search: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all assets with optional filtering by brand, tag, or search query."""
+    """List all assets with optional filtering by brand, tag, or search query with pagination."""
     # Resolve accessible brand IDs
     owned_query = select(Brand.id).where(Brand.owner_id == current_user.id)
     owned_result = await db.execute(owned_query)
@@ -83,6 +86,7 @@ async def list_assets(
         search_filter = Asset.name.ilike(f"%{search}%") | Asset.filename.ilike(f"%{search}%")
         query = query.where(search_filter)
 
+    query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     assets = result.scalars().all()
 
@@ -143,18 +147,21 @@ async def create_asset(
             detail="Requires at least 'editor' role on this brand."
         )
 
-    # Ensure uploads directory exists
-    UPLOAD_DIR = "uploads"
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    # Save the file
+    # Generate unique filename
     filename = file.filename or "file"
     file_ext = os.path.splitext(filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Read file content asynchronously
+    file_bytes = await file.read()
+
+    # Save file using storage service in a thread pool
+    storage_path = await anyio.to_thread.run_sync(
+        storage_service.save_file_bytes,
+        unique_filename,
+        file_bytes,
+        asset_type
+    )
 
     # Parse metadata
     meta = {}
@@ -164,9 +171,6 @@ async def create_asset(
         except Exception:
             pass
 
-    # Save to DB
-    storage_path = f"/uploads/{unique_filename}"
-    
     asset = Asset(
         brand_id=brand_id,
         name=name or file.filename,
@@ -410,8 +414,12 @@ async def confirm_upload(
         # Fallback to parsing from storage_path
         unique_filename = os.path.basename(asset.storage_path)
 
-    # Verify file is uploaded
-    if not storage_service.verify_file_exists(unique_filename):
+    # Verify file is uploaded asynchronously
+    file_exists = await anyio.to_thread.run_sync(
+        storage_service.verify_file_exists,
+        unique_filename
+    )
+    if not file_exists:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Asset upload could not be verified. Please ensure the upload has completed."
@@ -483,7 +491,7 @@ class AssetSimilarSearchRequest(BaseModel):
         return v
 
 
-@router.get("/search", response_model=List[dict])
+@router.get("/search", response_model=List[dict], dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))])
 async def search_assets(
     q: str,
     brand_id: Optional[int] = None,
@@ -549,7 +557,7 @@ async def search_assets(
     return resp
 
 
-@router.post("/search/similar", response_model=List[dict])
+@router.post("/search/similar", response_model=List[dict], dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))])
 async def search_similar_assets(
     payload: AssetSimilarSearchRequest,
     current_user: User = Depends(get_current_user),

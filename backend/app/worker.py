@@ -1,4 +1,7 @@
 import os
+import socket
+import ipaddress
+from urllib.parse import urlparse
 from celery import Celery
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -329,6 +332,36 @@ def process_generation_job(job_id: int):
     loop.run_until_complete(_process_generation_job_async(job_id))
 
 
+def is_safe_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or parsed.scheme not in ("http", "https"):
+            return False
+        
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        
+        # Resolve hostname to IP addresses
+        addrinfo = socket.getaddrinfo(hostname, None)
+        ips = {info[4][0] for info in addrinfo}
+        
+        for ip_str in ips:
+            ip = ipaddress.ip_address(ip_str)
+            if (
+                ip.is_loopback
+                or ip.is_private
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                return False
+        return True
+    except Exception:
+        return False
+
+
 @celery_app.task(
     name="app.worker.dispatch_webhook",
     bind=True,
@@ -338,6 +371,10 @@ def process_generation_job(job_id: int):
 )
 def dispatch_webhook(self, callback_url: str, payload: dict):
     print(f"[Worker] Dispatching webhook to {callback_url}...")
+    if not is_safe_url(callback_url):
+        print(f"[Worker] Webhook dispatch aborted: unsafe URL {callback_url}")
+        raise ValueError(f"SSRF warning: Unsafe webhook URL: {callback_url}")
+
     with httpx.Client() as client:
         response = client.post(callback_url, json=payload, timeout=10.0)
         response.raise_for_status()
