@@ -2,6 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { Facebook, Twitter, Linkedin } from "lucide-react";
 
 export default function BlogArticle() {
@@ -76,14 +77,16 @@ export default function BlogArticle() {
         </div>
 
         {/* ---------- HERO IMAGE ---------- */}
-        <motion.img
-          src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/691f16eb9d4ccf9d0d0b053d_Botika_TheThread_NewEraofAIPoweredFashion_Header.webp"
-          alt="AI Powered Fashion Header"
-          className="w-full h-auto rounded-2xl mb-10"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-        />
+        <div className="relative w-full h-[300px] md:h-[450px] mb-10 overflow-hidden rounded-2xl">
+          <Image
+            src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/691f16eb9d4ccf9d0d0b053d_Botika_TheThread_NewEraofAIPoweredFashion_Header.webp"
+            alt="AI Powered Fashion Header"
+            fill
+            className="object-cover"
+            sizes="100vw"
+            priority
+          />
+        </div>
 
        
 
@@ -204,14 +207,13 @@ export default function BlogArticle() {
     </div>
 
     {/* Right Side: Image */}
-    <div className="flex-1">
-      <motion.img
+    <div className="flex-1 relative h-64 md:h-80 w-full overflow-hidden rounded-2xl shadow-lg">
+      <Image
         src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67bce5d0843a5b4005f1047e_Botika_UseCase_Seamlessvisualsbetterresults.webp"
         alt="AI Fashion Workflow"
-        className="w-full rounded-2xl shadow-lg object-cover"
-        initial={{ opacity: 0, x: 50 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6 }}
+        fill
+        className="object-cover"
+        sizes="(max-width: 768px) 100vw, 50vw"
       />
     </div>
     
@@ -294,10 +296,12 @@ export default function BlogArticle() {
     transition={{ duration: 0.5 }}
     className="mb-6"
   >
-    <img
+    <Image
       src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/691f173f446208008b55a181_Botika_TheThread_NewEraofAIPoweredFashion_Inner%20image_01.webp"
       alt="Workflow comparison image 1"
-      className="w-full rounded-lg shadow-md"
+      width={800}
+      height={450}
+      className="w-full h-auto rounded-lg shadow-md"
     />
   </motion.div>
 
@@ -337,10 +341,12 @@ export default function BlogArticle() {
     transition={{ duration: 0.5 }}
     className="mb-6"
   >
-    <img
+    <Image
       src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/691f2c7173d2c3c294a38aad_Botika_TheThread_NewEraofAIPoweredFashion_Inner%20image_02.webp"
       alt="Workflow comparison image 2"
-      className="w-full rounded-lg shadow-md"
+      width={800}
+      height={450}
+      className="w-full h-auto rounded-lg shadow-md"
     />
   </motion.div>
 
@@ -469,14 +475,13 @@ Boost engagement, elevate your brand with AI models.
     </div>
 
     {/* Right Side: Image */}
-    <div className="flex-1">
-      <motion.img
+    <div className="flex-1 relative h-64 md:h-80 w-full overflow-hidden rounded-2xl shadow-lg">
+      <Image
         src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/6888d75bae22866abd633045_Botika_Revolutionizeyourfashionvisuals.webp"
         alt="AI Fashion Workflow"
-        className="w-full rounded-2xl shadow-lg object-cover"
-        initial={{ opacity: 0, x: 50 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6 }}
+        fill
+        className="object-cover"
+        sizes="(max-width: 768px) 100vw, 50vw"
       />
     </div>
     

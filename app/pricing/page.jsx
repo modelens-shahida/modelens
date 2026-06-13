@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 
 
 /* -------------------- FAQ ACCORDION COMPONENT -------------------- */
@@ -420,14 +421,15 @@ const PricingPage = () => {
           initial={{ opacity: 0, scale: 0.85 }}
           whileInView={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-[40px] shadow-[0_0_50px_rgba(168,85,247,0.4)] border border-purple-500/50"
+          className="relative overflow-hidden rounded-[40px] shadow-[0_0_50px_rgba(168,85,247,0.4)] border border-purple-500/50 w-[95vw] md:w-[85vw] lg:w-[80vw] h-[70vh] md:h-[80vh]"
         >
-          <motion.img
+          <Image
             src="https://cdn.prod.website-files.com/66fa67b1f207f846cd05b5a1/67769c4c79b7a48aabb46b98_Botika_Pricing_Main.avif"
             alt="ModeLens Pricing Showcase"
-            className="rounded-[40px] w-[95vw] md:w-[85vw] lg:w-[80vw] h-[70vh] md:h-[80vh] object-cover"
-            whileHover={{ scale: 1.08, rotate: 0.3 }}
-            transition={{ type: "spring", stiffness: 100, damping: 10 }}
+            fill
+            className="rounded-[40px] object-cover"
+            sizes="(max-width: 768px) 95vw, (max-width: 1200px) 85vw, 80vw"
+            priority
           />
           <div className="absolute inset-0 rounded-[40px] bg-gradient-to-tr from-purple-700/10 to-pink-500/10 pointer-events-none" />
         </motion.div>
@@ -496,7 +498,15 @@ const PricingPage = () => {
           key={index}
           className="bg-white shadow-lg rounded-2xl overflow-hidden hover:shadow-2xl transition"
         >
-          <img src={card.img} alt={card.title} className="w-full h-64 object-cover" />
+          <div className="relative w-full h-64">
+            <Image
+              src={card.img}
+              alt={card.title}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          </div>
           <div className="p-6">
             <h3 className="text-xl font-semibold mb-2 text-center">{card.title}</h3>
             <p className="text-gray-600 text-left">{card.desc}</p>

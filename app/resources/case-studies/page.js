@@ -34,10 +34,13 @@ const CaseStudiesPage = () => {
     >
 
       {/* FULL IMAGE — NO CROP */}
-      <img
+      <Image
         src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/686fc0d7b0f517c828ddf218_Botika_CaseStudy_JUANandMe_Header.webp"
         alt="Case Study — Juan & Me"
+        width={1200}
+        height={630}
         className="w-full h-auto object-contain"
+        priority
       />
 
       {/* LEFT-SIDE OVERLAY CONTENT */}
@@ -83,11 +86,13 @@ const CaseStudiesPage = () => {
   className="cursor-pointer"
 >
   <Link href="/resources/case-studies/botika-turned-get-dressed-collective-into-a-boutique-powerhouse">
-    <div className="overflow-hidden rounded-2xl shadow-lg">
-      <img
+    <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+      <Image
         src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f3ea40de3ac269046d2e4b_Botika_CaseStudy_GetDressedCollective%20_Hero_Mobile.webp"
         alt="Get Dressed Collective Case Study"
-        className="w-full h-72 object-cover"
+        fill
+        className="object-cover"
+        sizes="(max-width: 768px) 100vw, 33vw"
       />
     </div>
 
@@ -108,11 +113,13 @@ const CaseStudiesPage = () => {
       className="cursor-pointer"
     >
       <Link href="/resources/case-studies/need-lots-of-images-fast-blvck-turns-to-botika-for-the-win">
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/676a7d4c2b12a754a781f97f_Botika_CaseStudies_BLVCK_Header_Mobile.avif"
             alt="BLVCK Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 
@@ -134,11 +141,13 @@ const CaseStudiesPage = () => {
       className="cursor-pointer"
     >
       <Link href="/resources/case-studies/jordache-embraces-ai-cutting-costs-boosting-visuals-with-botika">
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/6767caa8fa536c3a8d7c7012_Jordache_CaseStudies_Mobile%20Header.avif"
             alt="Jordache Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 

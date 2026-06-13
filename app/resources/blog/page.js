@@ -2,6 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import BlogGrid from "@/components/BlogGrid";
 
 export default function BlogPage() {
@@ -39,10 +40,13 @@ export default function BlogPage() {
           className="relative rounded-3xl overflow-hidden shadow-2xl border border-gray-200 bg-black cursor-pointer"
         >
           {/* FULL IMAGE — NO CROP */}
-          <img
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/691f16eb9d4ccf9d0d0b053d_Botika_TheThread_NewEraofAIPoweredFashion_Header.webp"
             alt="Case Study — Get Dressed Collective"
+            width={1200}
+            height={630}
             className="w-full h-auto object-contain"
+            priority
           />
 
           {/* LEFT OVERLAY */}

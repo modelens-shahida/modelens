@@ -21,6 +21,8 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Active polling jobs tracker
   const [activePollIds, setActivePollIds] = useState(new Set());
@@ -42,7 +44,7 @@ export default function JobsPage() {
       }
 
       // Initial job list fetch
-      const jobData = await api.get("/api/v1/jobs");
+      const jobData = await api.get(`/api/v1/jobs?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`);
       setJobs(jobData);
 
       // Track active jobs that need polling
@@ -64,6 +66,11 @@ export default function JobsPage() {
       Object.values(pollIntervalRef.current).forEach(clearInterval);
     };
   }, []);
+
+  // Reset page when brand changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBrandId]);
 
   // Fetch brand assets when brand selection changes
   useEffect(() => {
@@ -91,14 +98,15 @@ export default function JobsPage() {
     if (!loading) {
       fetchJobsList();
     }
-  }, [selectedBrandId]);
+  }, [selectedBrandId, currentPage]);
 
   // Fetch jobs list
   const fetchJobsList = async () => {
     try {
-      const url = selectedBrandId 
-        ? `/api/v1/jobs?brand_id=${selectedBrandId}` 
-        : "/api/v1/jobs";
+      let url = `/api/v1/jobs?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`;
+      if (selectedBrandId) {
+        url += `&brand_id=${selectedBrandId}`;
+      }
       const data = await api.get(url);
       setJobs(data);
       
@@ -389,101 +397,126 @@ export default function JobsPage() {
               No jobs found. Queue a generation to see real-time updates.
             </div>
           ) : (
-            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
-              {jobs.map((job) => {
-                const brand = brands.find((b) => b.id === job.brand_id);
-                const isPolling = activePollIds.has(job.id);
+            <div className="space-y-4">
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                {jobs.map((job) => {
+                  const brand = brands.find((b) => b.id === job.brand_id);
+                  const isPolling = activePollIds.has(job.id);
 
-                return (
-                  <div
-                    key={job.id}
-                    className={`bg-zinc-900/20 border rounded-2xl p-5 hover:bg-zinc-900/40 transition-all space-y-4 relative overflow-hidden ${
-                      isPolling ? "border-purple-500/40" : "border-zinc-850"
-                    }`}
-                  >
-                    {/* Job Top Row */}
-                    <div className="flex justify-between items-start gap-3 flex-wrap">
-                      <div className="space-y-1 text-left">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-zinc-200">Job #{job.id}</span>
-                          <span className="text-[10px] text-zinc-500">Generation</span>
-                          {brand && (
-                            <span className="text-[9px] bg-zinc-950 text-zinc-400 border border-zinc-850 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                              {brand.name}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-zinc-500">
-                          Started: {new Date(job.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {getStatusBadge(job.status)}
-                      </div>
-                    </div>
-
-                    {/* Outputs & Details Container */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-zinc-850/60 pt-4 text-xs leading-relaxed text-zinc-400">
-                      {/* Inputs info */}
-                      <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-1">
-                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Input Parameters</span>
-                        {job.inputs?.urls && job.inputs.urls.length > 0 ? (
-                          <div className="truncate">
-                            <span className="text-zinc-500">S3 Source:</span>{" "}
-                            <span className="text-[10px] font-mono text-zinc-300">{job.inputs.urls[0]}</span>
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-zinc-500">No source assets input</div>
-                        )}
-                        {job.callback_url && (
-                          <div className="truncate text-[10px]">
-                            <span className="text-zinc-500">Webhook:</span>{" "}
-                            <span className="text-[9px] font-mono text-zinc-400">{job.callback_url}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Outputs Info */}
-                      <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-1">
-                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Output Assets</span>
-                        {job.status === "completed" ? (
-                          <div className="space-y-1">
-                            {job.outputs?.urls && job.outputs.urls.map((url, index) => (
-                              <div key={index} className="flex justify-between items-center gap-2">
-                                <span className="text-[10px] font-mono text-emerald-400 truncate max-w-[150px]">
-                                  {url}
-                                </span>
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] text-purple-400 hover:text-purple-300 font-semibold inline-flex items-center gap-1 shrink-0"
-                                >
-                                  View <ExternalLink size={10} />
-                                </a>
-                              </div>
-                            ))}
-                            {job.asset_id && (
-                              <div className="text-[10px] text-zinc-500">
-                                Catalog Asset ID: <span className="text-zinc-300 font-semibold">{job.asset_id}</span>
-                              </div>
+                  return (
+                    <div
+                      key={job.id}
+                      className={`bg-zinc-900/20 border rounded-2xl p-5 hover:bg-zinc-900/40 transition-all space-y-4 relative overflow-hidden ${
+                        isPolling ? "border-purple-500/40" : "border-zinc-850"
+                      }`}
+                    >
+                      {/* Job Top Row */}
+                      <div className="flex justify-between items-start gap-3 flex-wrap">
+                        <div className="space-y-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-zinc-200">Job #{job.id}</span>
+                            <span className="text-[10px] text-zinc-500">Generation</span>
+                            {brand && (
+                              <span className="text-[9px] bg-zinc-950 text-zinc-400 border border-zinc-850 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                                {brand.name}
+                              </span>
                             )}
                           </div>
-                        ) : job.status === "failed" ? (
-                          <div className="text-[10px] text-rose-400 leading-snug">
-                            Error: {job.error_message || "Operation failed"}
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-zinc-500 flex items-center gap-1.5">
-                            <Loader2 className="animate-spin text-purple-500" size={12} />
-                            Awaiting generated output file path...
-                          </div>
-                        )}
+                          <p className="text-[10px] text-zinc-500">
+                            Started: {new Date(job.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {getStatusBadge(job.status)}
+                        </div>
+                      </div>
+
+                      {/* Outputs & Details Container */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-zinc-850/60 pt-4 text-xs leading-relaxed text-zinc-400">
+                        {/* Inputs info */}
+                        <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-1">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Input Parameters</span>
+                          {job.inputs?.urls && job.inputs.urls.length > 0 ? (
+                            <div className="truncate">
+                              <span className="text-zinc-500">S3 Source:</span>{" "}
+                              <span className="text-[10px] font-mono text-zinc-300">{job.inputs.urls[0]}</span>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500">No source assets input</div>
+                          )}
+                          {job.callback_url && (
+                            <div className="truncate text-[10px]">
+                              <span className="text-zinc-500">Webhook:</span>{" "}
+                              <span className="text-[9px] font-mono text-zinc-400">{job.callback_url}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Outputs Info */}
+                        <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-1">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Output Assets</span>
+                          {job.status === "completed" ? (
+                            <div className="space-y-1">
+                              {job.outputs?.urls && job.outputs.urls.map((url, index) => (
+                                <div key={index} className="flex justify-between items-center gap-2">
+                                  <span className="text-[10px] font-mono text-emerald-400 truncate max-w-[150px]">
+                                    {url}
+                                  </span>
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[10px] text-purple-400 hover:text-purple-300 font-semibold inline-flex items-center gap-1 shrink-0"
+                                  >
+                                    View <ExternalLink size={10} />
+                                  </a>
+                                </div>
+                              ))}
+                              {job.asset_id && (
+                                <div className="text-[10px] text-zinc-500">
+                                  Catalog Asset ID: <span className="text-zinc-300 font-semibold">{job.asset_id}</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : job.status === "failed" ? (
+                            <div className="text-[10px] text-rose-400 leading-snug">
+                              Error: {job.error_message || "Operation failed"}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 flex items-center gap-1.5">
+                              <Loader2 className="animate-spin text-purple-500" size={12} />
+                              Awaiting generated output file path...
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex justify-between items-center bg-zinc-950 border border-zinc-900 rounded-2xl p-3 mt-4">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 disabled:opacity-40 disabled:hover:border-zinc-850 text-zinc-300 px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 font-semibold"
+                >
+                  &larr; Previous
+                </button>
+                <span className="text-zinc-400 text-[10px] uppercase font-bold tracking-wider">
+                  Page {currentPage}
+                </span>
+                <button
+                  type="button"
+                  disabled={jobs.length < itemsPerPage}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-900 disabled:text-zinc-500 disabled:opacity-40 text-white px-4 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 font-semibold shadow-md shadow-purple-950/20"
+                >
+                  Next &rarr;
+                </button>
+              </div>
             </div>
           )}
         </div>

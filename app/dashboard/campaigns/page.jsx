@@ -14,6 +14,8 @@ export default function CampaignsPage() {
   const [selectedBrandId, setSelectedBrandId] = useState("");
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Campaign details modal / view
   const [activeCampaign, setActiveCampaign] = useState(null);
@@ -46,7 +48,7 @@ export default function CampaignsPage() {
         setCreateBrandId(brandData[0].id.toString());
       }
       
-      const campaignData = await api.get("/api/v1/campaigns");
+      const campaignData = await api.get(`/api/v1/campaigns?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`);
       setCampaigns(campaignData);
     } catch (error) {
       toast.error(error.message || "Failed to load initial campaigns data");
@@ -59,12 +61,18 @@ export default function CampaignsPage() {
     initData();
   }, []);
 
+  // Reset page when brand selection changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBrandId]);
+
   // Fetch campaigns again when selected brand changes
   const fetchCampaigns = async () => {
     try {
-      const url = selectedBrandId 
-        ? `/api/v1/campaigns?brand_id=${selectedBrandId}`
-        : "/api/v1/campaigns";
+      let url = `/api/v1/campaigns?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`;
+      if (selectedBrandId) {
+        url += `&brand_id=${selectedBrandId}`;
+      }
       const data = await api.get(url);
       setCampaigns(data);
     } catch (error) {
@@ -76,7 +84,7 @@ export default function CampaignsPage() {
     if (!loading) {
       fetchCampaigns();
     }
-  }, [selectedBrandId]);
+  }, [selectedBrandId, currentPage]);
 
   // Load campaign details (assets and workflows)
   const loadCampaignDetails = async (campaign) => {
@@ -279,45 +287,70 @@ export default function CampaignsPage() {
               No campaigns found for the filter.
             </div>
           ) : (
-            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-              {campaigns.map((c) => {
-                const brand = brands.find((b) => b.id === c.brand_id);
-                const isActive = activeCampaign?.id === c.id;
-                return (
-                  <div
-                    key={c.id}
-                    onClick={() => loadCampaignDetails(c)}
-                    className={`p-4 border rounded-xl transition-all cursor-pointer text-left relative overflow-hidden group ${
-                      isActive
-                        ? "bg-purple-950/20 border-purple-500/60 shadow-lg shadow-purple-950/10"
-                        : "bg-zinc-900/30 border-zinc-850 hover:bg-zinc-900/50"
-                    }`}
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-start">
-                        <span className="text-[9px] font-bold text-purple-400 bg-purple-950/50 border border-purple-800/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          {brand ? brand.name : `Brand ID: ${c.brand_id}`}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCampaign(c.id);
-                          }}
-                          className="text-zinc-500 hover:text-rose-400 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+            <div className="space-y-4">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                {campaigns.map((c) => {
+                  const brand = brands.find((b) => b.id === c.brand_id);
+                  const isActive = activeCampaign?.id === c.id;
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => loadCampaignDetails(c)}
+                      className={`p-4 border rounded-xl transition-all cursor-pointer text-left relative overflow-hidden group ${
+                        isActive
+                          ? "bg-purple-950/20 border-purple-500/60 shadow-lg shadow-purple-950/10"
+                          : "bg-zinc-900/30 border-zinc-850 hover:bg-zinc-900/50"
+                      }`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[9px] font-bold text-purple-400 bg-purple-950/50 border border-purple-800/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            {brand ? brand.name : `Brand ID: ${c.brand_id}`}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCampaign(c.id);
+                            }}
+                            className="text-zinc-500 hover:text-rose-400 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                        <h4 className="text-xs font-bold text-zinc-200 group-hover:text-white truncate">
+                          {c.name}
+                        </h4>
+                        <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed">
+                          {c.description || "No description provided."}
+                        </p>
                       </div>
-                      <h4 className="text-xs font-bold text-zinc-200 group-hover:text-white truncate">
-                        {c.name}
-                      </h4>
-                      <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed">
-                        {c.description || "No description provided."}
-                      </p>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex justify-between items-center bg-zinc-950 border border-zinc-900 rounded-2xl p-3 mt-4">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 disabled:opacity-40 disabled:hover:border-zinc-850 text-zinc-300 px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 font-semibold"
+                >
+                  &larr; Prev
+                </button>
+                <span className="text-zinc-400 text-[10px] uppercase font-bold tracking-wider">
+                  Page {currentPage}
+                </span>
+                <button
+                  type="button"
+                  disabled={campaigns.length < itemsPerPage}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-900 disabled:text-zinc-500 disabled:opacity-40 text-white px-4 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 font-semibold shadow-md shadow-purple-950/20"
+                >
+                  Next &rarr;
+                </button>
+              </div>
             </div>
           )}
         </div>

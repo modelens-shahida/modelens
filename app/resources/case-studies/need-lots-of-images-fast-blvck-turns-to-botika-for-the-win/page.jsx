@@ -2,6 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 
 
 const GetDressedCaseStudy = () => {
@@ -18,10 +19,13 @@ const GetDressedCaseStudy = () => {
           className="relative rounded-3xl overflow-hidden shadow-2xl border border-gray-200 bg-black cursor-pointer"
         >
           {/* FULL IMAGE — NO CROP */}
-          <img
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/675efab125ddb6b5acbfb52b_Botika_CaseStudies_BLVCK_Header.avif"
             alt="Case Study — Get Dressed Collective"
+            width={1200}
+            height={630}
             className="w-full h-auto object-contain"
+            priority
           />
 
           {/* LEFT OVERLAY */}
@@ -144,19 +148,23 @@ Need lots of images fast? BLVCK turns to ModeLens for the win              </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <p className="font-semibold mb-2">Before</p>
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/676a7dd618ffac3a98e134e0_Botika_CaseStudies_BLVCK_BeforeandAfter_2.avif"
                     alt="Before Image"
-                    className="rounded-lg shadow-md"
+                    width={400}
+                    height={600}
+                    className="rounded-lg shadow-md w-full h-auto object-cover"
                   />
                 </div>
 
                 <div>
                   <p className="font-semibold mb-2">After</p>
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/676a7d9de484cc03c658f353_Botika_CaseStudies_BLVCK_BeforeandAfter_1.avif"
                     alt="After Image"
-                    className="rounded-lg shadow-md"
+                    width={400}
+                    height={600}
+                    className="rounded-lg shadow-md w-full h-auto object-cover"
                   />
                 </div>
               </div>
@@ -170,9 +178,11 @@ Need lots of images fast? BLVCK turns to ModeLens for the win              </h2>
                 </p>
 
                 <div className="flex items-start gap-4 mt-6">
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67767856b0e8fc2b895a8517_Botika_CustomerReviews_BLVCK.avif"
                     alt="Barbara Markoe"
+                    width={64}
+                    height={64}
                     className="w-16 h-16 rounded-full object-cover shadow-md"
                   />
 
@@ -226,11 +236,13 @@ Need lots of images fast? BLVCK turns to ModeLens for the win              </h2>
   className="cursor-pointer"
 >
   {/* <Link href="/resources/case-studies/botika-turned-get-dressed-collective-into-a-boutique-powerhouse"> */}
-    <div className="overflow-hidden rounded-2xl shadow-lg">
-      <img
+    <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+      <Image
         src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/686fc0fd1d6fc9f66b649aba_Botika_CaseStudy_JUANandMe_Thumbnail.webp"
         alt="Get Dressed Collective Case Study"
-        className="w-full h-72 object-cover"
+        fill
+        className="object-cover"
+        sizes="(max-width: 768px) 100vw, 33vw"
       />
     </div>
 
@@ -253,11 +265,13 @@ Need lots of images fast? BLVCK turns to ModeLens for the win              </h2>
       className="cursor-pointer"
     >
       {/* <Link href="/resources/case-studies/botika-turned-get-dressed-collective-into-a-boutique-powerhouse"> */}
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f3ea40de3ac269046d2e4b_Botika_CaseStudy_GetDressedCollective%20_Hero_Mobile.webp"
             alt="BLVCK Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 
@@ -281,11 +295,13 @@ Need lots of images fast? BLVCK turns to ModeLens for the win              </h2>
       className="cursor-pointer"
     >
       {/* <Link href="/resources/case-studies/jordache-embraces-ai-cutting-costs-boosting-visuals-with-botika"> */}
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/6767caa8fa536c3a8d7c7012_Jordache_CaseStudies_Mobile%20Header.avif"
             alt="Jordache Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 

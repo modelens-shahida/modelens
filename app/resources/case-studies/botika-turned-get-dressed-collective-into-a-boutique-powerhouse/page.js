@@ -2,6 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 // import { Link } from "lucide-react";
 
 const GetDressedCaseStudy = () => {
@@ -18,10 +19,13 @@ const GetDressedCaseStudy = () => {
           className="relative rounded-3xl overflow-hidden shadow-2xl border border-gray-200 bg-black cursor-pointer"
         >
           {/* FULL IMAGE — NO CROP */}
-          <img
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f03160560a32da51cd22d0_Botika_CaseStudy_GetDressedCollective%20_Hero%20Image.webp"
             alt="Case Study — Get Dressed Collective"
+            width={1200}
+            height={630}
             className="w-full h-auto object-contain"
+            priority
           />
 
           {/* LEFT OVERLAY */}
@@ -137,19 +141,23 @@ const GetDressedCaseStudy = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <p className="font-semibold mb-2">Before</p>
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f03175e9fccbb31ac724ad_Botika_CaseStudy_GetDressedCollective%20_Before.webp"
                     alt="Before Image"
-                    className="rounded-lg shadow-md"
+                    width={400}
+                    height={600}
+                    className="rounded-lg shadow-md w-full h-auto object-cover"
                   />
                 </div>
 
                 <div>
                   <p className="font-semibold mb-2">After</p>
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f0318267d63052d590a77c_Botika_CaseStudy_GetDressedCollective%20_After.webp"
                     alt="After Image"
-                    className="rounded-lg shadow-md"
+                    width={400}
+                    height={600}
+                    className="rounded-lg shadow-md w-full h-auto object-cover"
                   />
                 </div>
               </div>
@@ -163,9 +171,11 @@ const GetDressedCaseStudy = () => {
                 </p>
 
                 <div className="flex items-start gap-4 mt-6">
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f3eb9ba39792481e038d6d_Botika_GetDressedCollective_BarbaraMarkoe.webp"
                     alt="Barbara Markoe"
+                    width={64}
+                    height={64}
                     className="w-16 h-16 rounded-full object-cover shadow-md"
                   />
 
@@ -218,11 +228,13 @@ const GetDressedCaseStudy = () => {
         whileHover={{ scale: 1.02 }}
         className="cursor-pointer"
       >
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/686fc0fd1d6fc9f66b649aba_Botika_CaseStudy_JUANandMe_Thumbnail.webp"
             alt="Get Dressed Collective Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 
@@ -243,11 +255,13 @@ const GetDressedCaseStudy = () => {
         whileHover={{ scale: 1.02 }}
         className="cursor-pointer"
       >
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/676a7d4c2b12a754a781f97f_Botika_CaseStudies_BLVCK_Header_Mobile.avif"
             alt="BLVCK Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 
@@ -267,11 +281,13 @@ const GetDressedCaseStudy = () => {
         whileHover={{ scale: 1.02 }}
         className="cursor-pointer"
       >
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/6767caa8fa536c3a8d7c7012_Jordache_CaseStudies_Mobile%20Header.avif"
             alt="Jordache Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 

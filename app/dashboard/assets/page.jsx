@@ -15,6 +15,8 @@ export default function AssetsPage() {
   const [schema, setSchema] = useState({});
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   // Filters
   const [selectedBrand, setSelectedBrand] = useState("");
@@ -69,7 +71,7 @@ export default function AssetsPage() {
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      let endpoint = "/api/v1/assets?";
+      let endpoint = `/api/v1/assets?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`;
       if (selectedBrand) endpoint += `brand_id=${selectedBrand}&`;
       if (selectedTag) endpoint += `tag=${selectedTag}&`;
       if (debouncedSearch) endpoint += `search=${encodeURIComponent(debouncedSearch)}&`;
@@ -83,9 +85,14 @@ export default function AssetsPage() {
     }
   };
 
+  // Reset page when search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBrand, selectedTag, debouncedSearch]);
+
   useEffect(() => {
     fetchAssets();
-  }, [selectedBrand, selectedTag, debouncedSearch]);
+  }, [selectedBrand, selectedTag, debouncedSearch, currentPage]);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -276,67 +283,92 @@ export default function AssetsPage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {assets.map((asset) => (
-                <motion.div
-                  key={asset.id}
-                  whileHover={{ y: -3 }}
-                  className="bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg"
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {assets.map((asset) => (
+                  <motion.div
+                    key={asset.id}
+                    whileHover={{ y: -3 }}
+                    className="bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg"
+                  >
+                    {/* Thumbnail container */}
+                    <div className="h-44 bg-zinc-950 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-zinc-900">
+                      <img
+                        src={asset.storage_path}
+                        alt={asset.name}
+                        loading="lazy"
+                        onError={(e) => {
+                          // fallback mock vector icon
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
+                      />
+                      {/* Fallback Icon if Image doesn't load */}
+                      <div className="hidden absolute inset-0 bg-zinc-950 flex-col items-center justify-center text-zinc-650 gap-2">
+                        <ImageIcon size={32} />
+                        <span className="text-[9px] font-semibold text-zinc-500">Image Asset Preview</span>
+                      </div>
+
+                      {/* Brand Identifier Badge */}
+                      <div className="absolute top-3 left-3 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 text-zinc-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        {brands.find((b) => b.id === asset.brand_id)?.name || `Brand #${asset.brand_id}`}
+                      </div>
+                    </div>
+
+                    {/* Asset Details info */}
+                    <div className="p-4 flex-1 flex flex-col justify-between">
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-zinc-200 truncate group-hover:text-white transition-colors">
+                          {asset.name}
+                        </h4>
+                        <p className="text-[9px] text-zinc-500 truncate">
+                          File: {asset.filename}
+                        </p>
+                      </div>
+
+                      {/* Tags List */}
+                      <div className="flex flex-wrap gap-1 mt-2.5 max-h-12 overflow-hidden">
+                        {asset.tags && asset.tags.length > 0 ? (
+                          asset.tags.map((t) => (
+                            <span
+                              key={t}
+                              className="text-[8px] font-bold bg-zinc-900 border border-zinc-850/60 text-zinc-400 px-1.5 py-0.5 rounded-md uppercase tracking-wider"
+                            >
+                              {t}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[8px] italic text-zinc-600">No semantic tags assigned</span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex justify-between items-center bg-zinc-950 border border-zinc-900 rounded-2xl p-3 mt-4">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 disabled:opacity-40 disabled:hover:border-zinc-850 text-zinc-300 px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 font-semibold"
                 >
-                  {/* Thumbnail container */}
-                  <div className="h-44 bg-zinc-950 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-zinc-900">
-                    <img
-                      src={asset.storage_path}
-                      alt={asset.name}
-                      loading="lazy"
-                      onError={(e) => {
-                        // fallback mock vector icon
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'flex';
-                      }}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
-                    />
-                    {/* Fallback Icon if Image doesn't load */}
-                    <div className="hidden absolute inset-0 bg-zinc-950 flex-col items-center justify-center text-zinc-650 gap-2">
-                      <ImageIcon size={32} />
-                      <span className="text-[9px] font-semibold text-zinc-500">Image Asset Preview</span>
-                    </div>
-
-                    {/* Brand Identifier Badge */}
-                    <div className="absolute top-3 left-3 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 text-zinc-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                      {brands.find((b) => b.id === asset.brand_id)?.name || `Brand #${asset.brand_id}`}
-                    </div>
-                  </div>
-
-                  {/* Asset Details info */}
-                  <div className="p-4 flex-1 flex flex-col justify-between">
-                    <div className="space-y-1">
-                      <h4 className="text-xs font-bold text-zinc-200 truncate group-hover:text-white transition-colors">
-                        {asset.name}
-                      </h4>
-                      <p className="text-[9px] text-zinc-500 truncate">
-                        File: {asset.filename}
-                      </p>
-                    </div>
-
-                    {/* Tags List */}
-                    <div className="flex flex-wrap gap-1 mt-2.5 max-h-12 overflow-hidden">
-                      {asset.tags && asset.tags.length > 0 ? (
-                        asset.tags.map((t) => (
-                          <span
-                            key={t}
-                            className="text-[8px] font-bold bg-zinc-900 border border-zinc-850/60 text-zinc-400 px-1.5 py-0.5 rounded-md uppercase tracking-wider"
-                          >
-                            {t}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[8px] italic text-zinc-600">No semantic tags assigned</span>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  &larr; Previous
+                </button>
+                <span className="text-zinc-400 text-[10px] uppercase font-bold tracking-wider">
+                  Page {currentPage}
+                </span>
+                <button
+                  type="button"
+                  disabled={assets.length < itemsPerPage}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-900 disabled:text-zinc-500 disabled:opacity-40 text-white px-4 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 font-semibold shadow-md shadow-purple-950/20"
+                >
+                  Next &rarr;
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 
 
 const GetDressedCaseStudy = () => {
@@ -18,10 +19,13 @@ const GetDressedCaseStudy = () => {
           className="relative rounded-3xl overflow-hidden shadow-2xl border border-gray-200 bg-black cursor-pointer"
         >
           {/* FULL IMAGE — NO CROP */}
-          <img
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/675efd95bee91b289f7502d4_Botika_CaseStudies_Jordache_Header.webp"
             alt="Case Study — Get Dressed Collective"
+            width={1200}
+            height={630}
             className="w-full h-auto object-contain"
+            priority
           />
 
           {/* LEFT OVERLAY */}
@@ -145,19 +149,23 @@ Here’s how Jordache managed to cut expenses and speed up production with ModeL
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <p className="font-semibold mb-2">Before</p>
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/677105dde6e458d66ae69fef_Botika_CaseStudies_Jordache_Before.avif"
                     alt="Before Image"
-                    className="rounded-lg shadow-md"
+                    width={400}
+                    height={600}
+                    className="rounded-lg shadow-md w-full h-auto object-cover"
                   />
                 </div>
 
                 <div>
                   <p className="font-semibold mb-2">After</p>
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/677105e874ad9665aed845f9_Botika_CaseStudies_Jordache_After.avif"
                     alt="After Image"
-                    className="rounded-lg shadow-md"
+                    width={400}
+                    height={600}
+                    className="rounded-lg shadow-md w-full h-auto object-cover"
                   />
                 </div>
               </div>
@@ -171,9 +179,11 @@ Here’s how Jordache managed to cut expenses and speed up production with ModeL
                 </p>
 
                 <div className="flex items-start gap-4 mt-6">
-                  <img
+                  <Image
                     src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67767839d73f1fe4ec14935e_Botika_CustomerReviews_Jordache.avif"
                     alt="Barbara Markoe"
+                    width={64}
+                    height={64}
                     className="w-16 h-16 rounded-full object-cover shadow-md"
                   />
 
@@ -228,11 +238,13 @@ Savings on image licensing</p>
   className="cursor-pointer"
 >
   {/* <Link href="/resources/case-studies/botika-turned-get-dressed-collective-into-a-boutique-powerhouse"> */}
-    <div className="overflow-hidden rounded-2xl shadow-lg">
-      <img
+    <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+      <Image
         src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/686fc0fd1d6fc9f66b649aba_Botika_CaseStudy_JUANandMe_Thumbnail.webp"
         alt="Get Dressed Collective Case Study"
-        className="w-full h-72 object-cover"
+        fill
+        className="object-cover"
+        sizes="(max-width: 768px) 100vw, 33vw"
       />
     </div>
 
@@ -255,11 +267,13 @@ Savings on image licensing</p>
       className="cursor-pointer"
     >
       {/* <Link href="/resources/case-studies/botika-turned-get-dressed-collective-into-a-boutique-powerhouse"> */}
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/67f3ea40de3ac269046d2e4b_Botika_CaseStudy_GetDressedCollective%20_Hero_Mobile.webp"
             alt="BLVCK Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 
@@ -282,11 +296,13 @@ ModeLens turned Get Dressed Collective into a boutique powerhouse        </h3>
       className="cursor-pointer"
     >
       {/* <Link href="/resources/case-studies/jordache-embraces-ai-cutting-costs-boosting-visuals-with-botika"> */}
-        <div className="overflow-hidden rounded-2xl shadow-lg">
-          <img
+        <div className="overflow-hidden rounded-2xl shadow-lg relative h-72">
+          <Image
             src="https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/676a7d4c2b12a754a781f97f_Botika_CaseStudies_BLVCK_Header_Mobile.avif"
             alt="Jordache Case Study"
-            className="w-full h-72 object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
           />
         </div>
 
