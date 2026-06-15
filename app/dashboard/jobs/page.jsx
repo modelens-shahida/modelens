@@ -67,6 +67,30 @@ export default function JobsPage() {
     };
   }, []);
 
+  // Fetch jobs list
+  const fetchJobsList = async () => {
+    try {
+      let url = `/api/v1/jobs?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`;
+      if (selectedBrandId) {
+        url += `&brand_id=${selectedBrandId}`;
+      }
+      const data = await api.get(url);
+      setJobs(data);
+      
+      // Update our polling set
+      const activeIds = data
+        .filter((j) => j.status === "pending" || j.status === "processing")
+        .map((j) => j.id);
+      setActivePollIds((prev) => {
+        const next = new Set(prev);
+        activeIds.forEach((id) => next.add(id));
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to reload job history", error);
+    }
+  };
+
   // Reset page when brand changes
   useEffect(() => {
     setCurrentPage(1);
@@ -99,30 +123,6 @@ export default function JobsPage() {
       fetchJobsList();
     }
   }, [selectedBrandId, currentPage]);
-
-  // Fetch jobs list
-  const fetchJobsList = async () => {
-    try {
-      let url = `/api/v1/jobs?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`;
-      if (selectedBrandId) {
-        url += `&brand_id=${selectedBrandId}`;
-      }
-      const data = await api.get(url);
-      setJobs(data);
-      
-      // Update our polling set
-      const activeIds = data
-        .filter((j) => j.status === "pending" || j.status === "processing")
-        .map((j) => j.id);
-      setActivePollIds((prev) => {
-        const next = new Set(prev);
-        activeIds.forEach((id) => next.add(id));
-        return next;
-      });
-    } catch (error) {
-      console.error("Failed to reload job history", error);
-    }
-  };
 
   // Poll single job status
   const pollJobStatus = async (jobId) => {

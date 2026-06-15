@@ -148,7 +148,7 @@ export default function DashboardOverview() {
               <div className="space-y-1">
                 <h4 className="text-sm font-semibold text-zinc-100">Create or Choose a Brand</h4>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Go to the Brands section to register your fashion label. You'll automatically be registered as the Owner.
+                  Go to the Brands section to register your fashion label. You&apos;ll automatically be registered as the Owner.
                 </p>
               </div>
             </div>
