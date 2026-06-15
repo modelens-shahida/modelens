@@ -244,6 +244,23 @@ class Character(Base):
         Index("idx_characters_brand_id", "brand_id"),
     )
 
+class CampaignTheme(Base):
+    __tablename__ = "campaign_themes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    brand_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    theme_json: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    brand = relationship("Brand")
+
+    __table_args__ = (
+        Index("idx_campaign_themes_brand_id", "brand_id"),
+    )
+
 class APIKey(Base):
     __tablename__ = "api_keys"
 

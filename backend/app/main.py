@@ -17,6 +17,8 @@ from app.routers.assets import router as assets_router
 from app.routers.brands import router as brands_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.jobs import router as jobs_router
+from app.routers.characters import router as characters_router
+from app.routers.prompts import router as prompts_router
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -95,6 +97,8 @@ app.include_router(assets_router)
 app.include_router(brands_router)
 app.include_router(campaigns_router)
 app.include_router(jobs_router)
+app.include_router(characters_router)
+app.include_router(prompts_router)
 
 
 
