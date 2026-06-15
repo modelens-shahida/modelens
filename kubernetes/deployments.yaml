@@ -1,0 +1,224 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelens
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: modelens-config
+  namespace: modelens
+data:
+  POSTGRES_URL: "postgresql+asyncpg://postgres:postgres@modelens-postgres.modelens.svc.cluster.local:5432/modelens"
+  REDIS_URL: "redis://modelens-redis.modelens.svc.cluster.local:6379/0"
+  STORAGE_BACKEND: "s3" # Must be S3 in production to support horizontal pod scaling
+  MLFLOW_URI: "http://modelens-mlflow.modelens.svc.cluster.local:5000"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: modelens-secrets
+  namespace: modelens
+type: Opaque
+data:
+  # Base64 encoded values for production secrets
+  SECRET_KEY: "Z2VuZXJhdGUtYS1zZWN1cmUtc2VjcmV0LWtleS1mb3ItcHJvZHVjdGlvbi1oZXJl" # generate-a-secure-secret-key-for-production-here
+---
+# --- Redis Cache / Queue Service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modelens-redis
+  namespace: modelens
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: modelens-redis
+  template:
+    metadata:
+      labels:
+        app: modelens-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: modelens-redis
+  namespace: modelens
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: modelens-redis
+---
+# --- FastAPI Backend API Gateway ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modelens-api
+  namespace: modelens
+spec:
+  replicas: 2 # Scaled horizontally
+  selector:
+    matchLabels:
+      app: modelens-api
+  template:
+    metadata:
+      labels:
+        app: modelens-api
+    spec:
+      containers:
+      - name: api
+        image: dockerhub-username/modelens-backend:latest
+        command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: modelens-config
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: modelens-secrets
+              key: SECRET_KEY
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: modelens-api
+  namespace: modelens
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+  selector:
+    app: modelens-api
+---
+# --- Celery Background Worker ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modelens-worker
+  namespace: modelens
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: modelens-worker
+  template:
+    metadata:
+      labels:
+        app: modelens-worker
+    spec:
+      containers:
+      - name: worker
+        image: dockerhub-username/modelens-backend:latest
+        command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info"]
+        envFrom:
+        - configMapRef:
+            name: modelens-config
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "2Gi" # Higher memory allocation for image processing tasks
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+---
+# --- Next.js Frontend App ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modelens-frontend
+  namespace: modelens
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: modelens-frontend
+  template:
+    metadata:
+      labels:
+        app: modelens-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: dockerhub-username/modelens-frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: modelens-frontend
+  namespace: modelens
+spec:
+  ports:
+  - port: 80
+    targetPort: 3000
+  selector:
+    app: modelens-frontend
+  type: ClusterIP
