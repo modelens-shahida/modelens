@@ -39,10 +39,16 @@ export async function POST(request: Request) {
     }, { status: 502 })
   }
 
+  // Multi-tenant isolation: restrict search to the asset's own brand
+  const brandFilter = asset.brand_id ? {
+    must: [{ key: 'brand_id', match: { value: asset.brand_id } }]
+  } : undefined
+
   try {
     const results = await qdrant.search(COLLECTIONS.ASSETS, {
       vector: embedding,
       limit: limit + 1,
+      filter: brandFilter,
       with_payload: true
     })
 
@@ -50,6 +56,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       asset_id,
+      brand_id: asset.brand_id,
       similar: similar.map(r => ({ ...r.payload, score: r.score })),
       total: similar.length
     })
