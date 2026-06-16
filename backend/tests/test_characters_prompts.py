@@ -113,3 +113,119 @@ async def test_prompts_crud(client: AsyncClient, db_session: AsyncSession, test_
     list_data = res.json()
     assert len(list_data) == 1
     assert list_data[0]["name"] == "Luxury Lighting Prompt"
+
+
+@pytest.mark.asyncio
+async def test_get_character_by_id(client: AsyncClient, test_data: dict):
+    brand = test_data["brand"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    res = await client.post(
+        "/api/v1/characters",
+        json={"brand_id": brand.id, "name": "Test Character", "description": "Test desc", "image_path": "/uploads/test.png"},
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_201_CREATED
+    character_id = res.json()["id"]
+
+    res = await client.get(f"/api/v1/characters/{character_id}", headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["id"] == character_id
+
+    res = await client.get("/api/v1/characters/99999", headers=editor_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_update_character_access_control_extended(client: AsyncClient, test_data: dict):
+    brand = test_data["brand"]
+    editor_headers = test_data["get_headers"]("editor")
+    viewer_headers = test_data["get_headers"]("viewer")
+
+    res = await client.post(
+        "/api/v1/characters",
+        json={"brand_id": brand.id, "name": "Original Name", "description": "Original desc", "image_path": "/uploads/orig.png"},
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_201_CREATED
+    character_id = res.json()["id"]
+
+    res = await client.patch(f"/api/v1/characters/{character_id}", json={"name": "Updated Name"}, headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["name"] == "Updated Name"
+
+    res = await client.patch(f"/api/v1/characters/{character_id}", json={"name": "Hacked"}, headers=viewer_headers)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
+    res = await client.patch("/api/v1/characters/99999", json={"name": "Ghost"}, headers=editor_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_delete_character_access_control_extended(client: AsyncClient, test_data: dict):
+    brand = test_data["brand"]
+    owner_headers = test_data["get_headers"]("owner")
+    editor_headers = test_data["get_headers"]("editor")
+
+    res = await client.post(
+        "/api/v1/characters",
+        json={"brand_id": brand.id, "name": "To Delete", "description": "Delete me", "image_path": "/uploads/del.png"},
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_201_CREATED
+    character_id = res.json()["id"]
+
+    res = await client.delete(f"/api/v1/characters/{character_id}", headers=editor_headers)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
+    res = await client.delete(f"/api/v1/characters/{character_id}", headers=owner_headers)
+    assert res.status_code == status.HTTP_204_NO_CONTENT
+
+    res = await client.delete(f"/api/v1/characters/{character_id}", headers=owner_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_get_prompt_by_id_extended(client: AsyncClient, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    res = await client.post(
+        "/api/v1/prompts",
+        json={"name": "Test Prompt", "prompt_text": "Golden hour lighting"},
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_201_CREATED
+    prompt_id = res.json()["id"]
+
+    res = await client.get(f"/api/v1/prompts/{prompt_id}", headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["id"] == prompt_id
+
+    res = await client.get("/api/v1/prompts/99999", headers=editor_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_update_and_delete_prompt_extended(client: AsyncClient, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    res = await client.post(
+        "/api/v1/prompts",
+        json={"name": "Original Prompt", "prompt_text": "Original text"},
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_201_CREATED
+    prompt_id = res.json()["id"]
+
+    res = await client.patch(f"/api/v1/prompts/{prompt_id}", json={"name": "Updated Prompt"}, headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["name"] == "Updated Prompt"
+
+    res = await client.patch("/api/v1/prompts/99999", json={"name": "Ghost"}, headers=editor_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+    res = await client.delete(f"/api/v1/prompts/{prompt_id}", headers=editor_headers)
+    assert res.status_code == status.HTTP_204_NO_CONTENT
+
+    res = await client.delete("/api/v1/prompts/99999", headers=editor_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
