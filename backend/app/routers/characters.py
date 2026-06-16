@@ -98,3 +98,91 @@ async def list_characters(
 
     result = await db.execute(query)
     return list(result.scalars().all())
+
+
+# ========================== Extended CRUD ==================================
+
+class CharacterUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    image_path: Optional[str] = Field(None, min_length=1, max_length=1000)
+
+
+async def get_user_role_in_brand(user_id: int, brand_id: int, db: AsyncSession) -> str:
+    """Returns 'owner', 'member', or 'none'"""
+    owner_query = select(Brand).where(Brand.id == brand_id, Brand.owner_id == user_id)
+    owner_result = await db.execute(owner_query)
+    if owner_result.scalars().first():
+        return "owner"
+    member_query = select(BrandMember).where(
+        BrandMember.brand_id == brand_id,
+        BrandMember.user_id == user_id
+    )
+    member_result = await db.execute(member_query)
+    member = member_result.scalars().first()
+    if member:
+        return member.role
+    return "none"
+
+
+@router.get("/{character_id}", response_model=CharacterResponse)
+async def get_character(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve a specific character by ID."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if character.brand_id not in accessible_brands:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this character.")
+    return character
+
+
+@router.patch("/{character_id}", response_model=CharacterResponse)
+async def update_character(
+    character_id: int,
+    payload: CharacterUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update character fields. Requires at least editor role."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role == "none":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand workspace.")
+    if role == "viewer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot update characters.")
+    if payload.name is not None:
+        character.name = payload.name
+    if payload.description is not None:
+        character.description = payload.description
+    if payload.image_path is not None:
+        character.image_path = payload.image_path
+    await db.commit()
+    await db.refresh(character)
+    return character
+
+
+@router.delete("/{character_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_character(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a character. Requires owner or admin role."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners or admins can delete characters.")
+    await db.delete(character)
+    await db.commit()
