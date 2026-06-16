@@ -229,6 +229,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "full_name": current_user.full_name,
         "role": current_user.role,
+        "credits": current_user.credits,
     }
 
 
@@ -270,4 +271,5 @@ async def update_me(
         "email": current_user.email,
         "full_name": current_user.full_name,
         "role": current_user.role,
+        "credits": current_user.credits,
     }
