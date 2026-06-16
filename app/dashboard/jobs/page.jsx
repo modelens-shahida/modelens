@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Sparkles, Loader2, Play, CheckCircle2, AlertTriangle, ArrowRight, Clock, ExternalLink, RefreshCw, Layers } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 
-export default function JobsPage() {
+function JobsPageContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   
   // Data loading states
   const [brands, setBrands] = useState([]);
@@ -21,6 +23,11 @@ export default function JobsPage() {
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [prompts, setPrompts] = useState([]);
   const [selectedPromptId, setSelectedPromptId] = useState("");
+  
+  // Dynamic Themes loading state
+  const [themes, setThemes] = useState([]);
+  const [selectedThemeId, setSelectedThemeId] = useState("");
+  
   const [callbackUrl, setCallbackUrl] = useState("");
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,9 +44,18 @@ export default function JobsPage() {
     try {
       const brandData = await api.get("/api/v1/brands");
       setBrands(brandData);
+      
+      let initialBrandId = "";
       if (brandData.length > 0) {
-        setSelectedBrandId(brandData[0].id.toString());
+        initialBrandId = brandData[0].id.toString();
       }
+
+      // Check query parameter for brand_id
+      const queryBrandId = searchParams.get("brand_id");
+      if (queryBrandId && brandData.some(b => b.id.toString() === queryBrandId)) {
+        initialBrandId = queryBrandId;
+      }
+      setSelectedBrandId(initialBrandId);
 
       const templateData = await api.get("/api/v1/jobs/workflow-templates");
       setTemplates(templateData);
@@ -107,7 +123,7 @@ export default function JobsPage() {
     setCurrentPage(1);
   }, [selectedBrandId]);
 
-  // Fetch brand assets and characters when brand selection changes
+  // Fetch brand assets, characters, and themes when brand selection changes
   useEffect(() => {
     async function fetchBrandData() {
       if (!selectedBrandId) {
@@ -115,6 +131,8 @@ export default function JobsPage() {
         setSelectedAssetId("");
         setCharacters([]);
         setSelectedCharacterId("");
+        setThemes([]);
+        setSelectedThemeId("");
         return;
       }
       try {
@@ -134,6 +152,18 @@ export default function JobsPage() {
           setSelectedCharacterId(charData[0].id.toString());
         } else {
           setSelectedCharacterId("");
+        }
+
+        // Fetch Themes
+        const themeData = await api.get(`/api/v1/themes?brand_id=${selectedBrandId}`);
+        setThemes(themeData);
+
+        // Pre-select theme if theme_id query param matches
+        const queryThemeId = searchParams.get("theme_id");
+        if (queryThemeId && themeData.some(t => t.id.toString() === queryThemeId)) {
+          setSelectedThemeId(queryThemeId);
+        } else {
+          setSelectedThemeId("");
         }
       } catch (error) {
         console.error("Failed to load brand data", error);
@@ -219,6 +249,7 @@ export default function JobsPage() {
       // Resolve selected character and prompt details
       const selectedChar = characters.find((c) => c.id.toString() === selectedCharacterId);
       const selectedPrompt = prompts.find((p) => p.id.toString() === selectedPromptId);
+      const selectedTheme = themes.find((t) => t.id.toString() === selectedThemeId);
 
       const inputs = {
         urls: selectedAsset ? [selectedAsset.storage_path] : [],
@@ -228,6 +259,9 @@ export default function JobsPage() {
         prompt_id: selectedPrompt ? selectedPrompt.id : null,
         prompt_name: selectedPrompt ? selectedPrompt.name : null,
         prompt_text: selectedPrompt ? selectedPrompt.prompt_text : null,
+        theme_id: selectedTheme ? selectedTheme.id : null,
+        theme_name: selectedTheme ? selectedTheme.name : null,
+        theme_json: selectedTheme ? selectedTheme.theme_json : null,
       };
 
       const payload = {
@@ -406,6 +440,49 @@ export default function JobsPage() {
                     <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
                   ))}
                 </select>
+              )}
+            </div>
+
+            {/* Pick Campaign Theme */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                Campaign Aesthetics Theme
+              </label>
+              {themes.length === 0 ? (
+                <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                  No campaign themes found. Create themes under Marketing Campaigns page first.
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={selectedThemeId}
+                    onChange={(e) => setSelectedThemeId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                  >
+                    <option value="">-- No Theme (Use Default) --</option>
+                    {themes.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>
+                    ))}
+                  </select>
+                  {selectedThemeId && themes.find(t => t.id.toString() === selectedThemeId) && (
+                    <div className="bg-zinc-950/60 border border-zinc-850/30 rounded-xl p-3.5 space-y-2 text-[10px] text-zinc-400 mt-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="text-[8px] font-semibold text-zinc-500 block uppercase tracking-wider">Lighting</span>
+                          <span className="text-zinc-300 font-medium truncate block">
+                            {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.lighting || "None"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] font-semibold text-zinc-500 block uppercase tracking-wider">Backdrop</span>
+                          <span className="text-zinc-300 font-medium truncate block">
+                            {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.location || "None"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -602,5 +679,17 @@ export default function JobsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function JobsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="animate-spin text-purple-500" size={24} />
+      </div>
+    }>
+      <JobsPageContent />
+    </Suspense>
   );
 }

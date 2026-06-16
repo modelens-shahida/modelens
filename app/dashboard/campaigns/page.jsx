@@ -1,44 +1,49 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Megaphone, Plus, Trash2, Link2, Unlink, Sparkles, Image as ImageIcon, Loader2, ArrowRight, FolderKanban, Check, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 
-const THEMES = [
+const defaultThemesToSeed = [
   {
-    id: "euro-summer",
     name: "European Summer",
     description: "Sun-drenched Mediterranean vibes with warm lighting.",
-    lighting: "Bright Golden Hour, Soft Shadows (Warm)",
-    location: "Coastline Cliff, Sun-drenched Stone Courtyard",
-    prompt: "Warm golden sunrays, outdoor luxury, crisp blue sky background."
+    theme_json: {
+      lighting: "Bright Golden Hour, Soft Shadows (Warm)",
+      location: "Coastline Cliff, Sun-drenched Stone Courtyard",
+      prompt: "Warm golden sunrays, outdoor luxury, crisp blue sky background."
+    }
   },
   {
-    id: "cyberpunk",
     name: "Cyberpunk Studio",
     description: "Futuristic neon tones with high contrast.",
-    lighting: "High-contrast Magenta & Cyan Neon, Volumetric Fog",
-    location: "Sleek Industrial Studio Setup, Glossy Dark Platform",
-    prompt: "Vivid neon lighting, dark cyberpunk aesthetic, futuristic vibe."
+    theme_json: {
+      lighting: "High-contrast Magenta & Cyan Neon, Volumetric Fog",
+      location: "Sleek Industrial Studio Setup, Glossy Dark Platform",
+      prompt: "Vivid neon lighting, dark cyberpunk aesthetic, futuristic vibe."
+    }
   },
   {
-    id: "med-escape",
     name: "Mediterranean Escape",
     description: "White sand dunes and light airy coastal aesthetics.",
-    lighting: "Bright Mid-day Sun, Diffused White Highlights",
-    location: "Greek Coastal Balcony, Aegean Sea backdrop",
-    prompt: "Airy bright lighting, clean minimalist composition, pastel tones."
+    theme_json: {
+      lighting: "Bright Mid-day Sun, Diffused White Highlights",
+      location: "Greek Coastal Balcony, Aegean Sea backdrop",
+      prompt: "Airy bright lighting, clean minimalist composition, pastel tones."
+    }
   },
   {
-    id: "classic-studio",
     name: "Studio Light Portrait",
     description: "Clean professional studio headshots.",
-    lighting: "Soft Key Light, White Diffuser Backdrop",
-    location: "Professional Minimalist Portrait Studio",
-    prompt: "Studio lighting, editorial clean portrait shot, high fashion lens."
+    theme_json: {
+      lighting: "Soft Key Light, White Diffuser Backdrop",
+      location: "Professional Minimalist Portrait Studio",
+      prompt: "Studio lighting, editorial clean portrait shot, high fashion lens."
+    }
   }
 ];
 
@@ -59,6 +64,62 @@ export default function CampaignsPage() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [selectedThemeId, setSelectedThemeId] = useState("");
 
+  // Dynamic Themes state
+  const [themes, setThemes] = useState([]);
+  const [loadingThemes, setLoadingThemes] = useState(false);
+
+  // New Theme Creation Form States
+  const [isCreateThemeOpen, setIsCreateThemeOpen] = useState(false);
+  const [newThemeName, setNewThemeName] = useState("");
+  const [newThemeDesc, setNewThemeDesc] = useState("");
+  const [newThemeLighting, setNewThemeLighting] = useState("");
+  const [newThemeLocation, setNewThemeLocation] = useState("");
+  const [newThemePrompt, setNewThemePrompt] = useState("");
+  const [isCreatingTheme, setIsCreatingTheme] = useState(false);
+
+  // Fetch campaign themes
+  const fetchThemes = async (brandId) => {
+    setLoadingThemes(true);
+    try {
+      let url = "/api/v1/themes";
+      if (brandId) {
+        url += `?brand_id=${brandId}`;
+      }
+      let data = await api.get(url);
+      if (data.length === 0) {
+        // Seed default global themes
+        const seeded = [];
+        for (const t of defaultThemesToSeed) {
+          try {
+            const newTheme = await api.post("/api/v1/themes", t);
+            seeded.push(newTheme);
+          } catch (e) {
+            console.error("Failed to seed default theme:", t.name, e);
+          }
+        }
+        if (seeded.length > 0) {
+          setThemes(seeded);
+        }
+      } else {
+        setThemes(data);
+      }
+    } catch (error) {
+      console.error("Failed to load themes:", error);
+      toast.error("Failed to load campaign themes");
+    } finally {
+      setLoadingThemes(false);
+    }
+  };
+
+  // Fetch themes whenever brand changes
+  useEffect(() => {
+    if (selectedBrandId) {
+      fetchThemes(selectedBrandId);
+    } else {
+      fetchThemes("");
+    }
+  }, [selectedBrandId]);
+
   // Sync theme selection from localStorage
   useEffect(() => {
     if (activeCampaign) {
@@ -77,6 +138,69 @@ export default function CampaignsPage() {
         localStorage.removeItem(`campaign_theme_${activeCampaign.id}`);
         toast.success("Aesthetics Theme cleared.");
       }
+    }
+  };
+
+  const handleCreateTheme = async (e) => {
+    e.preventDefault();
+    if (!newThemeName.trim()) {
+      toast.error("Theme name is required");
+      return;
+    }
+    if (!activeCampaign) {
+      toast.error("No active campaign selected");
+      return;
+    }
+
+    setIsCreatingTheme(true);
+    try {
+      const payload = {
+        name: newThemeName.trim(),
+        description: newThemeDesc.trim() || null,
+        brand_id: activeCampaign.brand_id,
+        theme_json: {
+          lighting: newThemeLighting.trim(),
+          location: newThemeLocation.trim(),
+          prompt: newThemePrompt.trim()
+        }
+      };
+
+      const newTheme = await api.post("/api/v1/themes", payload);
+      toast.success("Custom Aesthetics Theme created successfully!");
+      setNewThemeName("");
+      setNewThemeDesc("");
+      setNewThemeLighting("");
+      setNewThemeLocation("");
+      setNewThemePrompt("");
+      setIsCreateThemeOpen(false);
+      
+      // Refresh themes list for the active brand
+      await fetchThemes(selectedBrandId || activeCampaign.brand_id.toString());
+      
+      // Auto-select the newly created theme
+      handleSelectTheme(newTheme.id.toString());
+    } catch (error) {
+      toast.error(error.message || "Failed to create custom theme");
+    } finally {
+      setIsCreatingTheme(false);
+    }
+  };
+
+  const handleDeleteTheme = async (themeId) => {
+    if (!confirm("Are you sure you want to delete this custom theme?")) return;
+    try {
+      await api.delete(`/api/v1/themes/${themeId}`);
+      toast.success("Theme deleted successfully");
+      
+      // If deleted theme was active, clear it
+      if (selectedThemeId === themeId.toString()) {
+        handleSelectTheme("");
+      }
+      
+      // Refresh themes list
+      await fetchThemes(selectedBrandId || activeCampaign?.brand_id.toString());
+    } catch (error) {
+      toast.error(error.message || "Failed to delete theme");
     }
   };
 
@@ -441,67 +565,102 @@ export default function CampaignsPage() {
 
               {/* Campaign Theme Selector */}
               <div className="space-y-4 border-t border-zinc-850/60 pt-6">
-                <div>
-                  <h4 className="text-sm font-bold text-zinc-200 flex items-center gap-1.5">
-                    <Sparkles size={16} className="text-purple-400" />
-                    Campaign Aesthetics Theme
-                  </h4>
-                  <p className="text-[10px] text-zinc-500">Apply visual preset styling guidelines to this campaign's assets.</p>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="text-sm font-bold text-zinc-200 flex items-center gap-1.5">
+                      <Sparkles size={16} className="text-purple-400" />
+                      Campaign Aesthetics Theme
+                    </h4>
+                    <p className="text-[10px] text-zinc-500">Apply visual preset styling guidelines to this campaign's assets.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateThemeOpen(true)}
+                    className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 text-[10px] px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-semibold"
+                  >
+                    <Plus size={11} />
+                    New Theme
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {THEMES.map((theme) => {
-                    const isSelected = selectedThemeId === theme.id;
-                    return (
-                      <button
-                        type="button"
-                        key={theme.id}
-                        onClick={() => handleSelectTheme(isSelected ? "" : theme.id)}
-                        className={`text-left p-3.5 rounded-xl border flex flex-col justify-between gap-1.5 transition-all cursor-pointer relative overflow-hidden ${
-                          isSelected
-                            ? "bg-purple-950/20 border-purple-500/40 shadow-inner"
-                            : "bg-zinc-950/40 border-zinc-900 hover:border-zinc-850 hover:bg-zinc-900/10"
-                        }`}
-                      >
-                        <div>
-                          <span className={`text-[10px] font-bold tracking-wide transition-colors ${isSelected ? "text-purple-400" : "text-zinc-300"}`}>
-                            {theme.name}
-                          </span>
-                          <p className="text-[9px] text-zinc-500 leading-normal mt-0.5">
-                            {theme.description}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <div className="text-[8px] bg-purple-900/40 border border-purple-800/35 text-purple-300 px-1.5 py-0.5 rounded font-medium mt-1 uppercase tracking-wider self-start">
-                            Active Preset
+                {loadingThemes ? (
+                  <div className="flex py-6 justify-center">
+                    <Loader2 className="animate-spin text-purple-500" size={20} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {themes.map((theme) => {
+                      const isSelected = selectedThemeId === theme.id.toString();
+                      return (
+                        <button
+                          type="button"
+                          key={theme.id}
+                          onClick={() => handleSelectTheme(isSelected ? "" : theme.id.toString())}
+                          className={`text-left p-3.5 rounded-xl border flex flex-col justify-between gap-1.5 transition-all cursor-pointer relative overflow-hidden group/theme ${
+                            isSelected
+                              ? "bg-purple-950/20 border-purple-500/40 shadow-inner"
+                              : "bg-zinc-950/40 border-zinc-900 hover:border-zinc-850 hover:bg-zinc-900/10"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start w-full">
+                            <div className="min-w-0 flex-1">
+                              <span className={`text-[10px] font-bold tracking-wide transition-colors ${isSelected ? "text-purple-400" : "text-zinc-300"}`}>
+                                {theme.name}
+                              </span>
+                              <p className="text-[9px] text-zinc-500 leading-normal mt-0.5">
+                                {theme.description}
+                              </p>
+                            </div>
+                            {theme.brand_id && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTheme(theme.id);
+                                }}
+                                className="text-zinc-500 hover:text-rose-400 p-1 rounded-md opacity-0 group-hover/theme:opacity-100 transition-all cursor-pointer ml-1.5 shrink-0"
+                                title="Delete Custom Theme"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
                           </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                          {isSelected && (
+                            <div className="text-[8px] bg-purple-900/40 border border-purple-800/35 text-purple-300 px-1.5 py-0.5 rounded font-medium mt-1 uppercase tracking-wider self-start">
+                              Active Preset
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {selectedThemeId && (
                   <div className="bg-zinc-950/60 border border-zinc-900 rounded-xl p-4 space-y-3 leading-relaxed text-[11px] text-zinc-400">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-[9px] font-semibold text-zinc-500 block uppercase tracking-wider">Lighting Style</span>
-                        <span className="text-zinc-300 font-medium">{THEMES.find(t => t.id === selectedThemeId)?.lighting}</span>
+                        <span className="text-zinc-300 font-medium">
+                          {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.lighting || "None"}
+                        </span>
                       </div>
                       <div>
                         <span className="text-[9px] font-semibold text-zinc-500 block uppercase tracking-wider">Location Backdrop</span>
-                        <span className="text-zinc-300 font-medium">{THEMES.find(t => t.id === selectedThemeId)?.location}</span>
+                        <span className="text-zinc-300 font-medium">
+                          {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.location || "None"}
+                        </span>
                       </div>
                     </div>
                     <div>
                       <span className="text-[9px] font-semibold text-zinc-500 block uppercase tracking-wider">Prompt Preset Instructions</span>
                       <p className="text-zinc-300 font-mono text-[9px] bg-zinc-950/80 border border-zinc-900 p-2.5 rounded-lg mt-1 whitespace-pre-wrap leading-normal">
-                        {THEMES.find(t => t.id === selectedThemeId)?.prompt}
+                        {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.prompt || "None"}
                       </p>
                     </div>
                     <div className="pt-1 flex justify-end">
                       <Link
-                        href={`/dashboard/jobs`}
+                        href={`/dashboard/jobs?brand_id=${activeCampaign.brand_id}&theme_id=${selectedThemeId}`}
                         className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all"
                       >
                         <Sparkles size={11} />
@@ -823,6 +982,103 @@ export default function CampaignsPage() {
                   </div>
                 </form>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Create Theme */}
+      <AnimatePresence>
+        {isCreateThemeOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCreateThemeOpen(false)}
+              className="fixed inset-0 bg-black"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 relative z-10 shadow-2xl space-y-4"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+                  <Sparkles className="text-purple-400" size={18} />
+                  Create Aesthetics Theme
+                </h3>
+                <button onClick={() => setIsCreateThemeOpen(false)} className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg">
+                  <X size={16} />
+                </button>
+              </div>
+              <form onSubmit={handleCreateTheme} className="space-y-4">
+                {/* Theme Name */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">Theme Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newThemeName}
+                    onChange={(e) => setNewThemeName(e.target.value)}
+                    placeholder="e.g. Classic Editorial"
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                  />
+                </div>
+                {/* Theme Description */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">Description</label>
+                  <input
+                    type="text"
+                    value={newThemeDesc}
+                    onChange={(e) => setNewThemeDesc(e.target.value)}
+                    placeholder="e.g. Sleek high contrast catalog studio styling"
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                  />
+                </div>
+                {/* Lighting Style */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">Lighting Style</label>
+                  <input
+                    type="text"
+                    value={newThemeLighting}
+                    onChange={(e) => setNewThemeLighting(e.target.value)}
+                    placeholder="e.g. Soft Key Light, Warm Backlights"
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                  />
+                </div>
+                {/* Location Backdrop */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">Location Backdrop</label>
+                  <input
+                    type="text"
+                    value={newThemeLocation}
+                    onChange={(e) => setNewThemeLocation(e.target.value)}
+                    placeholder="e.g. Minimalist Studio, Sand Dune"
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                  />
+                </div>
+                {/* Prompt Preset Instructions */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">Prompt Preset Instructions</label>
+                  <textarea
+                    value={newThemePrompt}
+                    onChange={(e) => setNewThemePrompt(e.target.value)}
+                    placeholder="Describe how the prompt should style this theme..."
+                    rows={3}
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none resize-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setIsCreateThemeOpen(false)} className="bg-zinc-800 hover:bg-zinc-755 text-zinc-300 text-xs px-4 py-2.5 rounded-xl cursor-pointer">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={isCreatingTheme} className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-md shadow-purple-950/20">
+                    {isCreatingTheme ? <Loader2 className="animate-spin" size={14} /> : "Create"}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}
