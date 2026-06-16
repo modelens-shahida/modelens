@@ -7,6 +7,41 @@ import { Megaphone, Plus, Trash2, Link2, Unlink, Sparkles, Image as ImageIcon, L
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 
+const THEMES = [
+  {
+    id: "euro-summer",
+    name: "European Summer",
+    description: "Sun-drenched Mediterranean vibes with warm lighting.",
+    lighting: "Bright Golden Hour, Soft Shadows (Warm)",
+    location: "Coastline Cliff, Sun-drenched Stone Courtyard",
+    prompt: "Warm golden sunrays, outdoor luxury, crisp blue sky background."
+  },
+  {
+    id: "cyberpunk",
+    name: "Cyberpunk Studio",
+    description: "Futuristic neon tones with high contrast.",
+    lighting: "High-contrast Magenta & Cyan Neon, Volumetric Fog",
+    location: "Sleek Industrial Studio Setup, Glossy Dark Platform",
+    prompt: "Vivid neon lighting, dark cyberpunk aesthetic, futuristic vibe."
+  },
+  {
+    id: "med-escape",
+    name: "Mediterranean Escape",
+    description: "White sand dunes and light airy coastal aesthetics.",
+    lighting: "Bright Mid-day Sun, Diffused White Highlights",
+    location: "Greek Coastal Balcony, Aegean Sea backdrop",
+    prompt: "Airy bright lighting, clean minimalist composition, pastel tones."
+  },
+  {
+    id: "classic-studio",
+    name: "Studio Light Portrait",
+    description: "Clean professional studio headshots.",
+    lighting: "Soft Key Light, White Diffuser Backdrop",
+    location: "Professional Minimalist Portrait Studio",
+    prompt: "Studio lighting, editorial clean portrait shot, high fashion lens."
+  }
+];
+
 export default function CampaignsPage() {
   const { user } = useAuth();
   
@@ -22,6 +57,28 @@ export default function CampaignsPage() {
   const [linkedAssets, setLinkedAssets] = useState([]);
   const [linkedWorkflows, setLinkedWorkflows] = useState([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [selectedThemeId, setSelectedThemeId] = useState("");
+
+  // Sync theme selection from localStorage
+  useEffect(() => {
+    if (activeCampaign) {
+      const saved = localStorage.getItem(`campaign_theme_${activeCampaign.id}`) || "";
+      setSelectedThemeId(saved);
+    }
+  }, [activeCampaign]);
+
+  const handleSelectTheme = (themeId) => {
+    setSelectedThemeId(themeId);
+    if (activeCampaign) {
+      if (themeId) {
+        localStorage.setItem(`campaign_theme_${activeCampaign.id}`, themeId);
+        toast.success("Aesthetics Theme applied successfully!");
+      } else {
+        localStorage.removeItem(`campaign_theme_${activeCampaign.id}`);
+        toast.success("Aesthetics Theme cleared.");
+      }
+    }
+  };
 
   // Link Dialog states
   const [isLinkAssetOpen, setIsLinkAssetOpen] = useState(false);
@@ -381,6 +438,78 @@ export default function CampaignsPage() {
                   </span>
                 </div>
               </div>
+
+              {/* Campaign Theme Selector */}
+              <div className="space-y-4 border-t border-zinc-850/60 pt-6">
+                <div>
+                  <h4 className="text-sm font-bold text-zinc-200 flex items-center gap-1.5">
+                    <Sparkles size={16} className="text-purple-400" />
+                    Campaign Aesthetics Theme
+                  </h4>
+                  <p className="text-[10px] text-zinc-500">Apply visual preset styling guidelines to this campaign's assets.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {THEMES.map((theme) => {
+                    const isSelected = selectedThemeId === theme.id;
+                    return (
+                      <button
+                        type="button"
+                        key={theme.id}
+                        onClick={() => handleSelectTheme(isSelected ? "" : theme.id)}
+                        className={`text-left p-3.5 rounded-xl border flex flex-col justify-between gap-1.5 transition-all cursor-pointer relative overflow-hidden ${
+                          isSelected
+                            ? "bg-purple-950/20 border-purple-500/40 shadow-inner"
+                            : "bg-zinc-950/40 border-zinc-900 hover:border-zinc-850 hover:bg-zinc-900/10"
+                        }`}
+                      >
+                        <div>
+                          <span className={`text-[10px] font-bold tracking-wide transition-colors ${isSelected ? "text-purple-400" : "text-zinc-300"}`}>
+                            {theme.name}
+                          </span>
+                          <p className="text-[9px] text-zinc-500 leading-normal mt-0.5">
+                            {theme.description}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <div className="text-[8px] bg-purple-900/40 border border-purple-800/35 text-purple-300 px-1.5 py-0.5 rounded font-medium mt-1 uppercase tracking-wider self-start">
+                            Active Preset
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedThemeId && (
+                  <div className="bg-zinc-950/60 border border-zinc-900 rounded-xl p-4 space-y-3 leading-relaxed text-[11px] text-zinc-400">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-[9px] font-semibold text-zinc-500 block uppercase tracking-wider">Lighting Style</span>
+                        <span className="text-zinc-300 font-medium">{THEMES.find(t => t.id === selectedThemeId)?.lighting}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-semibold text-zinc-500 block uppercase tracking-wider">Location Backdrop</span>
+                        <span className="text-zinc-300 font-medium">{THEMES.find(t => t.id === selectedThemeId)?.location}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-semibold text-zinc-500 block uppercase tracking-wider">Prompt Preset Instructions</span>
+                      <p className="text-zinc-300 font-mono text-[9px] bg-zinc-950/80 border border-zinc-900 p-2.5 rounded-lg mt-1 whitespace-pre-wrap leading-normal">
+                        {THEMES.find(t => t.id === selectedThemeId)?.prompt}
+                      </p>
+                    </div>
+                    <div className="pt-1 flex justify-end">
+                      <Link
+                        href={`/dashboard/jobs`}
+                        className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        <Sparkles size={11} />
+                        Run AI Generator with Theme
+                      </Link>
+                    </div>
+                  </div>
+                )}
 
               {/* Linked Assets Grid */}
               <div className="space-y-4 border-t border-zinc-850/60 pt-6">
