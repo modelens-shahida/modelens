@@ -17,6 +17,10 @@ export default function JobsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [brandAssets, setBrandAssets] = useState([]);
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [characters, setCharacters] = useState([]);
+  const [selectedCharacterId, setSelectedCharacterId] = useState("");
+  const [prompts, setPrompts] = useState([]);
+  const [selectedPromptId, setSelectedPromptId] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +45,13 @@ export default function JobsPage() {
       setTemplates(templateData);
       if (templateData.length > 0) {
         setSelectedTemplateId(templateData[0].id.toString());
+      }
+
+      // Load prompts globally
+      const promptData = await api.get("/api/v1/prompts");
+      setPrompts(promptData);
+      if (promptData.length > 0) {
+        setSelectedPromptId(promptData[0].id.toString());
       }
 
       // Initial job list fetch
@@ -96,15 +107,18 @@ export default function JobsPage() {
     setCurrentPage(1);
   }, [selectedBrandId]);
 
-  // Fetch brand assets when brand selection changes
+  // Fetch brand assets and characters when brand selection changes
   useEffect(() => {
-    async function fetchAssets() {
+    async function fetchBrandData() {
       if (!selectedBrandId) {
         setBrandAssets([]);
         setSelectedAssetId("");
+        setCharacters([]);
+        setSelectedCharacterId("");
         return;
       }
       try {
+        // Fetch Assets
         const assets = await api.get(`/api/v1/assets?brand_id=${selectedBrandId}`);
         setBrandAssets(assets);
         if (assets.length > 0) {
@@ -112,11 +126,20 @@ export default function JobsPage() {
         } else {
           setSelectedAssetId("");
         }
+
+        // Fetch Characters
+        const charData = await api.get(`/api/v1/characters?brand_id=${selectedBrandId}`);
+        setCharacters(charData);
+        if (charData.length > 0) {
+          setSelectedCharacterId(charData[0].id.toString());
+        } else {
+          setSelectedCharacterId("");
+        }
       } catch (error) {
-        console.error("Failed to load assets", error);
+        console.error("Failed to load brand data", error);
       }
     }
-    fetchAssets();
+    fetchBrandData();
     
     // Also update current active jobs filter
     if (!loading) {
@@ -192,9 +215,20 @@ export default function JobsPage() {
     try {
       // Resolve asset storage path if an asset is selected
       const selectedAsset = brandAssets.find((a) => a.id.toString() === selectedAssetId);
-      const inputs = selectedAsset 
-        ? { urls: [selectedAsset.storage_path] }
-        : { urls: [] };
+      
+      // Resolve selected character and prompt details
+      const selectedChar = characters.find((c) => c.id.toString() === selectedCharacterId);
+      const selectedPrompt = prompts.find((p) => p.id.toString() === selectedPromptId);
+
+      const inputs = {
+        urls: selectedAsset ? [selectedAsset.storage_path] : [],
+        character_id: selectedChar ? selectedChar.id : null,
+        character_name: selectedChar ? selectedChar.name : null,
+        character_description: selectedChar ? selectedChar.description : null,
+        prompt_id: selectedPrompt ? selectedPrompt.id : null,
+        prompt_name: selectedPrompt ? selectedPrompt.name : null,
+        prompt_text: selectedPrompt ? selectedPrompt.prompt_text : null,
+      };
 
       const payload = {
         brand_id: parseInt(selectedBrandId),
@@ -347,6 +381,52 @@ export default function JobsPage() {
                 >
                   {brandAssets.map((a) => (
                     <option key={a.id} value={a.id}>{a.name || a.filename} (ID: {a.id})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Pick Character Profile */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                AI Character Model
+              </label>
+              {characters.length === 0 ? (
+                <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                  No custom models defined. Create characters under the AI Characters tab first.
+                </div>
+              ) : (
+                <select
+                  value={selectedCharacterId}
+                  onChange={(e) => setSelectedCharacterId(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                >
+                  <option value="">-- No Character (Use Default) --</option>
+                  {characters.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Pick Prompt Template */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                AI Prompt Template
+              </label>
+              {prompts.length === 0 ? (
+                <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                  No prompts seeded. Create templates under the AI Prompts tab first.
+                </div>
+              ) : (
+                <select
+                  value={selectedPromptId}
+                  onChange={(e) => setSelectedPromptId(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                >
+                  <option value="">-- No Prompt (Use Default) --</option>
+                  {prompts.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} (ID: {p.id})</option>
                   ))}
                 </select>
               )}
