@@ -15,6 +15,38 @@ async def full_text_search(
     """
     PostgreSQL Full-Text Search across asset name, filename, and tags.
     """
+    if db.bind.dialect.name == "sqlite":
+        # SQLite fallback: simple ILIKE logic mapped via SQLAlchemy select
+        like_query = f"%{query}%"
+        stmt = (
+            select(Asset)
+            .outerjoin(AssetTag, AssetTag.asset_id == Asset.id)
+            .where(
+                Asset.brand_id == brand_id,
+                (Asset.name.ilike(like_query)) |
+                (Asset.filename.ilike(like_query)) |
+                (AssetTag.tag.ilike(like_query))
+            )
+        )
+        result = await db.execute(stmt)
+        assets = result.scalars().unique().all()
+        
+        results = []
+        for a in assets:
+            score = 1.0 if query.lower() in (a.name or "").lower() else 0.5
+            results.append({
+                "id": a.id,
+                "name": a.name,
+                "filename": a.filename,
+                "storage_path": a.storage_path,
+                "asset_type": a.asset_type,
+                "metadata": a.meta,
+                "score": score,
+                "search_type": "fts",
+            })
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[offset : offset + limit]
+
     fts_query = text("""
         SELECT DISTINCT
             a.id,
@@ -73,6 +105,32 @@ async def vector_search(
     """
     Semantic vector search using pgvector cosine distance on asset_tags.embedding.
     """
+    if db.bind.dialect.name == "sqlite":
+        # SQLite fallback: fetch assets for this brand
+        stmt = (
+            select(Asset)
+            .outerjoin(AssetTag, AssetTag.asset_id == Asset.id)
+            .where(
+                Asset.brand_id == brand_id
+            )
+        )
+        result = await db.execute(stmt)
+        assets = result.scalars().unique().all()
+        
+        results = []
+        for a in assets:
+            results.append({
+                "id": a.id,
+                "name": a.name,
+                "filename": a.filename,
+                "storage_path": a.storage_path,
+                "asset_type": a.asset_type,
+                "metadata": a.meta,
+                "score": 0.8,
+                "search_type": "vector",
+            })
+        return results[offset : offset + limit]
+
     embedding = await get_embedding(query)
     embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
 
