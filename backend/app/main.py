@@ -20,6 +20,7 @@ from app.routers.jobs import router as jobs_router
 from app.routers.characters import router as characters_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
+from app.routers.search import router as search_router
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -101,6 +102,7 @@ app.include_router(jobs_router)
 app.include_router(characters_router)
 app.include_router(prompts_router)
 app.include_router(themes_router)
+app.include_router(search_router)
 
 
 
