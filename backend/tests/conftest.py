@@ -2,6 +2,7 @@ import asyncio
 import os
 import pytest
 import pytest_asyncio
+import uuid
 from httpx import AsyncClient
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -42,10 +43,6 @@ for table in Base.metadata.tables.values():
         if is_pg_only:
             table.indexes.remove(index)
 
-# Test Database URL
-TEST_DB_FILE = "./test_modelens.db"
-TEST_DATABASE_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"
-
 @pytest.fixture(scope="session")
 def event_loop():
     """Create an instance of the default event loop for each test case."""
@@ -59,14 +56,18 @@ def event_loop():
 @pytest_asyncio.fixture(autouse=True)
 async def setup_test_db():
     """Creates the tables in the test SQLite database and cleans it up at the end."""
-    # Ensure any old test database is removed
-    if os.path.exists(TEST_DB_FILE):
+    db_id = uuid.uuid4().hex
+    db_file = f"./test_modelens_{db_id}.db"
+    db_url = f"sqlite+aiosqlite:///{db_file}"
+
+    # Ensure any old test database is removed (shouldn't exist with unique name)
+    if os.path.exists(db_file):
         try:
-            os.remove(TEST_DB_FILE)
+            os.remove(db_file)
         except PermissionError:
             pass
 
-    test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    test_engine = create_async_engine(db_url, echo=False)
     
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -79,9 +80,9 @@ async def setup_test_db():
     await test_engine.dispose()
     
     # Clean up the test database file
-    if os.path.exists(TEST_DB_FILE):
+    if os.path.exists(db_file):
         try:
-            os.remove(TEST_DB_FILE)
+            os.remove(db_file)
         except PermissionError:
             pass
 
