@@ -74,6 +74,8 @@ async def create_character(
 @router.get("", response_model=List[CharacterResponse])
 async def list_characters(
     brand_id: Optional[int] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -96,7 +98,7 @@ async def list_characters(
     else:
         query = query.where(Character.brand_id.in_(list(accessible_brands)))
 
-    result = await db.execute(query)
+    result = await db.execute(query.limit(limit).offset(offset))
     return list(result.scalars().all())
 
 

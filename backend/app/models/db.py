@@ -77,7 +77,7 @@ class Asset(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     brand_id: Mapped[int] = mapped_column(
-        ForeignKey("brands.id", ondelete="CASCADE")
+        ForeignKey("brands.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=True)
     filename: Mapped[str] = mapped_column(String(500))

@@ -47,6 +47,8 @@ async def create_prompt(
 
 @router.get("", response_model=List[PromptResponse])
 async def list_prompts(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -54,7 +56,7 @@ async def list_prompts(
     List all prompt templates.
     """
     query = select(PromptTemplate)
-    result = await db.execute(query)
+    result = await db.execute(query.limit(limit).offset(offset))
     return list(result.scalars().all())
 
 
