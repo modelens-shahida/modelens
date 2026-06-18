@@ -47,14 +47,14 @@ async def test_brand_memory_empty(client: AsyncClient, test_data: dict):
 
 @pytest.mark.asyncio
 async def test_brand_memory_with_approved_assets(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    """Brand memory should count approved assets and their tag frequencies."""
+    """Brand memory should count assets and their tag frequencies."""
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    # Insert approved asset
+    # Insert asset
     result = await db_session.execute(text("""
-        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata, status)
-        VALUES (:brand_id, 'Approved Asset', 'approved.jpg', '/uploads/approved.jpg', 'image', '{}', 'approved')
+        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata)
+        VALUES (:brand_id, 'Approved Asset', 'approved.jpg', '/uploads/approved.jpg', 'image', '{}')
         RETURNING id
     """), {"brand_id": brand.id})
     await db_session.commit()
@@ -75,25 +75,6 @@ async def test_brand_memory_with_approved_assets(client: AsyncClient, db_session
     assert data["total_assets"] == 1
     assert data["tag_frequency"]["lighting:golden-hour"] == 1
     assert data["tag_frequency"]["mood:aspirational"] == 1
-
-
-@pytest.mark.asyncio
-async def test_brand_memory_excludes_draft_assets(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    """Brand memory should only count approved assets, not drafts."""
-    brand = test_data["brand"]
-    editor_headers = test_data["get_headers"]("editor")
-
-    # Insert draft asset
-    await db_session.execute(text("""
-        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata, status)
-        VALUES (:brand_id, 'Draft Asset', 'draft.jpg', '/uploads/draft.jpg', 'image', '{}', 'draft')
-    """), {"brand_id": brand.id})
-    await db_session.commit()
-
-    res = await client.get(f"/api/v1/brands/{brand.id}/memory", headers=editor_headers)
-    assert res.status_code == status.HTTP_200_OK
-    data = res.json()
-    assert data["total_assets"] == 0
 
 
 # ========================== Campaign Memory Tests =================
@@ -145,8 +126,8 @@ async def test_campaign_memory_with_assets(client: AsyncClient, db_session: Asyn
 
     # Create asset
     result = await db_session.execute(text("""
-        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata, status)
-        VALUES (:brand_id, 'Campaign Asset', 'campaign.jpg', '/uploads/campaign.jpg', 'image', '{}', 'approved')
+        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata)
+        VALUES (:brand_id, 'Campaign Asset', 'campaign.jpg', '/uploads/campaign.jpg', 'image', '{}')
         RETURNING id
     """), {"brand_id": brand.id})
     await db_session.commit()
@@ -169,3 +150,4 @@ async def test_campaign_memory_with_assets(client: AsyncClient, db_session: Asyn
     data = res.json()
     assert data["total_assets"] == 1
     assert data["tag_frequency"]["location:studio"] == 1
+

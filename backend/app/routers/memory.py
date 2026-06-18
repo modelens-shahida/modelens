@@ -47,19 +47,15 @@ async def get_brand_memory(
     if role == "none":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand workspace.")
 
-    # Get all approved assets for the brand
+    # Get all assets for the brand
     assets_result = await db.execute(
-        select(Asset).where(Asset.brand_id == brand_id, Asset.status == "approved")
+        select(Asset).where(Asset.brand_id == brand_id)
     )
     assets = assets_result.scalars().all()
 
     tag_frequency: Dict[str, int] = {}
     for asset in assets:
-        tags_result = await db.execute(
-            select(AssetTag).where(AssetTag.asset_id == asset.id)
-        )
-        tags = tags_result.scalars().all()
-        for tag in tags:
+        for tag in asset.tags:
             key = f"{tag.tag}"
             tag_frequency[key] = tag_frequency.get(key, 0) + 1
 
@@ -103,9 +99,9 @@ async def get_campaign_memory(
     asset_ids = [ca.asset_id for ca in campaign_assets]
 
     tag_frequency: Dict[str, int] = {}
-    for asset_id in asset_ids:
+    if asset_ids:
         tags_result = await db.execute(
-            select(AssetTag).where(AssetTag.asset_id == asset_id)
+            select(AssetTag).where(AssetTag.asset_id.in_(asset_ids))
         )
         tags = tags_result.scalars().all()
         for tag in tags:
@@ -116,3 +112,4 @@ async def get_campaign_memory(
         total_assets=len(asset_ids),
         tag_frequency=tag_frequency,
     )
+
