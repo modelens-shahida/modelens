@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from app.middleware.rate_limit import RateLimiter
 from typing import Optional, List, Any, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -48,7 +49,7 @@ async def verify_brand_access(user_id: int, brand_id: int, db: AsyncSession) -> 
 
 # ========================== Endpoint =====================================
 
-@router.get("", response_model=List[AssetSearchResult])
+@router.get("", response_model=List[AssetSearchResult], dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))])
 async def search_assets(
     brand_id: int = Query(..., description="Brand workspace ID"),
     q: str = Query(..., min_length=1, description="Search query"),
