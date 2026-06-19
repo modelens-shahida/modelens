@@ -33,14 +33,80 @@ def test_is_safe_url_rejects_invalid_scheme():
     assert is_safe_url("not-a-url") is False
 
 
-def test_is_safe_url_accepts_public_url():
+from unittest.mock import patch
+
+@patch("socket.getaddrinfo")
+def test_is_safe_url_accepts_public_url(mock_dns):
     """A legitimate public URL should be accepted."""
+    mock_dns.return_value = [(None, None, None, None, ("93.184.216.34", 0))]
     assert is_safe_url("https://example.com/webhook") is True
 
 
-def test_is_safe_url_accepts_public_https():
+@patch("socket.getaddrinfo")
+def test_is_safe_url_accepts_public_https(mock_dns):
     """Public HTTPS URLs should be valid."""
+    mock_dns.return_value = [(None, None, None, None, ("93.184.216.34", 0))]
     assert is_safe_url("https://api.mycompany.com/callbacks/job-done") is True
+
+
+# ========================== Mock Redis Rate Limiter =================
+
+import time
+
+class MockRedisPipeline:
+    def __init__(self, client):
+        self.client = client
+        self.key = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def zremrangebyscore(self, key, min_val, max_val):
+        self.key = key
+        if key not in self.client.store:
+            self.client.store[key] = []
+        self.client.store[key] = [t for t in self.client.store[key] if t > max_val]
+
+    def zcard(self, key):
+        self.key = key
+
+    def zadd(self, key, mapping):
+        self.key = key
+        if key not in self.client.store:
+            self.client.store[key] = []
+        for val in mapping.values():
+            self.client.store[key].append(val)
+
+    def expire(self, key, seconds):
+        self.key = key
+
+    async def execute(self):
+        count = len(self.client.store.get(self.key, [])) if self.key else 0
+        return (None, count, None, None)
+
+class MockRedisClient:
+    def __init__(self):
+        self.store = {}
+
+    def pipeline(self, transaction=True):
+        return MockRedisPipeline(self)
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+        return True
+
+    async def get(self, key):
+        return self.store.get(key)
+
+@pytest.fixture(autouse=True)
+def mock_redis_rate_limiting():
+    mock_client = MockRedisClient()
+    with patch("app.middleware.rate_limit.redis_client", mock_client), \
+         patch("app.routers.jobs.redis_client", mock_client):
+        yield mock_client
 
 
 # ========================== Rate Limiting Tests ====================
@@ -96,13 +162,14 @@ async def test_generate_job_rate_limited_after_threshold(client: AsyncClient, te
     editor_headers = test_data["get_headers"]("editor")
 
     responses = []
-    for _ in range(15):
-        res = await client.post(
-            "/api/v1/jobs/generate",
-            json={"brand_id": brand.id, "workflow_template_id": 1, "parameters": {}},
-            headers=editor_headers
-        )
-        responses.append(res.status_code)
+    with patch("app.routers.jobs.process_generation_job.delay") as mock_delay:
+        for _ in range(15):
+            res = await client.post(
+                "/api/v1/jobs/generate",
+                json={"brand_id": brand.id, "workflow_template_id": 1, "parameters": {}},
+                headers=editor_headers
+            )
+            responses.append(res.status_code)
 
     assert status.HTTP_429_TOO_MANY_REQUESTS in responses or all(
         r != status.HTTP_500_INTERNAL_SERVER_ERROR for r in responses
