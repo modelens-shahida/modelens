@@ -8,7 +8,7 @@ Create Date: 2026-06-18
 from alembic import op
 
 revision = 'add_fk_indexes_001'
-down_revision = 'e2b34a9f939e'
+down_revision = '6b72a9e32f91'
 branch_labels = None
 depends_on = None
 
