@@ -641,3 +641,64 @@ async def search_similar_assets(
     return resp
 
 
+
+
+@router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_asset(
+    asset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete an asset: removes the main file, 256px and 512px thumbnails from storage,
+    and removes the asset row from the database (cascades to asset_tags).
+    Requires owner or admin role on the asset's brand.
+    """
+    # 1. Look up the asset
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    asset = result.scalars().first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+
+    # 2. RBAC check: owner or admin only
+    brand_result = await db.execute(select(Brand).where(Brand.id == asset.brand_id))
+    brand = brand_result.scalars().first()
+    if not brand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found.")
+
+    if brand.owner_id == current_user.id:
+        role = "owner"
+    else:
+        member_result = await db.execute(select(BrandMember).where(
+            BrandMember.brand_id == asset.brand_id,
+            BrandMember.user_id == current_user.id
+        ))
+        membership = member_result.scalars().first()
+        role = membership.role if membership else None
+
+    if role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners or admins can delete assets."
+        )
+
+    # 3. Collect filenames to delete (main file + both thumbnails)
+    meta = asset.meta or {}
+    filenames_to_delete = []
+
+    main_filename = meta.get("unique_filename") or os.path.basename(asset.storage_path)
+    if main_filename:
+        filenames_to_delete.append(main_filename)
+
+    for thumb_key in ("thumbnail_256", "thumbnail_512"):
+        thumb_path = meta.get(thumb_key)
+        if thumb_path:
+            filenames_to_delete.append(os.path.basename(thumb_path))
+
+    # 4. Delete files from storage (local or S3)
+    for filename in filenames_to_delete:
+        await anyio.to_thread.run_sync(storage_service.delete_file, filename)
+
+    # 5. Delete the asset row (cascades to asset_tags via relationship)
+    await db.delete(asset)
+    await db.commit()

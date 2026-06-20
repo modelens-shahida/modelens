@@ -141,4 +141,22 @@ class StorageService:
                 f.write(file_bytes)
             return f"/uploads/{unique_filename}"
 
+
+    def delete_file(self, filename: str) -> bool:
+        """
+        Deletes a file from either S3 or local uploads directory.
+        Returns True if the deletion was successful or the file didn't exist.
+        """
+        if self.backend == "s3":
+            try:
+                self.s3_client.delete_object(Bucket=self.bucket, Key=filename)
+                return True
+            except Exception as e:
+                raise RuntimeError(f"Failed to delete file from S3 '{filename}': {str(e)}")
+        else:
+            local_path = os.path.join("uploads", filename)
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            return True
+
 storage_service = StorageService()
