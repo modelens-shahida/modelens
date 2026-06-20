@@ -45,3 +45,10 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+# databases
+*.db
+/backend/*.db
+
+# local asset uploads
+/uploads/
