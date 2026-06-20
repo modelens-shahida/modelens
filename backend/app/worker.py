@@ -1,4 +1,5 @@
 import os
+import base64
 import socket
 import ipaddress
 from urllib.parse import urlparse
@@ -38,6 +39,7 @@ celery_app.conf.update(
 )
 
 import asyncio
+import anyio
 import json
 import httpx
 import hashlib
@@ -45,7 +47,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -200,6 +202,39 @@ def process_asset_upload(asset_id: int):
     loop.run_until_complete(_process_asset_upload_async(asset_id))
 
 
+
+async def _generate_image(prompt: str) -> bytes:
+    """
+    Generates an image using OpenAI DALL-E 3 if OPENAI_API_KEY is set,
+    otherwise falls back to a mock placeholder image (1x1 PNG) after a short delay.
+    Returns raw image bytes.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if not api_key:
+        # Mock fallback: simulate generation latency, return a tiny placeholder PNG
+        await asyncio.sleep(2)
+        return base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+            response_format="b64_json",
+        )
+        image_b64 = response.data[0].b64_json
+        return base64.b64decode(image_b64)
+    except Exception as e:
+        raise RuntimeError(f"Image generation failed: {str(e)}")
+
+
 async def _process_generation_job_async(job_id: int):
     async with async_session_maker() as db:
         # Retrieve job
@@ -237,21 +272,39 @@ async def _process_generation_job_async(job_id: int):
         except Exception as e:
             print(f"[Worker] Failed to cache status in Redis: {e}")
 
-        # Simulate generation process
-        await asyncio.sleep(2)
-
         try:
-            # Create the generated Asset record
-            output_filename = f"generated_{job_id}.png"
-            storage_path = f"s3://modelens-bucket/brand_{job.brand_id}/{output_filename}"
+            # Extract prompt and styling info from job.inputs / linked workflow template
+            inputs = job.inputs or {}
+            prompt = inputs.get("prompt") or inputs.get("text") or "A high quality fashion editorial image"
 
+            workflow_style = ""
+            if job.workflow_template_id:
+                wf_result = await db.execute(
+                    select(WorkflowTemplate).where(WorkflowTemplate.id == job.workflow_template_id)
+                )
+                workflow = wf_result.scalars().first()
+                if workflow and getattr(workflow, "description", None):
+                    workflow_style = f" Style: {workflow.description}."
+
+            final_prompt = f"{prompt}.{workflow_style}".strip()
+
+            # Generate the image (real API or mock fallback)
+            image_bytes = await _generate_image(final_prompt)
+
+            # Save to storage (local or S3 depending on STORAGE_BACKEND)
+            output_filename = f"generated_{job_id}.png"
+            storage_path = await anyio.to_thread.run_sync(
+                storage_service.save_file_bytes, output_filename, image_bytes, "image"
+            )
+
+            # Create the generated Asset record
             asset = Asset(
                 brand_id=job.brand_id,
                 name=f"Generated Image {job_id}",
                 filename=output_filename,
                 storage_path=storage_path,
                 asset_type="image",
-                meta={"generated_by_job": job_id}
+                meta={"generated_by_job": job_id, "prompt": final_prompt}
             )
             db.add(asset)
             await db.commit()
@@ -293,6 +346,13 @@ async def _process_generation_job_async(job_id: int):
             print(f"[Worker] Job {job_id} execution error: {e}")
             job.status = "failed"
             job.error_message = str(e)
+
+            # Refund 1 credit to the user since generation failed
+            user_result = await db.execute(select(User).where(User.id == job.user_id))
+            refund_user = user_result.scalars().first()
+            if refund_user:
+                refund_user.credits += 1
+
             await db.commit()
 
             # Cache failure in Redis

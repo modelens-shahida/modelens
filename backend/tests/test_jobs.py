@@ -165,3 +165,115 @@ async def test_job_status_polling_cache_miss(client: AsyncClient, db_session: As
 
         # Verify it populates the cache after fetch
         mock_redis_set.assert_called_once()
+
+
+# ========================== AI Generation Worker Tests ==============
+
+@pytest.mark.asyncio
+async def test_process_generation_job_success_with_mock_image(db_session: AsyncSession, test_data: dict):
+    """
+    Worker should generate an image (mocked), save it via storage_service,
+    create an Asset, and mark the job completed.
+    """
+    from app.worker import _process_generation_job_async
+    from app.models.db import AIJob, Asset
+
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_user = test_data["users"]["editor"]
+
+    job = AIJob(
+        user_id=editor_user.id,
+        brand_id=brand.id,
+        workflow_template_id=workflow.id,
+        status="pending",
+        job_type="generation",
+        inputs={"prompt": "A luxury editorial fashion shot, golden hour lighting"},
+        outputs={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    fake_image_bytes = b"\x89PNG\r\n\x1a\nfakeimagebytes"
+
+    with patch("app.worker._generate_image", new=AsyncMock(return_value=fake_image_bytes)), \
+         patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/generated_test.png") as mock_save, \
+         patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.dispatch_webhook.delay"):
+
+        await _process_generation_job_async(job.id)
+
+    await db_session.refresh(job)
+    assert job.status == "completed"
+    assert job.asset_id is not None
+    mock_save.assert_called_once()
+
+    asset_result = await db_session.execute(select(Asset).where(Asset.id == job.asset_id))
+    asset = asset_result.scalars().first()
+    assert asset is not None
+    assert asset.brand_id == brand.id
+    assert asset.meta.get("generated_by_job") == job.id
+
+
+@pytest.mark.asyncio
+async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSession, test_data: dict):
+    """
+    If image generation fails, the job should be marked failed and the
+    user should be refunded 1 credit.
+    """
+    from app.worker import _process_generation_job_async
+    from app.models.db import AIJob, User
+
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_user = test_data["users"]["editor"]
+
+    # Simulate a prior credit deduction (as generate_job endpoint normally does)
+    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+    user = user_result.scalars().first()
+    starting_credits = user.credits
+    user.credits -= 1
+    await db_session.commit()
+
+    job = AIJob(
+        user_id=editor_user.id,
+        brand_id=brand.id,
+        workflow_template_id=workflow.id,
+        status="pending",
+        job_type="generation",
+        inputs={"prompt": "This will fail"},
+        outputs={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    with patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Image generation failed"))), \
+         patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.dispatch_webhook.delay"):
+
+        await _process_generation_job_async(job.id)
+
+    await db_session.refresh(job)
+    assert job.status == "failed"
+    assert job.error_message is not None
+
+    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+    refunded_user = user_result.scalars().first()
+    assert refunded_user.credits == starting_credits  # back to original after refund
+
+
+@pytest.mark.asyncio
+async def test_generate_image_mock_fallback_without_api_key(monkeypatch):
+    """
+    _generate_image should fall back to a mock placeholder image
+    when OPENAI_API_KEY is not set, without raising.
+    """
+    from app.worker import _generate_image
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = await _generate_image("A test prompt")
+    assert isinstance(result, bytes)
+    assert len(result) > 0
