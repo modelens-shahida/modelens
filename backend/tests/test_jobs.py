@@ -197,7 +197,16 @@ async def test_process_generation_job_success_with_mock_image(db_session: AsyncS
 
     fake_image_bytes = b"\x89PNG\r\n\x1a\nfakeimagebytes"
 
-    with patch("app.worker._generate_image", new=AsyncMock(return_value=fake_image_bytes)), \
+    class MockSessionContext:
+        def __init__(self, session):
+            self.session = session
+        async def __aenter__(self):
+            return self.session
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker._generate_image", new=AsyncMock(return_value=fake_image_bytes)), \
          patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/generated_test.png") as mock_save, \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
@@ -249,7 +258,16 @@ async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSe
     await db_session.commit()
     await db_session.refresh(job)
 
-    with patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Image generation failed"))), \
+    class MockSessionContext:
+        def __init__(self, session):
+            self.session = session
+        async def __aenter__(self):
+            return self.session
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Image generation failed"))), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
