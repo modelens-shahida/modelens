@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Image as ImageIcon, Search, Plus, Filter, X, Upload, Loader2, Sparkles, Folder } from "lucide-react";
+import { Image as ImageIcon, Search, Plus, Filter, X, Upload, Loader2, Sparkles, Folder, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 
@@ -23,6 +23,14 @@ export default function AssetsPage() {
   const [selectedTag, setSelectedTag] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [collapsedCategories, setCollapsedCategories] = useState({});
+
+  const toggleCategory = (category) => {
+    setCollapsedCategories((prev) => ({
+      ...prev,
+      [category]: !prev[category],
+    }));
+  };
 
   // Upload Modal State
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -229,38 +237,85 @@ export default function AssetsPage() {
       {/* Workspace Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         {/* Left Side: Taxonomy filter panel */}
-        <div className="lg:col-span-1 bg-zinc-950 border border-zinc-900 rounded-2xl p-4 space-y-5">
-          <div className="flex items-center gap-2 text-xs font-bold text-zinc-300 uppercase tracking-wider border-b border-zinc-900 pb-2.5">
-            <Filter size={14} className="text-purple-400" />
-            Taxonomy Filters
+        <div className="lg:col-span-1 space-y-3">
+          {/* Sidebar Header Card */}
+          <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex justify-between items-center shadow-md">
+            <div className="flex items-center gap-2.5 text-xs font-extrabold text-zinc-200 uppercase tracking-wider">
+              <Filter size={14} className="text-purple-400 animate-pulse" />
+              Taxonomy Filters
+            </div>
+            {selectedTag && (
+              <button
+                onClick={() => setSelectedTag("")}
+                className="text-[9px] font-bold text-purple-400 hover:text-purple-300 bg-purple-950/20 hover:bg-purple-950/40 border border-purple-900/30 px-2 py-1 rounded-lg transition-all cursor-pointer"
+              >
+                Clear Active
+              </button>
+            )}
           </div>
 
-          <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-            {Object.entries(schema).map(([category, tags]) => (
-              <div key={category} className="space-y-2">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide block">
-                  {category}
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((tag) => {
-                    const isSelected = selectedTag === tag;
-                    return (
-                      <button
-                        key={tag}
-                        onClick={() => setSelectedTag(isSelected ? "" : tag)}
-                        className={`text-[9px] font-semibold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-purple-600 border-purple-500 text-white shadow-sm"
-                            : "bg-zinc-900/40 border-zinc-850/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-                        }`}
+          {/* Collapsible Scroll Container */}
+          <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1.5 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-zinc-800/80 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+            {Object.entries(schema).map(([category, tags]) => {
+              const isCollapsed = !!collapsedCategories[category];
+              // Check if any tag in this category is currently selected
+              const hasActiveTag = tags.includes(selectedTag);
+
+              return (
+                <div 
+                  key={category} 
+                  className="bg-zinc-950/40 border border-zinc-900/80 rounded-xl overflow-hidden shadow-sm hover:border-zinc-850/80 transition-all duration-200"
+                >
+                  {/* Category Toggle Bar */}
+                  <button
+                    onClick={() => toggleCategory(category)}
+                    className="flex justify-between items-center w-full px-4 py-3 bg-zinc-950/80 hover:bg-zinc-900/30 transition-colors border-b border-zinc-900/40 text-left cursor-pointer group"
+                  >
+                    <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider group-hover:text-zinc-200 transition-colors flex items-center gap-2">
+                      {hasActiveTag && <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-sm shadow-purple-500/50" />}
+                      {category}
+                    </span>
+                    <div className="text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                      {isCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                    </div>
+                  </button>
+
+                  {/* Tags Pill Box (Collapsed/Expanded content) */}
+                  <AnimatePresence initial={false}>
+                    {!isCollapsed && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
                       >
-                        {tag}
-                      </button>
-                    );
-                  })}
+                        <div className="p-4 flex flex-wrap gap-1.5 bg-zinc-950/20 border-t border-zinc-900/20">
+                          {tags.map((tag) => {
+                            const isSelected = selectedTag === tag;
+                            return (
+                              <motion.button
+                                key={tag}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => setSelectedTag(isSelected ? "" : tag)}
+                                className={`text-[9px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                                  isSelected
+                                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 border-transparent text-white shadow-md shadow-purple-950/60"
+                                    : "bg-zinc-900/40 border-zinc-850/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100 hover:bg-zinc-850/40"
+                                }`}
+                              >
+                                {tag}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
