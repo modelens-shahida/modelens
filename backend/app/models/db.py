@@ -82,7 +82,7 @@ class Asset(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=True)
     filename: Mapped[str] = mapped_column(String(500))
     storage_path: Mapped[str] = mapped_column(String(1000))
-    asset_type: Mapped[str] = mapped_column(String(100))
+    asset_type: Mapped[str] = mapped_column(String(100), index=True)
     meta: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     brand = relationship("Brand")
@@ -133,8 +133,12 @@ class Campaign(Base):
     )
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
+    theme_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("campaign_themes.id", ondelete="SET NULL"), nullable=True
+    )
 
     brand = relationship("Brand")
+    theme = relationship("CampaignTheme")
 
 
 class CampaignAsset(Base):
@@ -278,6 +282,110 @@ class APIKey(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user = relationship("User")
+
+
+
+# ========================== New Models (Schema v1 Upgrade) =========
+
+class CharacterVersion(Base):
+    __tablename__ = "character_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    character_id: Mapped[int] = mapped_column(
+        ForeignKey("characters.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, default=1)
+    prompt_trigger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_image_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    validation_image_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    config_overrides: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    character = relationship("Character")
+
+
+class CharacterEmbedding(Base):
+    __tablename__ = "character_embeddings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    character_id: Mapped[int] = mapped_column(
+        ForeignKey("characters.id", ondelete="CASCADE"), index=True
+    )
+    version_id: Mapped[int] = mapped_column(
+        ForeignKey("character_versions.id", ondelete="CASCADE"), index=True
+    )
+    embedding: Mapped[Optional[list]] = mapped_column(Vector(1536), nullable=True)
+    tag: Mapped[str] = mapped_column(String(255))
+
+    character = relationship("Character")
+    version = relationship("CharacterVersion")
+
+
+class ThemePackage(Base):
+    __tablename__ = "theme_packages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    theme_id: Mapped[int] = mapped_column(
+        ForeignKey("campaign_themes.id", ondelete="CASCADE"), index=True
+    )
+    character_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("characters.id", ondelete="SET NULL"), nullable=True
+    )
+    workflow_template_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("workflow_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    prompt_template_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("prompt_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    location_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    theme = relationship("CampaignTheme")
+    character = relationship("Character")
+    workflow_template = relationship("WorkflowTemplate")
+    prompt_template = relationship("PromptTemplate")
+
+
+class GeneratedVideo(Base):
+    __tablename__ = "generated_videos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_jobs.id", ondelete="CASCADE"), index=True
+    )
+    source_asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(500))
+    storage_path: Mapped[str] = mapped_column(String(1000))
+    motion_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=5)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("AIJob")
+    source_asset = relationship("Asset")
+
+
+class FixRequest(Base):
+    __tablename__ = "fix_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    original_asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ai_jobs.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_asset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    requester_notes: Mapped[str] = mapped_column(Text)
+    review_status: Mapped[str] = mapped_column(String(50), default="pending")
+    reviewer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    original_asset = relationship("Asset", foreign_keys=[original_asset_id])
+    updated_asset = relationship("Asset", foreign_keys=[updated_asset_id])
 
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
