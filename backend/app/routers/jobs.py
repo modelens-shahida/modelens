@@ -17,7 +17,7 @@ from app.models.db import (
 )
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 from app.middleware.rate_limit import redis_client, RateLimiter
-from app.worker import process_generation_job
+from app.worker import process_generation_job, process_workflow_job
 
 logger = logging.getLogger("modelens.jobs")
 
@@ -35,11 +35,18 @@ class JobGenerateRequest(BaseModel):
     callback_url: Optional[str] = Field(None, description="Optional webhook URL to notify on completion/failure")
 
 
+class JobWorkflowRequest(BaseModel):
+    brand_id: int
+    workflow_type: str = Field(..., description="Type of generation workflow: on_model_replacement | flat_lay_to_model | mannequin_to_model | background_replacement | video_generation")
+    inputs: dict = Field(default_factory=dict, description="Input variables including source_asset_id, character_id, character_version_id, background_style, motion_type, etc.")
+    callback_url: Optional[str] = Field(None, description="Optional webhook callback URL")
+
+
 class JobResponse(BaseModel):
     id: int
     user_id: int
     brand_id: int
-    workflow_template_id: int
+    workflow_template_id: Optional[int] = None
     asset_id: Optional[int] = None
     status: str
     job_type: str
@@ -166,6 +173,121 @@ async def generate_job(
 
     # 6. Dispatch Celery task
     process_generation_job.delay(job.id)
+
+    return job
+
+
+@router.post("/workflow", status_code=status.HTTP_201_CREATED, response_model=JobResponse, dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))])
+async def generate_workflow_job(
+    payload: JobWorkflowRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Triggers an AI generation workflow job.
+    Validates user has at least 'editor' role, verifies credits, deducts 1 credit,
+    inserts job record, caches status, and enqueues background worker.
+    """
+    # 1. Verify brand exists and current user has access
+    brand_query = select(Brand).where(Brand.id == payload.brand_id)
+    brand_res = await db.execute(brand_query)
+    brand = brand_res.scalars().first()
+    if not brand:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Brand not found"
+        )
+
+    is_owner = brand.owner_id == current_user.id
+    is_editor = False
+    if not is_owner:
+        member_query = select(BrandMember).where(
+            BrandMember.brand_id == payload.brand_id,
+            BrandMember.user_id == current_user.id
+        )
+        member_res = await db.execute(member_query)
+        membership = member_res.scalars().first()
+        if membership:
+            user_level = ROLE_HIERARCHY.get(membership.role, 0)
+            if user_level >= ROLE_HIERARCHY.get("editor", 0):
+                is_editor = True
+
+    if not is_owner and not is_editor:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires at least 'editor' role on this brand."
+        )
+
+    # Validate workflow type
+    allowed_types = ["on_model_replacement", "flat_lay_to_model", "mannequin_to_model", "background_replacement", "video_generation"]
+    if payload.workflow_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid workflow_type. Allowed: {allowed_types}"
+        )
+
+    # 2. Credit validation & deduction
+    user_query = select(User).where(User.id == current_user.id)
+    user_res = await db.execute(user_query)
+    db_user = user_res.scalars().first()
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    if db_user.credits <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Insufficient credits. Remaining: {db_user.credits}"
+        )
+
+    # Deduct 1 credit
+    db_user.credits -= 1
+    db.add(db_user)
+
+    # Combine workflow_type into inputs
+    job_inputs = {**payload.inputs, "workflow_type": payload.workflow_type}
+
+    # 3. Insert Job Record
+    job = AIJob(
+        user_id=db_user.id,
+        brand_id=payload.brand_id,
+        workflow_template_id=None,
+        status="pending",
+        job_type="workflow",
+        inputs=job_inputs,
+        outputs={},
+        callback_url=payload.callback_url,
+        error_message=None
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    # 4. Cache initial job state in Redis
+    job_data = {
+        "id": job.id,
+        "user_id": job.user_id,
+        "brand_id": job.brand_id,
+        "workflow_template_id": job.workflow_template_id,
+        "asset_id": job.asset_id,
+        "status": job.status,
+        "job_type": job.job_type,
+        "inputs": job.inputs,
+        "outputs": job.outputs,
+        "callback_url": job.callback_url,
+        "error_message": job.error_message,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
+    try:
+        await redis_client.set(f"job:{job.id}:status", json.dumps(job_data), ex=3600)
+    except Exception as e:
+        logger.warning(f"Failed to write job status to Redis cache: {e}")
+
+    # 5. Dispatch Celery task
+    process_workflow_job.delay(job.id)
 
     return job
 

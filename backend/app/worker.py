@@ -33,6 +33,7 @@ celery_app.conf.update(
     ],
     task_routes={
         "app.worker.process_generation_job": {"queue": "processing"},
+        "app.worker.process_workflow_job": {"queue": "processing"},
         "app.worker.dispatch_webhook": {"queue": "high_priority"},
         "app.worker.process_asset_upload": {"queue": "default"},
     },
@@ -47,7 +48,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -390,6 +391,250 @@ def process_generation_job(job_id: int):
         asyncio.set_event_loop(loop)
 
     loop.run_until_complete(_process_generation_job_async(job_id))
+
+
+async def _process_workflow_job_async(job_id: int):
+    async with async_session_maker() as db:
+        # Retrieve job
+        result = await db.execute(
+            select(AIJob).where(AIJob.id == job_id)
+        )
+        job = result.scalars().first()
+        if not job:
+            print(f"[Worker] Job {job_id} not found.")
+            return
+
+        # Update state to processing in DB
+        job.status = "processing"
+        await db.commit()
+        await db.refresh(job)
+
+        # Update status in Redis cache
+        job_data = {
+            "id": job.id,
+            "user_id": job.user_id,
+            "brand_id": job.brand_id,
+            "workflow_template_id": job.workflow_template_id,
+            "asset_id": job.asset_id,
+            "status": "processing",
+            "job_type": job.job_type,
+            "inputs": job.inputs,
+            "outputs": job.outputs,
+            "callback_url": job.callback_url,
+            "error_message": None,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        }
+        try:
+            await redis_client.set(f"job:{job_id}:status", json.dumps(job_data), ex=3600)
+        except Exception as e:
+            print(f"[Worker] Failed to cache status in Redis: {e}")
+
+        try:
+            inputs = job.inputs or {}
+            workflow_type = inputs.get("workflow_type")
+            source_asset_id = inputs.get("source_asset_id")
+
+            if not source_asset_id:
+                raise ValueError("source_asset_id is required in job inputs.")
+
+            # Validate source asset exists
+            asset_res = await db.execute(
+                select(Asset).where(Asset.id == source_asset_id)
+            )
+            source_asset = asset_res.scalars().first()
+            if not source_asset:
+                raise ValueError(f"Source asset {source_asset_id} not found.")
+
+            if workflow_type == "video_generation":
+                motion_type = inputs.get("motion_type", "runway_walk")
+                duration_seconds = inputs.get("duration_seconds", 5)
+
+                # Simulate video processing latency
+                await asyncio.sleep(2)
+
+                # Mock video data
+                video_bytes = base64.b64decode(
+                    "AAAAIGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAADh1bW9vdmEAAABsbXZoZAAAAADTkLhU05C4VAAAA+gAAAAAAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAGGlvbmQAAAAA05C4VNPQuGgAAAPoAAAAAAAB"
+                )
+
+                output_filename = f"video_workflow_{job_id}.mp4"
+                storage_path = await anyio.to_thread.run_sync(
+                    storage_service.save_file_bytes, output_filename, video_bytes, "video"
+                )
+
+                # 1. Insert GeneratedVideo record
+                video_rec = GeneratedVideo(
+                    job_id=job.id,
+                    source_asset_id=source_asset_id,
+                    filename=output_filename,
+                    storage_path=storage_path,
+                    motion_type=motion_type,
+                    duration_seconds=duration_seconds
+                )
+                db.add(video_rec)
+                await db.flush()
+
+                # 2. Insert Asset of type video
+                asset = Asset(
+                    brand_id=job.brand_id,
+                    name=f"Workflow generated video {job_id}",
+                    filename=output_filename,
+                    storage_path=storage_path,
+                    asset_type="video",
+                    meta={"generated_by_job": job_id, "video_id": video_rec.id}
+                )
+                db.add(asset)
+                await db.flush()
+
+                # Update job status
+                job.asset_id = asset.id
+                job.outputs = {
+                    "video_url": storage_path,
+                    "video_id": video_rec.id,
+                    "asset_id": asset.id
+                }
+                job.status = "completed"
+                await db.commit()
+
+            else:
+                # Image generation flows: flat_lay_to_model, mannequin_to_model, on_model_replacement, background_replacement
+                character_id = inputs.get("character_id")
+                character_version_id = inputs.get("character_version_id")
+                background_style = inputs.get("background_style", "studio")
+                custom_background_prompt = inputs.get("custom_background_prompt")
+
+                # Resolve character trigger details
+                char_prompt_trigger = ""
+                if character_version_id:
+                    ver_res = await db.execute(
+                        select(CharacterVersion).where(CharacterVersion.id == character_version_id)
+                    )
+                    char_ver = ver_res.scalars().first()
+                    if char_ver:
+                        char_prompt_trigger = char_ver.prompt_trigger or ""
+
+                if not char_prompt_trigger and character_id:
+                    char_res = await db.execute(
+                        select(Character).where(Character.id == character_id)
+                    )
+                    char = char_res.scalars().first()
+                    if char:
+                        char_prompt_trigger = char.description or ""
+
+                # Construct detailed generation prompt
+                bg_prompt = custom_background_prompt or f"in a premium {background_style} background"
+                prompt_prefix = "On-model high-quality fashion catalog shot"
+                if workflow_type == "flat_lay_to_model":
+                    prompt_prefix = "Fashion model wearing garment flat-lay item"
+                elif workflow_type == "mannequin_to_model":
+                    prompt_prefix = "Fashion model wearing garment from mannequin fit"
+                
+                final_prompt = f"{prompt_prefix}. Character: {char_prompt_trigger or 'model'}. Backdrop: {bg_prompt}."
+
+                # Generate image
+                image_bytes = await _generate_image(final_prompt)
+
+                output_filename = f"generated_workflow_{job_id}.png"
+                storage_path = await anyio.to_thread.run_sync(
+                    storage_service.save_file_bytes, output_filename, image_bytes, "image"
+                )
+
+                # Create output Asset
+                asset = Asset(
+                    brand_id=job.brand_id,
+                    name=f"Generated workflow {workflow_type} shot {job_id}",
+                    filename=output_filename,
+                    storage_path=storage_path,
+                    asset_type="image",
+                    meta={"generated_by_job": job_id, "prompt": final_prompt}
+                )
+                db.add(asset)
+                await db.flush()
+
+                # Update job status
+                job.asset_id = asset.id
+                job.outputs = {
+                    "urls": [storage_path],
+                    "asset_id": asset.id
+                }
+                job.status = "completed"
+                await db.commit()
+
+            # Refresh job and update Redis status
+            await db.refresh(job)
+            job_data = {
+                "id": job.id,
+                "user_id": job.user_id,
+                "brand_id": job.brand_id,
+                "workflow_template_id": job.workflow_template_id,
+                "asset_id": job.asset_id,
+                "status": "completed",
+                "job_type": job.job_type,
+                "inputs": job.inputs,
+                "outputs": job.outputs,
+                "callback_url": job.callback_url,
+                "error_message": None,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+            }
+            try:
+                await redis_client.set(f"job:{job_id}:status", json.dumps(job_data), ex=3600)
+            except Exception as e:
+                print(f"[Worker] Failed to cache status in Redis: {e}")
+
+            # Trigger Webhook
+            if job.callback_url:
+                dispatch_webhook.delay(job.callback_url, job_data)
+
+        except Exception as e:
+            print(f"[Worker] Workflow job {job_id} execution error: {e}")
+            job.status = "failed"
+            job.error_message = str(e)
+
+            # Refund 1 credit to the user since generation failed
+            user_result = await db.execute(select(User).where(User.id == job.user_id))
+            refund_user = user_result.scalars().first()
+            if refund_user:
+                refund_user.credits += 1
+
+            await db.commit()
+
+            # Cache failure in Redis
+            job_data = {
+                "id": job.id,
+                "user_id": job.user_id,
+                "brand_id": job.brand_id,
+                "workflow_template_id": job.workflow_template_id,
+                "asset_id": job.asset_id,
+                "status": "failed",
+                "job_type": job.job_type,
+                "inputs": job.inputs,
+                "outputs": job.outputs,
+                "callback_url": job.callback_url,
+                "error_message": str(e),
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+            }
+            try:
+                await redis_client.set(f"job:{job_id}:status", json.dumps(job_data), ex=3600)
+            except Exception as re:
+                print(f"[Worker] Failed to cache status in Redis: {re}")
+
+            # Trigger Webhook for failure
+            if job.callback_url:
+                dispatch_webhook.delay(job.callback_url, job_data)
+
+
+@celery_app.task(name="app.worker.process_workflow_job")
+def process_workflow_job(job_id: int):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    loop.run_until_complete(_process_workflow_job_async(job_id))
 
 
 def is_safe_url(url: str) -> bool:

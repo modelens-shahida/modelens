@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Sparkles, Loader2, Play, CheckCircle2, AlertTriangle, ArrowRight, Clock, ExternalLink, RefreshCw, Layers } from "lucide-react";
+import { Sparkles, Loader2, Play, CheckCircle2, AlertTriangle, ArrowRight, Clock, ExternalLink, RefreshCw, Layers, Video, ImageIcon, Film, Sliders } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 
@@ -34,6 +34,16 @@ function JobsPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // New states for pipeline generation workflows
+  const [generationMode, setGenerationMode] = useState("pipeline"); // "pipeline" | "template"
+  const [workflowType, setWorkflowType] = useState("flat_lay_to_model");
+  const [selectedMotionType, setSelectedMotionType] = useState("runway_walk");
+  const [selectedDurationSeconds, setSelectedDurationSeconds] = useState("5");
+  const [backgroundStyle, setBackgroundStyle] = useState("studio");
+  const [customBackgroundPrompt, setCustomBackgroundPrompt] = useState("");
+  const [characterVersions, setCharacterVersions] = useState([]);
+  const [selectedVersionId, setSelectedVersionId] = useState("");
 
   // Active polling jobs tracker
   const [activePollIds, setActivePollIds] = useState(new Set());
@@ -234,55 +244,122 @@ function JobsPageContent() {
     });
   }, [activePollIds]);
 
+  // Fetch character versions when character changes
+  useEffect(() => {
+    async function fetchVersions() {
+      if (!selectedCharacterId) {
+        setCharacterVersions([]);
+        setSelectedVersionId("");
+        return;
+      }
+      try {
+        const versions = await api.get(`/api/v1/characters/${selectedCharacterId}/versions`);
+        setCharacterVersions(versions);
+        if (versions.length > 0) {
+          // Default to latest version
+          const sorted = [...versions].sort((a, b) => b.version_number - a.version_number);
+          setSelectedVersionId(sorted[0].id.toString());
+        } else {
+          setSelectedVersionId("");
+        }
+      } catch (error) {
+        console.error("Failed to load character versions", error);
+      }
+    }
+    fetchVersions();
+  }, [selectedCharacterId]);
+
   const handleGenerate = async (e) => {
     e.preventDefault();
-    if (!selectedBrandId || !selectedTemplateId) {
-      toast.error("Brand and Workflow Template are required");
+    if (!selectedBrandId) {
+      toast.error("Brand is required");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Resolve asset storage path if an asset is selected
-      const selectedAsset = brandAssets.find((a) => a.id.toString() === selectedAssetId);
-      
-      // Resolve selected character and prompt details
-      const selectedChar = characters.find((c) => c.id.toString() === selectedCharacterId);
-      const selectedPrompt = prompts.find((p) => p.id.toString() === selectedPromptId);
-      const selectedTheme = themes.find((t) => t.id.toString() === selectedThemeId);
+      if (generationMode === "template") {
+        if (!selectedTemplateId) {
+          toast.error("Workflow Template is required");
+          setIsSubmitting(false);
+          return;
+        }
 
-      const inputs = {
-        urls: selectedAsset ? [selectedAsset.storage_path] : [],
-        character_id: selectedChar ? selectedChar.id : null,
-        character_name: selectedChar ? selectedChar.name : null,
-        character_description: selectedChar ? selectedChar.description : null,
-        prompt_id: selectedPrompt ? selectedPrompt.id : null,
-        prompt_name: selectedPrompt ? selectedPrompt.name : null,
-        prompt_text: selectedPrompt ? selectedPrompt.prompt_text : null,
-        theme_id: selectedTheme ? selectedTheme.id : null,
-        theme_name: selectedTheme ? selectedTheme.name : null,
-        theme_json: selectedTheme ? selectedTheme.theme_json : null,
-      };
+        const selectedAsset = brandAssets.find((a) => a.id.toString() === selectedAssetId);
+        const selectedChar = characters.find((c) => c.id.toString() === selectedCharacterId);
+        const selectedPrompt = prompts.find((p) => p.id.toString() === selectedPromptId);
+        const selectedTheme = themes.find((t) => t.id.toString() === selectedThemeId);
 
-      const payload = {
-        brand_id: parseInt(selectedBrandId),
-        workflow_template_id: parseInt(selectedTemplateId),
-        inputs,
-        callback_url: callbackUrl.trim() || null
-      };
+        const inputs = {
+          urls: selectedAsset ? [selectedAsset.storage_path] : [],
+          character_id: selectedChar ? selectedChar.id : null,
+          character_name: selectedChar ? selectedChar.name : null,
+          character_description: selectedChar ? selectedChar.description : null,
+          prompt_id: selectedPrompt ? selectedPrompt.id : null,
+          prompt_name: selectedPrompt ? selectedPrompt.name : null,
+          prompt_text: selectedPrompt ? selectedPrompt.prompt_text : null,
+          theme_id: selectedTheme ? selectedTheme.id : null,
+          theme_name: selectedTheme ? selectedTheme.name : null,
+          theme_json: selectedTheme ? selectedTheme.theme_json : null,
+        };
 
-      const newJob = await api.post("/api/v1/jobs/generate", payload);
-      toast.success("AI Generation Job scheduled successfully!");
-      setCallbackUrl("");
-      
-      // Update list
-      setJobs((prev) => [newJob, ...prev]);
-      // Start polling
-      setActivePollIds((prev) => {
-        const next = new Set(prev);
-        next.add(newJob.id);
-        return next;
-      });
+        const payload = {
+          brand_id: parseInt(selectedBrandId),
+          workflow_template_id: parseInt(selectedTemplateId),
+          inputs,
+          callback_url: callbackUrl.trim() || null
+        };
+
+        const newJob = await api.post("/api/v1/jobs/generate", payload);
+        toast.success("AI Generation Job scheduled successfully!");
+        setCallbackUrl("");
+        setJobs((prev) => [newJob, ...prev]);
+        setActivePollIds((prev) => {
+          const next = new Set(prev);
+          next.add(newJob.id);
+          return next;
+        });
+      } else {
+        // Pipeline Mode
+        if (!selectedAssetId) {
+          toast.error("Source Catalog Asset is required");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const inputs = {
+          source_asset_id: parseInt(selectedAssetId),
+        };
+
+        if (workflowType === "video_generation") {
+          inputs.motion_type = selectedMotionType || "runway_walk";
+          inputs.duration_seconds = parseInt(selectedDurationSeconds) || 5;
+        } else {
+          inputs.character_id = selectedCharacterId ? parseInt(selectedCharacterId) : null;
+          inputs.character_version_id = selectedVersionId ? parseInt(selectedVersionId) : null;
+          inputs.background_style = backgroundStyle || "studio";
+          if (backgroundStyle === "custom") {
+            inputs.custom_background_prompt = customBackgroundPrompt.trim() || null;
+          }
+        }
+
+        const payload = {
+          brand_id: parseInt(selectedBrandId),
+          workflow_type: workflowType,
+          inputs,
+          callback_url: callbackUrl.trim() || null
+        };
+
+        const newJob = await api.post("/api/v1/jobs/workflow", payload);
+        toast.success("AI Generation Workflow scheduled successfully!");
+        setCallbackUrl("");
+        setJobs((prev) => [newJob, ...prev]);
+        setActivePollIds((prev) => {
+          const next = new Set(prev);
+          next.add(newJob.id);
+          return next;
+        });
+      }
     } catch (error) {
       toast.error(error.message || "Failed to trigger AI generation");
     } finally {
@@ -344,7 +421,7 @@ function JobsPageContent() {
             AI Catalog Generator
           </h2>
           <p className="text-xs text-zinc-400">
-            Run isolated on-model image generation workflows using catalog assets and active templates
+            Generate stunning fashion assets using manual pipeline workflows or configured templates
           </p>
         </div>
         <button
@@ -360,10 +437,31 @@ function JobsPageContent() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Form Configurator */}
         <div className="lg:col-span-5 bg-zinc-900/20 border border-zinc-900 rounded-2xl p-6 space-y-6">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
-            <Layers size={14} className="text-purple-400" />
-            Generation Parameters
-          </h3>
+          {/* Generation Mode Tabs */}
+          <div className="flex bg-zinc-950/80 border border-zinc-900 p-1 rounded-xl gap-1">
+            <button
+              type="button"
+              onClick={() => setGenerationMode("pipeline")}
+              className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                generationMode === "pipeline"
+                  ? "bg-purple-600 text-white shadow-md shadow-purple-950/30"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <Sparkles size={13} /> Pipeline Workflows
+            </button>
+            <button
+              type="button"
+              onClick={() => setGenerationMode("template")}
+              className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                generationMode === "template"
+                  ? "bg-purple-600 text-white shadow-md shadow-purple-950/30"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <Layers size={13} /> AI Templates
+            </button>
+          </div>
 
           <form onSubmit={handleGenerate} className="space-y-5">
             {/* Pick Brand */}
@@ -378,22 +476,6 @@ function JobsPageContent() {
               >
                 {brands.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Pick Template */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
-                Workflow AI Template
-              </label>
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
-              >
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>
                 ))}
               </select>
             </div>
@@ -413,6 +495,7 @@ function JobsPageContent() {
                   onChange={(e) => setSelectedAssetId(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
                 >
+                  <option value="">-- Select Source Asset --</option>
                   {brandAssets.map((a) => (
                     <option key={a.id} value={a.id}>{a.name || a.filename} (ID: {a.id})</option>
                   ))}
@@ -420,97 +503,303 @@ function JobsPageContent() {
               )}
             </div>
 
-            {/* Pick Character Profile */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
-                AI Character Model
-              </label>
-              {characters.length === 0 ? (
-                <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
-                  No custom models defined. Create characters under the AI Characters tab first.
+            {/* Source Catalog Preview */}
+            {selectedAssetId && brandAssets.find(a => a.id.toString() === selectedAssetId) && (
+              <div className="flex gap-3 items-center bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl">
+                <img
+                  src={brandAssets.find(a => a.id.toString() === selectedAssetId)?.storage_path}
+                  alt="Source preview"
+                  className="w-12 h-12 object-cover rounded-lg border border-zinc-800"
+                />
+                <div className="truncate">
+                  <span className="text-[9px] text-zinc-500 font-bold block uppercase tracking-wider">Catalog Preview</span>
+                  <span className="text-zinc-300 font-medium truncate block text-xs max-w-[180px]">
+                    {brandAssets.find(a => a.id.toString() === selectedAssetId)?.name || brandAssets.find(a => a.id.toString() === selectedAssetId)?.filename}
+                  </span>
                 </div>
-              ) : (
-                <select
-                  value={selectedCharacterId}
-                  onChange={(e) => setSelectedCharacterId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
-                >
-                  <option value="">-- No Character (Use Default) --</option>
-                  {characters.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
-                  ))}
-                </select>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Pick Campaign Theme */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
-                Campaign Aesthetics Theme
-              </label>
-              {themes.length === 0 ? (
-                <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
-                  No campaign themes found. Create themes under Marketing Campaigns page first.
+            {/* Pipeline Configuration Form */}
+            {generationMode === "pipeline" ? (
+              <div className="space-y-4 pt-1 border-t border-zinc-900">
+                {/* Custom Card Selector for Pipeline Workflows */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                    Workflow Pipeline
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "flat_lay_to_model", label: "Flat-Lay to Model", desc: "Flatlays into model shots", icon: ImageIcon },
+                      { id: "mannequin_to_model", label: "Mannequin to Model", desc: "Mannequins to model shots", icon: ImageIcon },
+                      { id: "video_generation", label: "Video Generation", desc: "Animate into motion video", icon: Video },
+                      { id: "on_model_replacement", label: "On-Model Swap", desc: "Swap model/outfit on catalog", icon: Sparkles },
+                      { id: "background_replacement", label: "Background Swap", desc: "Change photo background", icon: Layers }
+                    ].map((opt) => {
+                      const IconComponent = opt.icon;
+                      const active = workflowType === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setWorkflowType(opt.id)}
+                          className={`text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between h-20 outline-none ${
+                            active
+                              ? "bg-purple-950/20 border-purple-500 shadow-md shadow-purple-950/10 text-zinc-100"
+                              : "bg-zinc-950/40 border-zinc-900 hover:border-zinc-800 text-zinc-400 hover:text-zinc-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start w-full">
+                            <IconComponent size={14} className={active ? "text-purple-400" : "text-zinc-500"} />
+                            {active && <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold tracking-wide">{opt.label}</div>
+                            <div className="text-[8px] text-zinc-500 leading-snug line-clamp-1">{opt.desc}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              ) : (
-                <>
+
+                {/* Conditional Fields based on pipeline choice */}
+                {workflowType === "video_generation" ? (
+                  <div className="space-y-4">
+                    {/* Motion Type */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider flex items-center gap-1">
+                        <Film size={12} className="text-purple-400" />
+                        Motion Preset
+                      </label>
+                      <select
+                        value={selectedMotionType}
+                        onChange={(e) => setSelectedMotionType(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                      >
+                        <option value="runway_walk">Runway Walk (Standard)</option>
+                        <option value="turn_and_pose">Turn & Pose</option>
+                        <option value="close_up_spin">Close Up Spin</option>
+                        <option value="slow_pan">Slow Pan</option>
+                      </select>
+                    </div>
+
+                    {/* Duration */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider flex items-center gap-1">
+                        <Sliders size={12} className="text-purple-400" />
+                        Duration (Seconds)
+                      </label>
+                      <input
+                        type="number"
+                        min={3}
+                        max={15}
+                        value={selectedDurationSeconds}
+                        onChange={(e) => setSelectedDurationSeconds(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Character Identity */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                        AI Character Model
+                      </label>
+                      {characters.length === 0 ? (
+                        <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                          No custom models defined. Create characters under the AI Characters tab first.
+                        </div>
+                      ) : (
+                        <select
+                          value={selectedCharacterId}
+                          onChange={(e) => setSelectedCharacterId(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                        >
+                          <option value="">-- No Character (Use Default) --</option>
+                          {characters.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Character Versions Dropdown */}
+                    {selectedCharacterId && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                          Model Version / Outfit Config
+                        </label>
+                        {characterVersions.length === 0 ? (
+                          <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                            No version profiles defined for this character. Standard configuration will be applied.
+                          </div>
+                        ) : (
+                          <select
+                            value={selectedVersionId}
+                            onChange={(e) => setSelectedVersionId(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                          >
+                            {characterVersions.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                Version {v.version_number} — {v.prompt_trigger ? (v.prompt_trigger.slice(0, 30) + "...") : "Default Preset"}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Background style */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                        Background Aesthetic Style
+                      </label>
+                      <select
+                        value={backgroundStyle}
+                        onChange={(e) => setBackgroundStyle(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                      >
+                        <option value="studio">Minimalist Studio (White/Gray Backdrop)</option>
+                        <option value="outdoor">Bright Outdoor / Sunny Street</option>
+                        <option value="urban">Industrial Urban / Concrete Backdrop</option>
+                        <option value="nature">Garden / Soft Floral Backdrop</option>
+                        <option value="runway">Bright Fashion Runway / Catwalk</option>
+                        <option value="custom">-- Custom Prompt Backdrop --</option>
+                      </select>
+                    </div>
+
+                    {/* Custom Backdrop prompt input */}
+                    {backgroundStyle === "custom" && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                          Custom Backdrop prompt
+                        </label>
+                        <input
+                          type="text"
+                          value={customBackgroundPrompt}
+                          onChange={(e) => setCustomBackgroundPrompt(e.target.value)}
+                          placeholder="e.g. on a cozy café terrace, warm evening light, highly detailed"
+                          className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Template Configuration Form
+              <div className="space-y-4 pt-1 border-t border-zinc-900">
+                {/* Pick Template */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                    Workflow AI Template
+                  </label>
                   <select
-                    value={selectedThemeId}
-                    onChange={(e) => setSelectedThemeId(e.target.value)}
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
                   >
-                    <option value="">-- No Theme (Use Default) --</option>
-                    {themes.map((t) => (
+                    {templates.map((t) => (
                       <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>
                     ))}
                   </select>
-                  {selectedThemeId && themes.find(t => t.id.toString() === selectedThemeId) && (
-                    <div className="bg-zinc-950/60 border border-zinc-850/30 rounded-xl p-3.5 space-y-2 text-[10px] text-zinc-400 mt-2">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <span className="text-[8px] font-semibold text-zinc-500 block uppercase tracking-wider">Lighting</span>
-                          <span className="text-zinc-300 font-medium truncate block">
-                            {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.lighting || "None"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[8px] font-semibold text-zinc-500 block uppercase tracking-wider">Backdrop</span>
-                          <span className="text-zinc-300 font-medium truncate block">
-                            {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.location || "None"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Pick Prompt Template */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
-                AI Prompt Template
-              </label>
-              {prompts.length === 0 ? (
-                <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
-                  No prompts seeded. Create templates under the AI Prompts tab first.
                 </div>
-              ) : (
-                <select
-                  value={selectedPromptId}
-                  onChange={(e) => setSelectedPromptId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
-                >
-                  <option value="">-- No Prompt (Use Default) --</option>
-                  {prompts.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} (ID: {p.id})</option>
-                  ))}
-                </select>
-              )}
-            </div>
+
+                {/* Pick Character Profile */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                    AI Character Model
+                  </label>
+                  {characters.length === 0 ? (
+                    <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                      No custom models defined. Create characters under the AI Characters tab first.
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedCharacterId}
+                      onChange={(e) => setSelectedCharacterId(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                    >
+                      <option value="">-- No Character (Use Default) --</option>
+                      {characters.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Pick Campaign Theme */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                    Campaign Aesthetics Theme
+                  </label>
+                  {themes.length === 0 ? (
+                    <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                      No campaign themes found. Create themes under Marketing Campaigns page first.
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={selectedThemeId}
+                        onChange={(e) => setSelectedThemeId(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                      >
+                        <option value="">-- No Theme (Use Default) --</option>
+                        {themes.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>
+                        ))}
+                      </select>
+                      {selectedThemeId && themes.find(t => t.id.toString() === selectedThemeId) && (
+                        <div className="bg-zinc-950/60 border border-zinc-850/30 rounded-xl p-3.5 space-y-2 text-[10px] text-zinc-400 mt-2">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <span className="text-[8px] font-semibold text-zinc-500 block uppercase tracking-wider">Lighting</span>
+                              <span className="text-zinc-300 font-medium truncate block">
+                                {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.lighting || "None"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[8px] font-semibold text-zinc-500 block uppercase tracking-wider">Backdrop</span>
+                              <span className="text-zinc-300 font-medium truncate block">
+                                {themes.find(t => t.id.toString() === selectedThemeId)?.theme_json?.location || "None"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Pick Prompt Template */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                    AI Prompt Template
+                  </label>
+                  {prompts.length === 0 ? (
+                    <div className="p-3 bg-zinc-950/40 border border-zinc-900/60 rounded-xl text-center text-[10px] text-zinc-500">
+                      No prompts seeded. Create templates under the AI Prompts tab first.
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedPromptId}
+                      onChange={(e) => setSelectedPromptId(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none cursor-pointer"
+                    >
+                      <option value="">-- No Prompt (Use Default) --</option>
+                      {prompts.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} (ID: {p.id})</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Optional webhook URL */}
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 pt-1">
               <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
                 Webhook Callback URL (Optional)
               </label>
@@ -521,7 +810,7 @@ function JobsPageContent() {
                 placeholder="https://my-domain.com/webhooks/modelens"
                 className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
               />
-              <p className="text-[9px] text-zinc-500">
+              <p className="text-[9px] text-zinc-500 leading-normal">
                 ModeLens will POST a JSON payload with execution state details when this job completes or fails.
               </p>
             </div>
@@ -529,7 +818,7 @@ function JobsPageContent() {
             {/* Generate Trigger */}
             <button
               type="submit"
-              disabled={isSubmitting || brandAssets.length === 0}
+              disabled={isSubmitting || !selectedAssetId}
               className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white text-xs font-semibold py-3 rounded-xl transition-all cursor-pointer shadow-lg shadow-purple-950/20 disabled:shadow-none"
             >
               {isSubmitting ? (
@@ -572,7 +861,9 @@ function JobsPageContent() {
                         <div className="space-y-1 text-left">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-zinc-200">Job #{job.id}</span>
-                            <span className="text-[10px] text-zinc-500">Generation</span>
+                            <span className="text-[10px] text-zinc-500 uppercase font-semibold">
+                              {job.job_type === "workflow" ? "Pipeline Pipeline" : "Template Run"}
+                            </span>
                             {brand && (
                               <span className="text-[9px] bg-zinc-950 text-zinc-400 border border-zinc-850 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                                 {brand.name}
@@ -591,15 +882,61 @@ function JobsPageContent() {
                       {/* Outputs & Details Container */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-zinc-850/60 pt-4 text-xs leading-relaxed text-zinc-400">
                         {/* Inputs info */}
-                        <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-1">
-                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Input Parameters</span>
-                          {job.inputs?.urls && job.inputs.urls.length > 0 ? (
+                        <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-2">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide block">Input Parameters</span>
+                          {job.inputs?.workflow_type && (
+                            <div className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider">
+                              Pipeline: {job.inputs.workflow_type.replace(/_/g, ' ')}
+                            </div>
+                          )}
+                          {job.inputs?.source_asset_id ? (
+                            <div className="flex gap-2 items-center">
+                              {(() => {
+                                const sAsset = brandAssets.find(a => a.id === job.inputs.source_asset_id);
+                                if (sAsset) {
+                                  return (
+                                    <>
+                                      <img
+                                        src={sAsset.storage_path}
+                                        alt="Source"
+                                        className="w-10 h-10 object-cover rounded border border-zinc-850"
+                                      />
+                                      <div className="truncate">
+                                        <span className="text-zinc-300 font-medium block truncate text-[10px]">
+                                          {sAsset.name || sAsset.filename}
+                                        </span>
+                                        <span className="text-zinc-500 text-[9px]">ID: {sAsset.id}</span>
+                                      </div>
+                                    </>
+                                  );
+                                }
+                                return (
+                                  <div className="text-[10px] text-zinc-500">
+                                    Asset ID: {job.inputs.source_asset_id}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : job.inputs?.urls && job.inputs.urls.length > 0 ? (
                             <div className="truncate">
                               <span className="text-zinc-500">S3 Source:</span>{" "}
                               <span className="text-[10px] font-mono text-zinc-300">{job.inputs.urls[0]}</span>
                             </div>
                           ) : (
                             <div className="text-[10px] text-zinc-500">No source assets input</div>
+                          )}
+                          {job.inputs?.character_id && (
+                            <div className="text-[10px] text-zinc-400">
+                              <span className="text-zinc-500">Model ID:</span> {job.inputs.character_id}
+                              {job.inputs.character_version_id && (
+                                <> (v{job.inputs.character_version_id})</>
+                              )}
+                            </div>
+                          )}
+                          {job.inputs?.motion_type && (
+                            <div className="text-[10px] text-zinc-400">
+                              <span className="text-zinc-500">Motion:</span> {job.inputs.motion_type} ({job.inputs.duration_seconds || 5}s)
+                            </div>
                           )}
                           {job.callback_url && (
                             <div className="truncate text-[10px]">
@@ -610,27 +947,53 @@ function JobsPageContent() {
                         </div>
 
                         {/* Outputs Info */}
-                        <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-1">
-                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Output Assets</span>
+                        <div className="bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl space-y-2">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wide block">Output Assets</span>
                           {job.status === "completed" ? (
-                            <div className="space-y-1">
-                              {job.outputs?.urls && job.outputs.urls.map((url, index) => (
-                                <div key={index} className="flex justify-between items-center gap-2">
-                                  <span className="text-[10px] font-mono text-emerald-400 truncate max-w-[150px]">
-                                    {url}
-                                  </span>
-                                  <a
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[10px] text-purple-400 hover:text-purple-300 font-semibold inline-flex items-center gap-1 shrink-0"
-                                  >
-                                    View <ExternalLink size={10} />
-                                  </a>
+                            <div className="space-y-2">
+                              {job.outputs?.video_url ? (
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-center gap-2">
+                                    <span className="text-[10px] font-mono text-emerald-400 truncate max-w-[150px]">
+                                      {job.outputs.video_url}
+                                    </span>
+                                    <a
+                                      href={job.outputs.video_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[10px] text-purple-400 hover:text-purple-300 font-semibold inline-flex items-center gap-1 shrink-0"
+                                    >
+                                      Download <ExternalLink size={10} />
+                                    </a>
+                                  </div>
+                                  <video
+                                    src={job.outputs.video_url}
+                                    controls
+                                    className="w-full max-h-48 object-cover rounded-xl border border-zinc-800 bg-black outline-none"
+                                    poster={brandAssets.find((a) => a.id === job.inputs?.source_asset_id)?.storage_path}
+                                  />
                                 </div>
-                              ))}
+                              ) : job.outputs?.urls ? (
+                                <div className="space-y-1">
+                                  {job.outputs.urls.map((url, index) => (
+                                    <div key={index} className="flex justify-between items-center gap-2">
+                                      <span className="text-[10px] font-mono text-emerald-400 truncate max-w-[150px]">
+                                        {url}
+                                      </span>
+                                      <a
+                                        href={url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] text-purple-400 hover:text-purple-300 font-semibold inline-flex items-center gap-1 shrink-0"
+                                      >
+                                        View <ExternalLink size={10} />
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
                               {job.asset_id && (
-                                <div className="text-[10px] text-zinc-500">
+                                <div className="text-[10px] text-zinc-500 border-t border-zinc-900 pt-1 mt-1">
                                   Catalog Asset ID: <span className="text-zinc-300 font-semibold">{job.asset_id}</span>
                                 </div>
                               )}
@@ -642,7 +1005,7 @@ function JobsPageContent() {
                           ) : (
                             <div className="text-[10px] text-zinc-500 flex items-center gap-1.5">
                               <Loader2 className="animate-spin text-purple-500" size={12} />
-                              Awaiting generated output file path...
+                              Awaiting output files...
                             </div>
                           )}
                         </div>
