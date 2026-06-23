@@ -165,3 +165,85 @@ async def delete_theme(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners or admins can delete themes.")
     await db.delete(theme)
     await db.commit()
+
+
+# ========================== Theme Packages ========================
+
+from app.models.db import ThemePackage, Character, WorkflowTemplate, PromptTemplate
+
+class ThemePackageCreateRequest(BaseModel):
+    character_id: Optional[int] = None
+    workflow_template_id: Optional[int] = None
+    prompt_template_id: Optional[int] = None
+    location_name: Optional[str] = Field(None, max_length=255)
+
+class ThemePackageResponse(BaseModel):
+    id: int
+    theme_id: int
+    character_id: Optional[int]
+    workflow_template_id: Optional[int]
+    prompt_template_id: Optional[int]
+    location_name: Optional[str]
+    model_config = {"from_attributes": True}
+
+
+@router.post("/{theme_id}/packages", status_code=status.HTTP_201_CREATED, response_model=ThemePackageResponse)
+async def create_theme_package(
+    theme_id: int,
+    payload: ThemePackageCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a ThemePackage mapping a theme to character, workflow, prompt, and location."""
+    # Verify theme exists
+    theme_result = await db.execute(select(CampaignTheme).where(CampaignTheme.id == theme_id))
+    theme = theme_result.scalars().first()
+    if not theme:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Theme not found.")
+
+    # Validate character exists if provided
+    if payload.character_id is not None:
+        char_result = await db.execute(select(Character).where(Character.id == payload.character_id))
+        if not char_result.scalars().first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    # Validate workflow template exists if provided
+    if payload.workflow_template_id is not None:
+        wf_result = await db.execute(select(WorkflowTemplate).where(WorkflowTemplate.id == payload.workflow_template_id))
+        if not wf_result.scalars().first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow template not found.")
+
+    # Validate prompt template exists if provided
+    if payload.prompt_template_id is not None:
+        pt_result = await db.execute(select(PromptTemplate).where(PromptTemplate.id == payload.prompt_template_id))
+        if not pt_result.scalars().first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prompt template not found.")
+
+    package = ThemePackage(
+        theme_id=theme_id,
+        character_id=payload.character_id,
+        workflow_template_id=payload.workflow_template_id,
+        prompt_template_id=payload.prompt_template_id,
+        location_name=payload.location_name,
+    )
+    db.add(package)
+    await db.commit()
+    await db.refresh(package)
+    return package
+
+
+@router.get("/{theme_id}/packages", response_model=List[ThemePackageResponse])
+async def list_theme_packages(
+    theme_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all packages bundled with a specific theme."""
+    theme_result = await db.execute(select(CampaignTheme).where(CampaignTheme.id == theme_id))
+    if not theme_result.scalars().first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Theme not found.")
+
+    packages_result = await db.execute(
+        select(ThemePackage).where(ThemePackage.theme_id == theme_id)
+    )
+    return list(packages_result.scalars().all())

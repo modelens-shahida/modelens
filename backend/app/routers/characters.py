@@ -188,3 +188,150 @@ async def delete_character(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners or admins can delete characters.")
     await db.delete(character)
     await db.commit()
+
+
+# ========================== Character Versions & Embeddings ========
+
+from app.models.db import CharacterVersion, CharacterEmbedding
+
+class CharacterVersionCreateRequest(BaseModel):
+    version_number: Optional[int] = None
+    prompt_trigger: Optional[str] = None
+    reference_image_path: Optional[str] = Field(None, max_length=1000)
+    validation_image_path: Optional[str] = Field(None, max_length=1000)
+    config_overrides: Optional[dict] = Field(default_factory=dict)
+
+class CharacterVersionResponse(BaseModel):
+    id: int
+    character_id: int
+    version_number: int
+    prompt_trigger: Optional[str]
+    reference_image_path: Optional[str]
+    validation_image_path: Optional[str]
+    config_overrides: dict
+    model_config = {"from_attributes": True}
+
+class CharacterEmbeddingCreateRequest(BaseModel):
+    embedding: list[float] = Field(..., description="1536-dimensional vector")
+    tag: str = Field(..., min_length=1, max_length=255)
+
+class CharacterEmbeddingResponse(BaseModel):
+    id: int
+    character_id: int
+    version_id: int
+    tag: str
+    model_config = {"from_attributes": True}
+
+
+@router.post("/{character_id}/versions", status_code=status.HTTP_201_CREATED, response_model=CharacterVersionResponse)
+async def create_character_version(
+    character_id: int,
+    payload: CharacterVersionCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register a new version for a character. Requires editor role or above."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role == "none":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand workspace.")
+    if role == "viewer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot create character versions.")
+
+    # Auto-increment version_number if not specified
+    if payload.version_number is None:
+        count_result = await db.execute(
+            select(CharacterVersion).where(CharacterVersion.character_id == character_id)
+        )
+        existing = count_result.scalars().all()
+        version_number = len(existing) + 1
+    else:
+        version_number = payload.version_number
+
+    version = CharacterVersion(
+        character_id=character_id,
+        version_number=version_number,
+        prompt_trigger=payload.prompt_trigger,
+        reference_image_path=payload.reference_image_path,
+        validation_image_path=payload.validation_image_path,
+        config_overrides=payload.config_overrides or {},
+    )
+    db.add(version)
+    await db.commit()
+    await db.refresh(version)
+    return version
+
+
+@router.get("/{character_id}/versions", response_model=List[CharacterVersionResponse])
+async def list_character_versions(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all versions for a given character."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if character.brand_id not in accessible_brands:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this character.")
+
+    versions_result = await db.execute(
+        select(CharacterVersion).where(CharacterVersion.character_id == character_id)
+    )
+    return list(versions_result.scalars().all())
+
+
+@router.post("/{character_id}/versions/{version_id}/embeddings", status_code=status.HTTP_201_CREATED, response_model=CharacterEmbeddingResponse)
+async def create_character_embedding(
+    character_id: int,
+    version_id: int,
+    payload: CharacterEmbeddingCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Associate a 1536-dim embedding with a character version."""
+    # Validate character exists and accessible
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if character.brand_id not in accessible_brands:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this character.")
+
+    # Validate version exists
+    version_result = await db.execute(
+        select(CharacterVersion).where(
+            CharacterVersion.id == version_id,
+            CharacterVersion.character_id == character_id
+        )
+    )
+    version = version_result.scalars().first()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character version not found.")
+
+    # Validate embedding dimensions
+    if len(payload.embedding) != 1536:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Embedding must be exactly 1536 dimensions. Got {len(payload.embedding)}."
+        )
+
+    embedding = CharacterEmbedding(
+        character_id=character_id,
+        version_id=version_id,
+        embedding=payload.embedding,
+        tag=payload.tag,
+    )
+    db.add(embedding)
+    await db.commit()
+    await db.refresh(embedding)
+    return embedding
