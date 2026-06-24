@@ -13,7 +13,8 @@ from app.models.db import (
     User,
     Brand,
     BrandMember,
-    WorkflowTemplate
+    WorkflowTemplate,
+    Asset
 )
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 from app.middleware.rate_limit import redis_client, RateLimiter
@@ -241,6 +242,23 @@ async def generate_workflow_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Insufficient credits. Remaining: {db_user.credits}"
         )
+
+    # Validate source_asset_id exists and belongs to the correct brand
+    source_asset_id = payload.inputs.get("source_asset_id")
+    if source_asset_id is not None:
+        asset_query = select(Asset).where(Asset.id == source_asset_id)
+        asset_res = await db.execute(asset_query)
+        source_asset = asset_res.scalars().first()
+        if not source_asset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Source asset {source_asset_id} not found."
+            )
+        if source_asset.brand_id != payload.brand_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Source asset {source_asset_id} does not belong to brand {payload.brand_id}."
+            )
 
     # Deduct 1 credit
     db_user.credits -= 1

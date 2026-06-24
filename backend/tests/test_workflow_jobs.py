@@ -235,3 +235,91 @@ async def test_workflow_credit_billing_and_refund(db_session: AsyncSession, test
     # Verify credit refund
     await db_session.refresh(editor_user)
     assert editor_user.credits == starting_credits
+
+
+# ========================== Input Validation Tests ================
+
+@pytest.mark.asyncio
+async def test_workflow_job_invalid_source_asset_not_found(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """source_asset_id that doesn't exist should return 404 before credit deduction."""
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/generate-workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "background_replacement",
+            "inputs": {"source_asset_id": 99999}
+        }, headers=editor_headers)
+
+        assert res.status_code == 404
+        assert "not found" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_workflow_job_asset_wrong_brand(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """source_asset_id belonging to a different brand should return 400."""
+    from sqlalchemy import text
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    result = await db_session.execute(text("""
+        INSERT INTO brands (name, owner_id) VALUES ('Other Brand', :owner_id) RETURNING id
+    """), {"owner_id": test_data["users"]["owner"].id})
+    await db_session.commit()
+    other_brand_id = result.fetchone()[0]
+
+    result = await db_session.execute(text("""
+        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata)
+        VALUES (:brand_id, 'Other Asset', 'other.png', '/uploads/other.png', 'image', '{}')
+        RETURNING id
+    """), {"brand_id": other_brand_id})
+    await db_session.commit()
+    other_asset_id = result.fetchone()[0]
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/generate-workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "background_replacement",
+            "inputs": {"source_asset_id": other_asset_id}
+        }, headers=editor_headers)
+
+        assert res.status_code == 400
+        assert "does not belong to brand" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_job_valid_asset_succeeds(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """source_asset_id belonging to correct brand should succeed."""
+    from sqlalchemy import text
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    result = await db_session.execute(text("""
+        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata)
+        VALUES (:brand_id, 'Valid Asset', 'valid.png', '/uploads/valid.png', 'image', '{}')
+        RETURNING id
+    """), {"brand_id": brand.id})
+    await db_session.commit()
+    valid_asset_id = result.fetchone()[0]
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/generate-workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "background_replacement",
+            "inputs": {"source_asset_id": valid_asset_id}
+        }, headers=editor_headers)
+
+        assert res.status_code == 201
