@@ -22,6 +22,16 @@ async def test_workflow_endpoint_rbac(client: AsyncClient, db_session: AsyncSess
     editor_headers = test_data["get_headers"]("editor")
     viewer_headers = test_data["get_headers"]("viewer")
 
+    # Seed asset
+    from sqlalchemy import text
+    result = await db_session.execute(text("""
+        INSERT INTO assets (brand_id, name, filename, storage_path, asset_type, metadata)
+        VALUES (:brand_id, 'Valid Asset', 'valid.png', '/uploads/valid.png', 'image', '{}')
+        RETURNING id
+    """), {"brand_id": brand.id})
+    await db_session.commit()
+    valid_asset_id = result.fetchone()[0]
+
     # 1. Editor should succeed
     with patch("app.routers.jobs.process_workflow_job.delay") as mock_delay, \
          patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock) as mock_redis_set:
@@ -30,7 +40,7 @@ async def test_workflow_endpoint_rbac(client: AsyncClient, db_session: AsyncSess
             "brand_id": brand.id,
             "workflow_type": "flat_lay_to_model",
             "inputs": {
-                "source_asset_id": 1
+                "source_asset_id": valid_asset_id
             },
             "callback_url": "http://callback-url.com/cb"
         }
@@ -249,7 +259,7 @@ async def test_workflow_job_invalid_source_asset_not_found(client: AsyncClient, 
     with patch("app.routers.jobs.process_workflow_job.delay"), \
          patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
 
-        res = await client.post("/api/v1/jobs/generate-workflow", json={
+        res = await client.post("/api/v1/jobs/workflow", json={
             "brand_id": brand.id,
             "workflow_template_id": workflow.id,
             "workflow_type": "background_replacement",
@@ -285,7 +295,7 @@ async def test_workflow_job_asset_wrong_brand(client: AsyncClient, db_session: A
     with patch("app.routers.jobs.process_workflow_job.delay"), \
          patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
 
-        res = await client.post("/api/v1/jobs/generate-workflow", json={
+        res = await client.post("/api/v1/jobs/workflow", json={
             "brand_id": brand.id,
             "workflow_template_id": workflow.id,
             "workflow_type": "background_replacement",
@@ -315,7 +325,7 @@ async def test_workflow_job_valid_asset_succeeds(client: AsyncClient, db_session
     with patch("app.routers.jobs.process_workflow_job.delay"), \
          patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
 
-        res = await client.post("/api/v1/jobs/generate-workflow", json={
+        res = await client.post("/api/v1/jobs/workflow", json={
             "brand_id": brand.id,
             "workflow_template_id": workflow.id,
             "workflow_type": "background_replacement",
