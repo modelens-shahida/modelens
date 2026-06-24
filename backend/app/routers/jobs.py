@@ -260,6 +260,37 @@ async def generate_workflow_job(
                 detail=f"Source asset {source_asset_id} does not belong to brand {payload.brand_id}."
             )
 
+    # Validate character_id and character_version_id if provided
+    character_id = payload.inputs.get("character_id")
+    character_version_id = payload.inputs.get("character_version_id")
+
+    if character_id is not None:
+        from app.models.db import Character, CharacterVersion
+        char_query = select(Character).where(Character.id == character_id)
+        char_res = await db.execute(char_query)
+        character = char_res.scalars().first()
+        if not character:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Character {character_id} not found."
+            )
+        if character.brand_id != payload.brand_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Character {character_id} does not belong to brand {payload.brand_id}."
+            )
+
+        if character_version_id is not None:
+            version_query = select(CharacterVersion).where(
+                CharacterVersion.id == character_version_id,
+                CharacterVersion.character_id == character_id
+            )
+            version_res = await db.execute(version_query)
+            if not version_res.scalars().first():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Character version {character_version_id} not found for character {character_id}."
+                )
     # Deduct 1 credit
     db_user.credits -= 1
     db.add(db_user)

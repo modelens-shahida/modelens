@@ -333,3 +333,137 @@ async def test_workflow_job_valid_asset_succeeds(client: AsyncClient, db_session
         }, headers=editor_headers)
 
         assert res.status_code == 201
+
+
+# ========================== Character Validation Tests ============
+
+@pytest.mark.asyncio
+async def test_workflow_job_invalid_character_not_found(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """character_id that doesn't exist should return 404 before credit deduction."""
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "flat_lay_to_model",
+            "inputs": {"character_id": 99999}
+        }, headers=editor_headers)
+
+        assert res.status_code == 404
+        assert "character" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_workflow_job_character_wrong_brand(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """character_id belonging to a different brand should return 400."""
+    from sqlalchemy import text
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    # Create another brand and character under it
+    result = await db_session.execute(text("""
+        INSERT INTO brands (name, owner_id) VALUES ('Other Brand 2', :owner_id) RETURNING id
+    """), {"owner_id": test_data["users"]["owner"].id})
+    await db_session.commit()
+    other_brand_id = result.fetchone()[0]
+
+    result = await db_session.execute(text("""
+        INSERT INTO characters (brand_id, name, description, image_path)
+        VALUES (:brand_id, 'Other Char', 'desc', '/uploads/other_char.png')
+        RETURNING id
+    """), {"brand_id": other_brand_id})
+    await db_session.commit()
+    other_char_id = result.fetchone()[0]
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "flat_lay_to_model",
+            "inputs": {"character_id": other_char_id}
+        }, headers=editor_headers)
+
+        assert res.status_code == 400
+        assert "does not belong to brand" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_job_invalid_character_version(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """character_version_id not associated with character_id should return 404."""
+    from sqlalchemy import text
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    result = await db_session.execute(text("""
+        INSERT INTO characters (brand_id, name, description, image_path)
+        VALUES (:brand_id, 'Version Test Char', 'desc', '/uploads/vtc.png')
+        RETURNING id
+    """), {"brand_id": brand.id})
+    await db_session.commit()
+    char_id = result.fetchone()[0]
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "flat_lay_to_model",
+            "inputs": {"character_id": char_id, "character_version_id": 99999}
+        }, headers=editor_headers)
+
+        assert res.status_code == 404
+        assert "version" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_workflow_job_valid_character_and_version_succeeds(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """Valid character and version from correct brand should succeed."""
+    from sqlalchemy import text
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_headers = test_data["get_headers"]("editor")
+
+    result = await db_session.execute(text("""
+        INSERT INTO characters (brand_id, name, description, image_path)
+        VALUES (:brand_id, 'Valid Char', 'desc', '/uploads/valid_char.png')
+        RETURNING id
+    """), {"brand_id": brand.id})
+    await db_session.commit()
+    char_id = result.fetchone()[0]
+
+    from datetime import datetime
+    result = await db_session.execute(text("""
+        INSERT INTO character_versions (character_id, version_number, config_overrides, created_at)
+        VALUES (:char_id, 1, '{}', :created_at) RETURNING id
+    """), {"char_id": char_id, "created_at": datetime.utcnow()})
+    await db_session.commit()
+    version_id = result.fetchone()[0]
+
+    with patch("app.routers.jobs.process_workflow_job.delay"), \
+         patch("app.routers.jobs.redis_client.set", new_callable=AsyncMock):
+
+        res = await client.post("/api/v1/jobs/workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "flat_lay_to_model",
+            "inputs": {"character_id": char_id, "character_version_id": version_id}
+        })
+        assert res.status_code == 401 # Test request without headers returns 401
+
+        res = await client.post("/api/v1/jobs/workflow", json={
+            "brand_id": brand.id,
+            "workflow_template_id": workflow.id,
+            "workflow_type": "flat_lay_to_model",
+            "inputs": {"character_id": char_id, "character_version_id": version_id}
+        }, headers=editor_headers)
+        assert res.status_code == 201
