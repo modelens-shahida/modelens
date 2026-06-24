@@ -343,10 +343,11 @@ async def test_workflow_job_valid_character_and_version_succeeds(client: AsyncCl
     await db_session.commit()
     char_id = result.fetchone()[0]
 
+    from datetime import datetime
     result = await db_session.execute(text("""
-        INSERT INTO character_versions (character_id, version_number, config_overrides)
-        VALUES (:char_id, 1, '{}') RETURNING id
-    """), {"char_id": char_id})
+        INSERT INTO character_versions (character_id, version_number, config_overrides, created_at)
+        VALUES (:char_id, 1, '{}', :created_at) RETURNING id
+    """), {"char_id": char_id, "created_at": datetime.utcnow()})
     await db_session.commit()
     version_id = result.fetchone()[0]
 
