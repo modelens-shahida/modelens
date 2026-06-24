@@ -295,3 +295,125 @@ async def test_generate_image_mock_fallback_without_api_key(monkeypatch):
     result = await _generate_image("A test prompt")
     assert isinstance(result, bytes)
     assert len(result) > 0
+
+
+# ========================== Retry Resilience Tests ================
+
+@pytest.mark.asyncio
+async def test_generation_job_retries_on_transient_error(db_session: AsyncSession, test_data: dict):
+    """
+    Worker should retry on RuntimeError (transient) and only mark failed
+    after max retries are exhausted.
+    """
+    from app.worker import _process_generation_job_async
+    from app.models.db import AIJob, User
+    from sqlalchemy import select
+
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_user = test_data["users"]["editor"]
+
+    # Deduct 1 credit as generate_job endpoint normally does
+    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+    user = user_result.scalars().first()
+    starting_credits = user.credits
+    user.credits -= 1
+    await db_session.commit()
+
+    job = AIJob(
+        user_id=editor_user.id,
+        brand_id=brand.id,
+        workflow_template_id=workflow.id,
+        status="pending",
+        job_type="generation",
+        inputs={"prompt": "Retry test prompt"},
+        outputs={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    call_count = 0
+
+    async def flaky_generate(prompt):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("Transient API error")
+
+    # Simulate max_retries exhausted by mocking request.retries
+    mock_request = MagicMock()
+    mock_request.retries = 3  # equals max_retries
+
+    with patch("app.worker._generate_image", new=flaky_generate), \
+         patch("app.worker.process_generation_job.request", mock_request), \
+         patch("app.worker.process_generation_job.max_retries", 3), \
+         patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.dispatch_webhook.delay"):
+
+        await _process_generation_job_async(job.id)
+
+    await db_session.refresh(job)
+    assert job.status == "failed"
+
+    # Credits should be refunded since all retries exhausted
+    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+    updated_user = user_result.scalars().first()
+    assert updated_user.credits == starting_credits
+
+
+@pytest.mark.asyncio
+async def test_generation_job_does_not_fail_on_first_retry(db_session: AsyncSession, test_data: dict):
+    """
+    Worker should NOT mark job as failed or refund credits on first retry attempt.
+    """
+    from app.worker import _process_generation_job_async
+    from app.models.db import AIJob, User
+    from sqlalchemy import select
+
+    brand = test_data["brand"]
+    workflow = test_data["workflow"]
+    editor_user = test_data["users"]["editor"]
+
+    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+    user = user_result.scalars().first()
+    starting_credits = user.credits
+    user.credits -= 1
+    await db_session.commit()
+
+    job = AIJob(
+        user_id=editor_user.id,
+        brand_id=brand.id,
+        workflow_template_id=workflow.id,
+        status="pending",
+        job_type="generation",
+        inputs={"prompt": "First retry test"},
+        outputs={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    # Simulate first retry (retries=0, not yet exhausted)
+    mock_request = MagicMock()
+    mock_request.retries = 0
+
+    with patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Transient error"))), \
+         patch("app.worker.process_generation_job.request", mock_request), \
+         patch("app.worker.process_generation_job.max_retries", 3), \
+         patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.dispatch_webhook.delay"):
+
+        # Should raise to trigger Celery retry mechanism
+        try:
+            await _process_generation_job_async(job.id)
+        except Exception:
+            pass
+
+    await db_session.refresh(job)
+    # Job should NOT be marked failed yet
+    assert job.status != "failed"
+
+    # Credits should NOT be refunded yet
+    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+    updated_user = user_result.scalars().first()
+    assert updated_user.credits == starting_credits - 1

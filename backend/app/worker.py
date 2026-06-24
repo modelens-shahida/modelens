@@ -345,16 +345,22 @@ async def _process_generation_job_async(job_id: int):
 
         except Exception as e:
             print(f"[Worker] Job {job_id} execution error: {e}")
-            job.status = "failed"
-            job.error_message = str(e)
 
-            # Refund 1 credit to the user since generation failed
-            user_result = await db.execute(select(User).where(User.id == job.user_id))
-            refund_user = user_result.scalars().first()
-            if refund_user:
-                refund_user.credits += 1
+            # Only mark as failed and refund credits when all retries are exhausted
+            if process_generation_job.request.retries >= process_generation_job.max_retries:
+                job.status = "failed"
+                job.error_message = str(e)
 
-            await db.commit()
+                # Refund 1 credit to the user since generation permanently failed
+                user_result = await db.execute(select(User).where(User.id == job.user_id))
+                refund_user = user_result.scalars().first()
+                if refund_user:
+                    refund_user.credits += 1
+
+                await db.commit()
+            else:
+                print(f"[Worker] Job {job_id} will be retried (attempt {process_generation_job.request.retries + 1}/{process_generation_job.max_retries})")
+                raise
 
             # Cache failure in Redis
             job_data = {
@@ -382,8 +388,16 @@ async def _process_generation_job_async(job_id: int):
                 dispatch_webhook.delay(job.callback_url, job_data)
 
 
-@celery_app.task(name="app.worker.process_generation_job")
-def process_generation_job(job_id: int):
+@celery_app.task(
+    name="app.worker.process_generation_job",
+    bind=True,
+    autoretry_for=(httpx.HTTPError, RuntimeError),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    max_retries=3,
+    retry_jitter=True,
+)
+def process_generation_job(self, job_id: int):
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -626,8 +640,16 @@ async def _process_workflow_job_async(job_id: int):
                 dispatch_webhook.delay(job.callback_url, job_data)
 
 
-@celery_app.task(name="app.worker.process_workflow_job")
-def process_workflow_job(job_id: int):
+@celery_app.task(
+    name="app.worker.process_workflow_job",
+    bind=True,
+    autoretry_for=(httpx.HTTPError, RuntimeError),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    max_retries=3,
+    retry_jitter=True,
+)
+def process_workflow_job(self, job_id: int):
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
