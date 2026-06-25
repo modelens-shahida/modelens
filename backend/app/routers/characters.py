@@ -335,3 +335,99 @@ async def create_character_embedding(
     await db.commit()
     await db.refresh(embedding)
     return embedding
+
+
+# ========================== Character Training API =================
+
+from app.models.db import AIJob
+
+class TrainingRequest(BaseModel):
+    version_number: int = Field(default=1, ge=1)
+    training_assets: List[int] = Field(..., min_length=1, description="List of Asset IDs")
+    hyperparameters: dict = Field(default_factory=lambda: {
+        "learning_rate": 0.0001,
+        "max_epochs": 10,
+        "batch_size": 2
+    })
+
+class TrainingJobResponse(BaseModel):
+    job_id: int
+    character_id: int
+    status: str
+    credits_remaining: int
+    model_config = {"from_attributes": True}
+
+
+@router.post("/{character_id}/train", status_code=status.HTTP_201_CREATED, response_model=TrainingJobResponse)
+async def train_character(
+    character_id: int,
+    payload: TrainingRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Submit a character LoRA training job.
+    Requires editor role. Deducts 10 credits on submission.
+    """
+    from app.models.db import Asset
+    from app.worker import process_training_job
+
+    # 1. Verify character exists
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    # 2. RBAC check — editor or above
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role == "none":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand workspace.")
+    if role == "viewer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot submit training jobs.")
+
+    # 3. Validate training assets
+    for asset_id in payload.training_assets:
+        asset_result = await db.execute(select(Asset).where(Asset.id == asset_id))
+        asset = asset_result.scalars().first()
+        if not asset:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Asset {asset_id} not found.")
+        if asset.brand_id != character.brand_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Asset {asset_id} does not belong to this brand.")
+        if asset.asset_type != "image":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Asset {asset_id} is not an image.")
+
+    # 4. Credit check and deduction (10 credits)
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalars().first()
+    if user.credits < 10:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Insufficient credits. Required: 10, Remaining: {user.credits}")
+    user.credits -= 10
+
+    # 5. Create AIJob
+    job = AIJob(
+        user_id=current_user.id,
+        brand_id=character.brand_id,
+        status="pending",
+        job_type="character_training",
+        inputs={
+            "character_id": character_id,
+            "version_number": payload.version_number,
+            "training_assets": payload.training_assets,
+            "hyperparameters": payload.hyperparameters,
+        },
+        outputs={},
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    await db.refresh(user)
+
+    # 6. Enqueue background task
+    process_training_job.delay(job.id)
+
+    return TrainingJobResponse(
+        job_id=job.id,
+        character_id=character_id,
+        status=job.status,
+        credits_remaining=user.credits,
+    )
