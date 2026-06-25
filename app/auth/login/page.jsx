@@ -1,14 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useSearchParams } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { motion } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const { login } = useAuth();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams.get("redirect") || "/dashboard";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -23,7 +27,7 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, redirectTarget);
       toast.success("Welcome back to ModeLens!");
     } catch (error) {
       toast.error(error.message || "Invalid credentials");
@@ -152,5 +156,17 @@ export default function LoginPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <Loader2 className="animate-spin text-purple-500" size={24} />
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 }
