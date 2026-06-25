@@ -771,16 +771,13 @@ async def _process_training_job_async(job_id: int, retries: int = 0, max_retries
                 },
             )
             db.add(new_version)
+            await db.flush()
 
             job.status = "completed"
             job.outputs = {
-                "character_version_id": None,
+                "character_version_id": new_version.id,
                 "training_bundle_size": len(training_bundle),
             }
-            await db.commit()
-            await db.refresh(new_version)
-
-            job.outputs["character_version_id"] = new_version.id
             await db.commit()
 
             print(f"[Worker] Training job {job_id} completed. CharacterVersion {new_version.id} created.")

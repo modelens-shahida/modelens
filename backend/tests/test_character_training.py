@@ -7,6 +7,14 @@ from sqlalchemy import select, text
 
 from app.models.db import AIJob, User, CharacterVersion
 
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 @pytest.mark.asyncio
 async def test_train_character_auth_required(client: AsyncClient, test_data: dict):
@@ -151,7 +159,8 @@ async def test_training_job_success_creates_character_version(db_session: AsyncS
     await db_session.commit()
     await db_session.refresh(job)
 
-    with patch("app.worker.asyncio.sleep", new=AsyncMock()):
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker.asyncio.sleep", new=AsyncMock()):
         await _process_training_job_async(job.id, retries=0, max_retries=3)
 
     await db_session.refresh(job)
@@ -186,7 +195,8 @@ async def test_training_job_failure_refunds_credits(db_session: AsyncSession, te
     await db_session.commit()
     await db_session.refresh(job)
 
-    with patch("app.worker.asyncio.sleep", new=AsyncMock(side_effect=RuntimeError("Training failed"))):
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker.asyncio.sleep", new=AsyncMock(side_effect=RuntimeError("Training failed"))):
         await _process_training_job_async(job.id, retries=3, max_retries=3)
 
     await db_session.refresh(job)

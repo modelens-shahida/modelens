@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, Character, Brand, BrandMember, User
 from app.middleware.auth import get_current_user
+from app.worker import process_training_job
 
 router = APIRouter(
     prefix="/api/v1/characters",
@@ -370,7 +371,6 @@ async def train_character(
     Requires editor role. Deducts 10 credits on submission.
     """
     from app.models.db import Asset
-    from app.worker import process_training_job
 
     # 1. Verify character exists
     result = await db.execute(select(Character).where(Character.id == character_id))
