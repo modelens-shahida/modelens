@@ -1,10 +1,18 @@
 import pytest
 import json
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import AIJob, User
+
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 @pytest.mark.asyncio
 async def test_job_generation_success(client: AsyncClient, db_session: AsyncSession, test_data: dict):
@@ -258,20 +266,14 @@ async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSe
     await db_session.commit()
     await db_session.refresh(job)
 
-    class MockSessionContext:
-        def __init__(self, session):
-            self.session = session
-        async def __aenter__(self):
-            return self.session
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
+
 
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
          patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Image generation failed"))), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
-        await _process_generation_job_async(job.id)
+        await _process_generation_job_async(job.id, retries=3, max_retries=3)
 
     await db_session.refresh(job)
     assert job.status == "failed"
@@ -340,17 +342,12 @@ async def test_generation_job_retries_on_transient_error(db_session: AsyncSessio
         call_count += 1
         raise RuntimeError("Transient API error")
 
-    # Simulate max_retries exhausted by mocking request.retries
-    mock_request = MagicMock()
-    mock_request.retries = 3  # equals max_retries
-
-    with patch("app.worker._generate_image", new=flaky_generate), \
-         patch("app.worker.process_generation_job.request", mock_request), \
-         patch("app.worker.process_generation_job.max_retries", 3), \
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker._generate_image", new=flaky_generate), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
-        await _process_generation_job_async(job.id)
+        await _process_generation_job_async(job.id, retries=3, max_retries=3)
 
     await db_session.refresh(job)
     assert job.status == "failed"
@@ -393,19 +390,14 @@ async def test_generation_job_does_not_fail_on_first_retry(db_session: AsyncSess
     await db_session.commit()
     await db_session.refresh(job)
 
-    # Simulate first retry (retries=0, not yet exhausted)
-    mock_request = MagicMock()
-    mock_request.retries = 0
-
-    with patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Transient error"))), \
-         patch("app.worker.process_generation_job.request", mock_request), \
-         patch("app.worker.process_generation_job.max_retries", 3), \
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Transient error"))), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
         # Should raise to trigger Celery retry mechanism
         try:
-            await _process_generation_job_async(job.id)
+            await _process_generation_job_async(job.id, retries=0, max_retries=3)
         except Exception:
             pass
 

@@ -236,7 +236,7 @@ async def _generate_image(prompt: str) -> bytes:
         raise RuntimeError(f"Image generation failed: {str(e)}")
 
 
-async def _process_generation_job_async(job_id: int):
+async def _process_generation_job_async(job_id: int, retries: int = 0, max_retries: int = 0):
     async with async_session_maker() as db:
         # Retrieve job
         result = await db.execute(
@@ -347,7 +347,7 @@ async def _process_generation_job_async(job_id: int):
             print(f"[Worker] Job {job_id} execution error: {e}")
 
             # Only mark as failed and refund credits when all retries are exhausted
-            if process_generation_job.request.retries >= process_generation_job.max_retries:
+            if retries >= max_retries:
                 job.status = "failed"
                 job.error_message = str(e)
 
@@ -359,7 +359,7 @@ async def _process_generation_job_async(job_id: int):
 
                 await db.commit()
             else:
-                print(f"[Worker] Job {job_id} will be retried (attempt {process_generation_job.request.retries + 1}/{process_generation_job.max_retries})")
+                print(f"[Worker] Job {job_id} will be retried (attempt {retries + 1}/{max_retries})")
                 raise
 
             # Cache failure in Redis
@@ -404,10 +404,10 @@ def process_generation_job(self, job_id: int):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-    loop.run_until_complete(_process_generation_job_async(job_id))
+    loop.run_until_complete(_process_generation_job_async(job_id, self.request.retries, self.max_retries))
 
 
-async def _process_workflow_job_async(job_id: int):
+async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries: int = 0):
     async with async_session_maker() as db:
         # Retrieve job
         result = await db.execute(
@@ -603,16 +603,22 @@ async def _process_workflow_job_async(job_id: int):
 
         except Exception as e:
             print(f"[Worker] Workflow job {job_id} execution error: {e}")
-            job.status = "failed"
-            job.error_message = str(e)
 
-            # Refund 1 credit to the user since generation failed
-            user_result = await db.execute(select(User).where(User.id == job.user_id))
-            refund_user = user_result.scalars().first()
-            if refund_user:
-                refund_user.credits += 1
+            # Only mark as failed and refund credits when all retries are exhausted
+            if retries >= max_retries:
+                job.status = "failed"
+                job.error_message = str(e)
 
-            await db.commit()
+                # Refund 1 credit to the user since generation permanently failed
+                user_result = await db.execute(select(User).where(User.id == job.user_id))
+                refund_user = user_result.scalars().first()
+                if refund_user:
+                    refund_user.credits += 1
+
+                await db.commit()
+            else:
+                print(f"[Worker] Workflow job {job_id} will be retried (attempt {retries + 1}/{max_retries})")
+                raise
 
             # Cache failure in Redis
             job_data = {
@@ -656,7 +662,7 @@ def process_workflow_job(self, job_id: int):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-    loop.run_until_complete(_process_workflow_job_async(job_id))
+    loop.run_until_complete(_process_workflow_job_async(job_id, self.request.retries, self.max_retries))
 
 
 def is_safe_url(url: str) -> bool:

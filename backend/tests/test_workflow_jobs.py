@@ -1,7 +1,7 @@
 import pytest
 import json
 import base64
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -236,7 +236,7 @@ async def test_workflow_credit_billing_and_refund(db_session: AsyncSession, test
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
-        await _process_workflow_job_async(job.id)
+        await _process_workflow_job_async(job.id, retries=3, max_retries=3)
 
     await db_session.refresh(job)
     assert job.status == "failed"
@@ -467,3 +467,44 @@ async def test_workflow_job_valid_character_and_version_succeeds(client: AsyncCl
             "inputs": {"character_id": char_id, "character_version_id": version_id}
         }, headers=editor_headers)
         assert res.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_workflow_job_does_not_fail_on_first_retry(db_session: AsyncSession, test_data: dict):
+    """Workflow job should not mark as failed or refund credits on first retry attempt."""
+    brand = test_data["brand"]
+    editor_user = test_data["users"]["editor"]
+
+    starting_credits = editor_user.credits
+    editor_user.credits -= 1
+    db_session.add(editor_user)
+    await db_session.commit()
+
+    # Create job that will fail (no source asset provided)
+    job = AIJob(
+        user_id=editor_user.id,
+        brand_id=brand.id,
+        status="pending",
+        job_type="workflow",
+        inputs={
+            "workflow_type": "flat_lay_to_model"
+        },
+        outputs={}
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.dispatch_webhook.delay"):
+
+        try:
+            await _process_workflow_job_async(job.id, retries=0, max_retries=3)
+        except Exception:
+            pass
+
+    await db_session.refresh(job)
+    assert job.status != "failed"
+
+    await db_session.refresh(editor_user)
+    assert editor_user.credits == starting_credits - 1
