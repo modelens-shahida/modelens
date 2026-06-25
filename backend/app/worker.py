@@ -714,3 +714,108 @@ def dispatch_webhook(self, callback_url: str, payload: dict):
     print(f"[Worker] Webhook dispatched successfully.")
 
 
+
+
+# ========================== Character Training Task ================
+
+async def _process_training_job_async(job_id: int, retries: int = 0, max_retries: int = 3):
+    async with async_session_maker() as db:
+        result = await db.execute(select(AIJob).where(AIJob.id == job_id))
+        job = result.scalars().first()
+        if not job:
+            print(f"[Worker] Training job {job_id} not found.")
+            return
+
+        job.status = "processing"
+        await db.commit()
+        await db.refresh(job)
+
+        try:
+            inputs = job.inputs or {}
+            character_id = inputs.get("character_id")
+            training_asset_ids = inputs.get("training_assets", [])
+            hyperparameters = inputs.get("hyperparameters", {})
+            version_number = inputs.get("version_number", 1)
+
+            # Retrieve training assets
+            assets = []
+            for asset_id in training_asset_ids:
+                asset_result = await db.execute(select(Asset).where(Asset.id == asset_id))
+                asset = asset_result.scalars().first()
+                if asset:
+                    assets.append(asset)
+
+            # Mock dataset assembly — simulate compiling images + caption files
+            print(f"[Worker] Assembling training dataset for character {character_id}...")
+            training_bundle = []
+            for asset in assets:
+                prompt = asset.meta.get("prompt", f"character_{character_id}_reference")
+                training_bundle.append({
+                    "image_path": asset.storage_path,
+                    "caption": prompt,
+                })
+            print(f"[Worker] Training bundle: {len(training_bundle)} image-caption pairs")
+
+            # Simulate training latency
+            await asyncio.sleep(5)
+
+            # Create CharacterVersion record on success
+            new_version = CharacterVersion(
+                character_id=character_id,
+                version_number=version_number,
+                prompt_trigger=f"character_{character_id}_v{version_number}",
+                config_overrides={
+                    "hyperparameters": hyperparameters,
+                    "training_assets": training_asset_ids,
+                    "job_id": job_id,
+                },
+            )
+            db.add(new_version)
+            await db.flush()
+
+            job.status = "completed"
+            job.outputs = {
+                "character_version_id": new_version.id,
+                "training_bundle_size": len(training_bundle),
+            }
+            await db.commit()
+
+            print(f"[Worker] Training job {job_id} completed. CharacterVersion {new_version.id} created.")
+
+        except Exception as e:
+            print(f"[Worker] Training job {job_id} error: {e}")
+
+            if retries >= max_retries:
+                job.status = "failed"
+                job.error_message = str(e)
+
+                # Refund 10 credits on permanent failure
+                user_result = await db.execute(select(User).where(User.id == job.user_id))
+                refund_user = user_result.scalars().first()
+                if refund_user:
+                    refund_user.credits += 10
+
+                await db.commit()
+            else:
+                print(f"[Worker] Training job {job_id} will be retried (attempt {retries + 1}/{max_retries})")
+                raise
+
+
+@celery_app.task(
+    name="app.worker.process_training_job",
+    bind=True,
+    autoretry_for=(httpx.HTTPError, RuntimeError),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    max_retries=3,
+    retry_jitter=True,
+)
+def process_training_job(self, job_id: int):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(
+        _process_training_job_async(job_id, self.request.retries, self.max_retries)
+    )
