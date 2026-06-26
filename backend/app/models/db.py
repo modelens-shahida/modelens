@@ -93,6 +93,7 @@ class Asset(Base):
     __table_args__ = (
         Index("idx_assets_brand_id", "brand_id"),
         Index("idx_assets_metadata_gin", "metadata", postgresql_using="gin"),
+        Index("idx_assets_deleted_at", "deleted_at"),
         Index(
             "idx_assets_name_metadata_fts",
             func.to_tsvector(
