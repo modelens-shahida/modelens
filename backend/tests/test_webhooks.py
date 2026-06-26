@@ -8,6 +8,17 @@ from sqlalchemy import select
 from app.models.db import WebhookSubscription, AIJob
 
 
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 @pytest.mark.asyncio
 async def test_webhook_auth_required(client: AsyncClient, test_data: dict):
     brand = test_data["brand"]
@@ -169,7 +180,8 @@ async def test_worker_dispatches_brand_webhooks_on_job_completed(db_session: Asy
     await db_session.commit()
     await db_session.refresh(job)
 
-    with patch("app.worker._generate_image", new=AsyncMock(return_value=b"\x89PNGfake")), \
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker._generate_image", new=AsyncMock(return_value=b"\x89PNGfake")), \
          patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/test.png"), \
          patch("app.worker.redis_client.set", new=AsyncMock()), \
          patch("app.worker.dispatch_webhook.delay") as mock_dispatch:
