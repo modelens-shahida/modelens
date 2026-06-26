@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, WebhookSubscription, Brand, BrandMember, User
 from app.middleware.auth import get_current_user
+from app.services.audit import write_audit_log
 
 router = APIRouter(
     prefix="/api/v1/webhooks",
@@ -91,6 +92,10 @@ async def register_webhook(
     db.add(subscription)
     await db.commit()
     await db.refresh(subscription)
+
+    # Audit log
+    await write_audit_log(db, action="webhook_created", user_id=current_user.id, brand_id=payload.brand_id, details={"webhook_id": subscription.id, "url": payload.url, "events": payload.events})
+
     return subscription
 
 
@@ -132,5 +137,10 @@ async def delete_webhook(
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role to delete webhooks.")
 
+    sub_id = subscription.id
+    sub_brand_id = subscription.brand_id
     await db.delete(subscription)
     await db.commit()
+
+    # Audit log
+    await write_audit_log(db, action="webhook_deleted", user_id=current_user.id, brand_id=sub_brand_id, details={"webhook_id": sub_id})

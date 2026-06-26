@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.models.db import get_db, APIKey, User
 from app.middleware.auth import get_current_user, hash_api_key
+from app.services.audit import write_audit_log
 
 router = APIRouter(
     prefix="/api/v1/api-keys",
@@ -75,6 +76,9 @@ async def create_api_key(
     await db.commit()
     await db.refresh(api_key)
 
+    # Audit log
+    await write_audit_log(db, action="api_key_created", user_id=current_user.id, details={"key_id": api_key.id, "name": api_key.name})
+
     return APIKeyCreateResponse(
         id=api_key.id,
         name=api_key.name,
@@ -130,5 +134,10 @@ async def delete_api_key(
             detail="API key not found or you don't have permission to delete it."
         )
 
+    key_id = api_key.id
+    key_name = api_key.name
     await db.delete(api_key)
     await db.commit()
+
+    # Audit log
+    await write_audit_log(db, action="api_key_deleted", user_id=current_user.id, details={"key_id": key_id, "name": key_name})

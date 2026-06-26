@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, Brand, BrandMember, User
 from app.middleware.auth import get_current_user, require_brand_role, ROLE_HIERARCHY
+from app.services.audit import write_audit_log
 
 router = APIRouter(
     prefix="/api/v1/brands",
@@ -224,6 +225,9 @@ async def invite_member(
     await db.commit()
     await db.refresh(member)
 
+    # Audit log
+    await write_audit_log(db, action="brand_member_added", user_id=_caller.id, brand_id=brand_id, details={"invited_user_email": payload.email, "role": payload.role})
+
     return BrandMemberResponse(
         id=member.id,
         brand_id=member.brand_id,
@@ -334,5 +338,9 @@ async def remove_member(
     
     await db.delete(member)
     await db.commit()
+
+    # Audit log
+    await write_audit_log(db, action="brand_member_removed", user_id=_caller.id, brand_id=brand_id, details={"removed_user_id": user_id})
+
     return
 
