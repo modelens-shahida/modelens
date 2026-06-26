@@ -68,7 +68,7 @@ async def list_assets(
     if not accessible_brand_ids:
         return []
 
-    query = select(Asset)
+    query = select(Asset).where(Asset.deleted_at == None)
     
     if brand_id is not None:
         if brand_id not in accessible_brand_ids:
@@ -519,14 +519,14 @@ async def search_assets(
     if db.bind.dialect.name == "sqlite":
         # SQLite fallback: simple ILIKE matching on name or metadata text
         search_filter = Asset.name.ilike(f"%{q}%") | sa.cast(Asset.meta, sa.Text).ilike(f"%{q}%")
-        query = select(Asset).where(search_filter)
+        query = select(Asset).where(search_filter, Asset.deleted_at == None)
     else:
         # PostgreSQL full-text search
         fts_expression = func.to_tsvector(
             "english",
             func.coalesce(Asset.name, "") + " " + func.coalesce(sa.cast(Asset.meta, sa.Text), "")
         ).bool_op("@@")(func.plainto_tsquery("english", q))
-        query = select(Asset).where(fts_expression)
+        query = select(Asset).where(fts_expression, Asset.deleted_at == None)
 
     # Apply brand filters
     if brand_id is not None:
@@ -683,23 +683,91 @@ async def delete_asset(
             detail="Only owners or admins can delete assets."
         )
 
-    # 3. Collect filenames to delete (main file + both thumbnails)
-    meta = asset.meta or {}
-    filenames_to_delete = []
-
-    main_filename = meta.get("unique_filename") or os.path.basename(asset.storage_path)
-    if main_filename:
-        filenames_to_delete.append(main_filename)
-
-    for thumb_key in ("thumbnail_256", "thumbnail_512"):
-        thumb_path = meta.get(thumb_key)
-        if thumb_path:
-            filenames_to_delete.append(os.path.basename(thumb_path))
-
-    # 4. Delete files from storage (local or S3)
-    for filename in filenames_to_delete:
-        await anyio.to_thread.run_sync(storage_service.delete_file, filename)
-
-    # 5. Delete the asset row (cascades to asset_tags via relationship)
-    await db.delete(asset)
+    # 3. Soft delete — set deleted_at timestamp instead of hard deleting
+    from datetime import datetime
+    asset.deleted_at = datetime.utcnow()
     await db.commit()
+
+
+# ========================== Trash & Restore Endpoints =============
+
+@router.get("/trash", response_model=List[dict])
+async def list_trash(
+    brand_id: Optional[int] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all soft-deleted assets. Requires Viewer role minimum."""
+    accessible_brand_ids = set()
+    owned = await db.execute(select(Brand.id).where(Brand.owner_id == current_user.id))
+    accessible_brand_ids.update(owned.scalars().all())
+    members = await db.execute(select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id))
+    accessible_brand_ids.update(members.scalars().all())
+
+    if not accessible_brand_ids:
+        return []
+
+    query = select(Asset).where(Asset.deleted_at != None)
+
+    if brand_id is not None:
+        if brand_id not in accessible_brand_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand.")
+        query = query.where(Asset.brand_id == brand_id)
+    else:
+        query = query.where(Asset.brand_id.in_(list(accessible_brand_ids)))
+
+    query = query.limit(limit).offset(offset)
+    result = await db.execute(query)
+    assets = result.scalars().all()
+
+    return [
+        {
+            "id": a.id,
+            "name": a.name,
+            "filename": a.filename,
+            "storage_path": a.storage_path,
+            "asset_type": a.asset_type,
+            "brand_id": a.brand_id,
+            "deleted_at": a.deleted_at.isoformat() if a.deleted_at else None,
+        }
+        for a in assets
+    ]
+
+
+@router.post("/{asset_id}/restore", status_code=status.HTTP_200_OK)
+async def restore_asset(
+    asset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore a soft-deleted asset. Requires Editor role minimum."""
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    asset = result.scalars().first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    if not asset.deleted_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset is not deleted.")
+
+    # RBAC check - editor or above
+    brand_result = await db.execute(select(Brand).where(Brand.id == asset.brand_id))
+    brand = brand_result.scalars().first()
+
+    if brand.owner_id == current_user.id:
+        role = "owner"
+    else:
+        member_result = await db.execute(select(BrandMember).where(
+            BrandMember.brand_id == asset.brand_id,
+            BrandMember.user_id == current_user.id
+        ))
+        membership = member_result.scalars().first()
+        role = membership.role if membership else None
+
+    if role not in ("owner", "admin", "editor"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Editor role or above to restore assets.")
+
+    asset.deleted_at = None
+    await db.commit()
+
+    return {"message": "Asset restored successfully.", "asset_id": asset_id}
