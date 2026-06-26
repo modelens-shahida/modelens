@@ -23,6 +23,7 @@ from app.routers.themes import router as themes_router
 from app.routers.search import router as search_router
 from app.routers.api_keys import router as api_keys_router
 from app.routers.memory import brand_router, campaign_router
+from app.routers.webhooks import router as webhooks_router
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -107,6 +108,7 @@ app.include_router(themes_router)
 app.include_router(search_router)
 app.include_router(api_keys_router)
 app.include_router(brand_router)
+app.include_router(webhooks_router)
 app.include_router(campaign_router)
 
 

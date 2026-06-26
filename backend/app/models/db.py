@@ -387,6 +387,22 @@ class FixRequest(Base):
     original_asset = relationship("Asset", foreign_keys=[original_asset_id])
     updated_asset = relationship("Asset", foreign_keys=[updated_asset_id])
 
+
+class WebhookSubscription(Base):
+    __tablename__ = "webhook_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), index=True
+    )
+    url: Mapped[str] = mapped_column(String(1000))
+    events: Mapped[list] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    brand = relationship("Brand")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
