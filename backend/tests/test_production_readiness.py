@@ -152,3 +152,35 @@ def test_rate_limiting_dependencies():
     assert has_rate_limiter(generate_route), "Generate route is missing RateLimiter dependency"
     assert has_rate_limiter(search_route), "Search route is missing RateLimiter dependency"
     assert has_rate_limiter(similar_route), "Search similar route is missing RateLimiter dependency"
+
+
+@pytest.mark.asyncio
+async def test_openapi_schema(client: AsyncClient):
+    res = await client.get("/openapi.json")
+    assert res.status_code == 200
+    schema = res.json()
+    
+    # Verify title, description, and contact info
+    assert schema["info"]["title"] == "Mode Lens API"
+    assert "Mode Lens — AI Fashion Content Production Platform" in schema["info"]["description"]
+    assert "Authentication" in schema["info"]["description"]
+    assert "Rate Limiting" in schema["info"]["description"]
+    assert schema["info"]["contact"]["name"] == "Mode Lens Engineering"
+    assert schema["info"]["contact"]["email"] == "modelens@shahidaparides.com"
+    
+    # Verify documented tags in metadata list
+    documented_tags = {tag["name"] for tag in schema.get("tags", [])}
+    expected_tags = {
+        "Auth", "Brands", "Assets", "Jobs", "Characters", "Campaign Themes",
+        "Prompts", "Campaigns", "Search", "API Keys", "Webhooks", "Memory"
+    }
+    for tag in expected_tags:
+        assert tag in documented_tags, f"Tag {tag} not found in OpenAPI tags metadata"
+
+    # Verify no routes are still using the old tags
+    for path, path_info in schema.get("paths", {}).items():
+        for method, route_info in path_info.items():
+            route_tags = route_info.get("tags", [])
+            assert "Authentication" not in route_tags, f"Route {method.upper()} {path} is still using deprecated 'Authentication' tag"
+            assert "Assets & Metadata" not in route_tags, f"Route {method.upper()} {path} is still using deprecated 'Assets & Metadata' tag"
+

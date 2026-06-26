@@ -20,7 +20,7 @@ from app.middleware.rate_limit import RateLimiter
 
 router = APIRouter(
     prefix="/api/v1/auth",
-    tags=["Authentication"],
+    tags=["Auth"],
 )
 
 SECRET_KEY = settings.SECRET_KEY

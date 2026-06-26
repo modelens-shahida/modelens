@@ -18,7 +18,7 @@ from app.middleware.rate_limit import RateLimiter
 
 router = APIRouter(
     prefix="/api/v1/assets",
-    tags=["Assets & Metadata"]
+    tags=["Assets"]
 )
 
 # --- Request Schemas ---
