@@ -1,5 +1,5 @@
 import secrets
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +52,7 @@ def mask_key(key_hash: str) -> str:
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=APIKeyCreateResponse)
 async def create_api_key(
     payload: APIKeyCreateRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -77,7 +78,7 @@ async def create_api_key(
     await db.refresh(api_key)
 
     # Audit log
-    await write_audit_log(db, action="api_key_created", user_id=current_user.id, details={"key_id": api_key.id, "name": api_key.name})
+    await write_audit_log(db, action="api_key_created", user_id=current_user.id, details={"key_id": api_key.id, "name": api_key.name}, request=request)
 
     return APIKeyCreateResponse(
         id=api_key.id,
@@ -117,6 +118,7 @@ async def list_api_keys(
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(
     key_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -140,4 +142,4 @@ async def delete_api_key(
     await db.commit()
 
     # Audit log
-    await write_audit_log(db, action="api_key_deleted", user_id=current_user.id, details={"key_id": key_id, "name": key_name})
+    await write_audit_log(db, action="api_key_deleted", user_id=current_user.id, details={"key_id": key_id, "name": key_name}, request=request)

@@ -647,6 +647,7 @@ async def search_similar_assets(
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_asset(
     asset_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -686,6 +687,14 @@ async def delete_asset(
     # 3. Soft delete — set deleted_at timestamp instead of hard deleting
     from datetime import datetime
     asset.deleted_at = datetime.utcnow()
+    await write_audit_log(
+        db,
+        action="asset_deleted",
+        user_id=current_user.id,
+        brand_id=asset.brand_id,
+        details={"asset_id": asset_id},
+        request=request,
+    )
     await db.commit()
 
 
@@ -739,6 +748,7 @@ async def list_trash(
 @router.post("/{asset_id}/restore", status_code=status.HTTP_200_OK)
 async def restore_asset(
     asset_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -768,6 +778,14 @@ async def restore_asset(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Editor role or above to restore assets.")
 
     asset.deleted_at = None
+    await write_audit_log(
+        db,
+        action="asset_restored",
+        user_id=current_user.id,
+        brand_id=asset.brand_id,
+        details={"asset_id": asset_id},
+        request=request,
+    )
     await db.commit()
 
     return {"message": "Asset restored successfully.", "asset_id": asset_id}

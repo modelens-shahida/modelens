@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -173,6 +173,7 @@ async def update_brand(
 async def invite_member(
     brand_id: int,
     payload: BrandMemberInviteRequest,
+    request: Request,
     _caller: User = Depends(require_brand_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -226,7 +227,7 @@ async def invite_member(
     await db.refresh(member)
 
     # Audit log
-    await write_audit_log(db, action="brand_member_added", user_id=_caller.id, brand_id=brand_id, details={"invited_user_email": payload.email, "role": payload.role})
+    await write_audit_log(db, action="brand_member_added", user_id=_caller.id, brand_id=brand_id, details={"invited_user_email": payload.email, "role": payload.role}, request=request)
 
     return BrandMemberResponse(
         id=member.id,
@@ -298,6 +299,7 @@ async def delete_brand(
 async def remove_member(
     brand_id: int,
     user_id: int,
+    request: Request,
     _caller: User = Depends(require_brand_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -340,7 +342,7 @@ async def remove_member(
     await db.commit()
 
     # Audit log
-    await write_audit_log(db, action="brand_member_removed", user_id=_caller.id, brand_id=brand_id, details={"removed_user_id": user_id})
+    await write_audit_log(db, action="brand_member_removed", user_id=_caller.id, brand_id=brand_id, details={"removed_user_id": user_id}, request=request)
 
     return
 

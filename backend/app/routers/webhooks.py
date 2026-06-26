@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +65,7 @@ async def get_accessible_brand_ids(user_id: int, db: AsyncSession) -> set:
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=WebhookResponse)
 async def register_webhook(
     payload: WebhookCreateRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -94,7 +95,7 @@ async def register_webhook(
     await db.refresh(subscription)
 
     # Audit log
-    await write_audit_log(db, action="webhook_created", user_id=current_user.id, brand_id=payload.brand_id, details={"webhook_id": subscription.id, "url": payload.url, "events": payload.events})
+    await write_audit_log(db, action="webhook_created", user_id=current_user.id, brand_id=payload.brand_id, details={"webhook_id": subscription.id, "url": payload.url, "events": payload.events}, request=request)
 
     return subscription
 
@@ -122,6 +123,7 @@ async def list_webhooks(
 @router.delete("/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_webhook(
     webhook_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -143,4 +145,4 @@ async def delete_webhook(
     await db.commit()
 
     # Audit log
-    await write_audit_log(db, action="webhook_deleted", user_id=current_user.id, brand_id=sub_brand_id, details={"webhook_id": sub_id})
+    await write_audit_log(db, action="webhook_deleted", user_id=current_user.id, brand_id=sub_brand_id, details={"webhook_id": sub_id}, request=request)
