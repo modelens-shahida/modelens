@@ -1,5 +1,6 @@
 import os
 import base64
+from datetime import datetime
 import socket
 import ipaddress
 from urllib.parse import urlparse
@@ -19,6 +20,12 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
+    beat_schedule={
+        "purge-deleted-assets-daily": {
+            "task": "app.worker.purge_deleted_assets",
+            "schedule": 86400,  # every 24 hours
+        },
+    },
     timezone="UTC",
     enable_utc=True,
     task_acks_late=True,
@@ -843,3 +850,60 @@ def process_training_job(self, job_id: int):
     loop.run_until_complete(
         _process_training_job_async(job_id, self.request.retries, self.max_retries)
     )
+
+
+# ========================== Purge Soft-Deleted Assets Task ========
+
+@celery_app.task(name="app.worker.purge_deleted_assets")
+def purge_deleted_assets():
+    """
+    Celery Beat daily task: permanently delete assets soft-deleted more than 30 days ago.
+    Removes DB records and purges files from storage.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_purge_deleted_assets_async())
+
+
+async def _purge_deleted_assets_async():
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=30)
+
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(Asset).where(
+                Asset.deleted_at != None,
+                Asset.deleted_at <= cutoff
+            )
+        )
+        assets = result.scalars().all()
+        print(f"[Worker] Purging {len(assets)} assets deleted before {cutoff}")
+
+        for asset in assets:
+            # Delete files from storage
+            meta = asset.meta or {}
+            filenames = []
+
+            main_filename = meta.get("unique_filename") or os.path.basename(asset.storage_path)
+            if main_filename:
+                filenames.append(main_filename)
+
+            for thumb_key in ("thumbnail_256", "thumbnail_512"):
+                thumb_path = meta.get(thumb_key)
+                if thumb_path:
+                    filenames.append(os.path.basename(thumb_path))
+
+            for filename in filenames:
+                try:
+                    await anyio.to_thread.run_sync(storage_service.delete_file, filename)
+                except Exception as e:
+                    print(f"[Worker] Failed to delete file {filename}: {e}")
+
+            # Hard delete DB record
+            await db.delete(asset)
+
+        await db.commit()
+        print(f"[Worker] Purge complete. {len(assets)} assets removed.")

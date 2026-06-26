@@ -83,6 +83,8 @@ class Asset(Base):
     filename: Mapped[str] = mapped_column(String(500))
     storage_path: Mapped[str] = mapped_column(String(1000))
     asset_type: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
     meta: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     brand = relationship("Brand")
