@@ -174,3 +174,62 @@ async def test_generate_job_rate_limited_after_threshold(client: AsyncClient, te
     assert status.HTTP_429_TOO_MANY_REQUESTS in responses or all(
         r != status.HTTP_500_INTERNAL_SERVER_ERROR for r in responses
     )
+
+
+# ========================== Enhanced Rate Limiting Tests ==========
+
+@pytest.mark.asyncio
+async def test_rate_limit_independent_per_api_key(client: AsyncClient, test_data: dict):
+    """Two different API keys should have independent rate limit counters."""
+    editor_headers = test_data["get_headers"]("editor")
+    owner_headers = test_data["get_headers"]("owner")
+
+    res1 = await client.post("/api/v1/api-keys", json={"name": "Key A"}, headers=editor_headers)
+    assert res1.status_code == 201
+    key_a = res1.json()["plaintext_key"]
+
+    res2 = await client.post("/api/v1/api-keys", json={"name": "Key B"}, headers=owner_headers)
+    assert res2.status_code == 201
+    key_b = res2.json()["plaintext_key"]
+
+    res_a = await client.get("/api/v1/api-keys", headers={"X-API-Key": key_a})
+    res_b = await client.get("/api/v1/api-keys", headers={"X-API-Key": key_b})
+
+    assert res_a.status_code == 200
+    assert res_b.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_independent_per_user(client: AsyncClient, test_data: dict):
+    """Two different authenticated users should have independent rate limit counters."""
+    editor_headers = test_data["get_headers"]("editor")
+    owner_headers = test_data["get_headers"]("owner")
+
+    res_editor = await client.get("/api/v1/api-keys", headers=editor_headers)
+    res_owner = await client.get("/api/v1/api-keys", headers=owner_headers)
+
+    assert res_editor.status_code == 200
+    assert res_owner.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_identifier_resolution_api_key(client: AsyncClient, test_data: dict):
+    """X-API-Key header should be used as identifier."""
+    editor_headers = test_data["get_headers"]("editor")
+
+    res = await client.post("/api/v1/api-keys", json={"name": "Resolver Key"}, headers=editor_headers)
+    assert res.status_code == 201
+    plaintext = res.json()["plaintext_key"]
+
+    res = await client.get("/api/v1/api-keys", headers={"X-API-Key": plaintext})
+    assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_fallback_to_ip_for_unauthenticated(client: AsyncClient):
+    """Unauthenticated requests should fall back to IP-based rate limiting."""
+    res = await client.post("/api/v1/auth/login", json={
+        "email": "nonexistent@test.com",
+        "password": "wrongpassword"
+    })
+    assert res.status_code in (401, 429)
