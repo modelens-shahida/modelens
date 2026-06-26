@@ -46,9 +46,37 @@ for handler in logging.getLogger().handlers:
     handler.addFilter(RequestIdFilter())
 
 app = FastAPI(
-    title="ModeLens API",
-    description="Backend API for ModeLens — Fashion AI Platform",
+    title="Mode Lens API",
+    description="""
+## Mode Lens — AI Fashion Content Production Platform
+
+### Authentication
+- `Authorization: Bearer <JWT token>` — for web dashboard users
+- `X-API-Key: <api_key>` — for programmatic API access
+
+### Rate Limiting
+- Web users: 20 requests/minute on resource-heavy endpoints
+- API key clients: 60 requests/minute (configurable per endpoint)
+    """,
     version="1.0.0",
+    contact={
+        "name": "Mode Lens Engineering",
+        "email": "modelens@shahidaparides.com",
+    },
+    openapi_tags=[
+        {"name": "Auth", "description": "User registration, login, and profile management"},
+        {"name": "Brands", "description": "Brand workspace management and member invitations"},
+        {"name": "Assets", "description": "Asset upload, management, search, and soft-delete"},
+        {"name": "Jobs", "description": "AI generation job submission and status tracking"},
+        {"name": "Characters", "description": "Character identity library with versioning and LoRA training"},
+        {"name": "Campaign Themes", "description": "Visual theme packages for campaign aesthetics"},
+        {"name": "Prompts", "description": "Reusable prompt template management"},
+        {"name": "Campaigns", "description": "Campaign management and asset linking"},
+        {"name": "Search", "description": "Unified FTS + vector + hybrid search across assets"},
+        {"name": "API Keys", "description": "Programmatic API key management"},
+        {"name": "Webhooks", "description": "Brand webhook subscription management"},
+        {"name": "Memory", "description": "Brand and campaign tag frequency analytics"},
+    ],
 )
 
 # Request ID & Logging Middleware
