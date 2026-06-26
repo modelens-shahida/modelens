@@ -48,7 +48,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -204,6 +204,24 @@ def process_asset_upload(asset_id: int):
 
 
 
+
+async def _dispatch_brand_webhooks(db, brand_id: int, event: str, payload: dict):
+    """
+    Fetch all active WebhookSubscription records for a brand subscribed to the event,
+    and dispatch webhook payloads to all matched URLs.
+    """
+    result = await db.execute(
+        select(WebhookSubscription).where(
+            WebhookSubscription.brand_id == brand_id,
+            WebhookSubscription.is_active == True
+        )
+    )
+    subscriptions = result.scalars().all()
+    for sub in subscriptions:
+        if event in (sub.events or []):
+            dispatch_webhook.delay(sub.url, payload)
+
+
 async def _generate_image(prompt: str) -> bytes:
     """
     Generates an image using OpenAI DALL-E 3 if OPENAI_API_KEY is set,
@@ -339,9 +357,12 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
             except Exception as e:
                 print(f"[Worker] Failed to cache status in Redis: {e}")
 
-            # Trigger Webhook
+            # Trigger ad-hoc callback_url webhook
             if job.callback_url:
                 dispatch_webhook.delay(job.callback_url, job_data)
+
+            # Trigger brand webhook subscriptions (job.completed)
+            await _dispatch_brand_webhooks(db, job.brand_id, "job.completed", job_data)
 
         except Exception as e:
             print(f"[Worker] Job {job_id} execution error: {e}")
@@ -383,9 +404,12 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
             except Exception as re:
                 print(f"[Worker] Failed to cache status in Redis: {re}")
 
-            # Trigger Webhook for failure
+            # Trigger ad-hoc callback_url webhook for failure
             if job.callback_url:
                 dispatch_webhook.delay(job.callback_url, job_data)
+
+            # Trigger brand webhook subscriptions (job.failed)
+            await _dispatch_brand_webhooks(db, job.brand_id, "job.failed", job_data)
 
 
 @celery_app.task(
