@@ -301,9 +301,18 @@ async def generate_workflow_job(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Character version {character_version_id} not found for character {character_id}."
                 )
-    # Deduct 1 credit
+    # Deduct 1 credit atomically with ledger entry
     db_user.credits -= 1
     db.add(db_user)
+    credit_txn = CreditTransaction(
+        user_id=current_user.id,
+        amount=-1,
+        transaction_type="spend",
+        reference_type="job",
+        balance_after=db_user.credits,
+        description=f"AI workflow job ({payload.workflow_type}) credit deduction",
+    )
+    db.add(credit_txn)
 
     # Combine workflow_type into inputs
     job_inputs = {**payload.inputs, "workflow_type": payload.workflow_type}

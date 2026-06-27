@@ -4,7 +4,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.db import get_db, Character, Brand, BrandMember, User
+from app.models.db import get_db, Character, Brand, BrandMember, User, CreditTransaction
 from app.middleware.auth import get_current_user
 from app.worker import process_training_job
 
@@ -402,6 +402,15 @@ async def train_character(
     if user.credits < 10:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Insufficient credits. Required: 10, Remaining: {user.credits}")
     user.credits -= 10
+    credit_txn = CreditTransaction(
+        user_id=current_user.id,
+        amount=-10,
+        transaction_type="spend",
+        reference_type="job",
+        balance_after=user.credits,
+        description="Character LoRA training job credit deduction",
+    )
+    db.add(credit_txn)
 
     # 5. Create AIJob
     job = AIJob(

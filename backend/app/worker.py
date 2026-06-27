@@ -682,6 +682,16 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
                 refund_user = user_result.scalars().first()
                 if refund_user:
                     refund_user.credits += 1
+                    credit_txn = CreditTransaction(
+                        user_id=job.user_id,
+                        amount=1,
+                        transaction_type="refund",
+                        reference_type="job",
+                        reference_id=job.id,
+                        balance_after=refund_user.credits,
+                        description=f"Refund for failed workflow job {job.id}",
+                    )
+                    db.add(credit_txn)
 
                 await db.commit()
             else:
@@ -865,6 +875,16 @@ async def _process_training_job_async(job_id: int, retries: int = 0, max_retries
                 refund_user = user_result.scalars().first()
                 if refund_user:
                     refund_user.credits += 10
+                    credit_txn = CreditTransaction(
+                        user_id=job.user_id,
+                        amount=10,
+                        transaction_type="refund",
+                        reference_type="job",
+                        reference_id=job.id,
+                        balance_after=refund_user.credits,
+                        description=f"Refund for failed character training job {job.id}",
+                    )
+                    db.add(credit_txn)
 
                 await db.commit()
             else:
