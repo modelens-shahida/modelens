@@ -229,6 +229,20 @@ async def _dispatch_brand_webhooks(db, brand_id: int, event: str, payload: dict)
             dispatch_webhook.delay(sub.url, payload)
 
 
+
+async def _publish_brand_event(brand_id: int, event_type: str, payload: dict):
+    """Publish a real-time event to Redis Pub/Sub for WebSocket broadcast."""
+    try:
+        import redis.asyncio as aioredis
+        from app.config import settings
+        redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        message = {"type": event_type, "brand_id": brand_id, **payload}
+        await redis.publish(f"brand:{brand_id}:events", __import__('json').dumps(message))
+        await redis.aclose()
+    except Exception as e:
+        print(f"[Worker] Failed to publish event to Redis: {e}")
+
+
 async def _generate_image(prompt: str) -> bytes:
     """
     Generates an image using OpenAI DALL-E 3 if OPENAI_API_KEY is set,
@@ -371,6 +385,9 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
             # Trigger brand webhook subscriptions (job.completed)
             await _dispatch_brand_webhooks(db, job.brand_id, "job.completed", job_data)
 
+            # Publish real-time event to Redis Pub/Sub
+            await _publish_brand_event(job.brand_id, "job.completed", {"job_id": job.id, "status": "completed", "asset_id": job.asset_id})
+
         except Exception as e:
             print(f"[Worker] Job {job_id} execution error: {e}")
 
@@ -417,6 +434,9 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
 
             # Trigger brand webhook subscriptions (job.failed)
             await _dispatch_brand_webhooks(db, job.brand_id, "job.failed", job_data)
+
+            # Publish real-time event to Redis Pub/Sub
+            await _publish_brand_event(job.brand_id, "job.failed", {"job_id": job.id, "status": "failed", "error": str(e)})
 
 
 @celery_app.task(
@@ -632,6 +652,9 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
             if job.callback_url:
                 dispatch_webhook.delay(job.callback_url, job_data)
 
+            # Publish real-time event to Redis Pub/Sub
+            await _publish_brand_event(job.brand_id, "job.completed", {"job_id": job.id, "status": "completed", "asset_id": job.asset_id})
+
         except Exception as e:
             print(f"[Worker] Workflow job {job_id} execution error: {e}")
 
@@ -675,6 +698,9 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
             # Trigger Webhook for failure
             if job.callback_url:
                 dispatch_webhook.delay(job.callback_url, job_data)
+
+            # Publish real-time event to Redis Pub/Sub
+            await _publish_brand_event(job.brand_id, "job.failed", {"job_id": job.id, "status": "failed", "error": str(e)})
 
 
 @celery_app.task(

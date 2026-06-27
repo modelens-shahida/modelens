@@ -24,6 +24,8 @@ from app.routers.search import router as search_router
 from app.routers.api_keys import router as api_keys_router
 from app.routers.memory import brand_router, campaign_router
 from app.routers.webhooks import router as webhooks_router
+from app.services.pubsub_listener import redis_pubsub_listener
+from app.routers.websockets import router as websockets_router
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -78,6 +80,12 @@ app = FastAPI(
         {"name": "Memory", "description": "Brand and campaign tag frequency analytics"},
     ],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    asyncio.create_task(redis_pubsub_listener())
+
 
 # Request ID & Logging Middleware
 class ProductionLoggingMiddleware(BaseHTTPMiddleware):
@@ -137,6 +145,7 @@ app.include_router(search_router)
 app.include_router(api_keys_router)
 app.include_router(brand_router)
 app.include_router(webhooks_router)
+app.include_router(websockets_router)
 app.include_router(campaign_router)
 
 
