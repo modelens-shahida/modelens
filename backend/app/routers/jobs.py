@@ -14,7 +14,8 @@ from app.models.db import (
     Brand,
     BrandMember,
     WorkflowTemplate,
-    Asset
+    Asset,
+    CreditTransaction
 )
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 from app.middleware.rate_limit import redis_client, RateLimiter
@@ -131,9 +132,18 @@ async def generate_job(
             detail=f"Insufficient credits. Remaining: {db_user.credits}"
         )
 
-    # Deduct 1 credit
+    # Deduct 1 credit atomically with ledger entry
     db_user.credits -= 1
     db.add(db_user)
+    credit_txn = CreditTransaction(
+        user_id=current_user.id,
+        amount=-1,
+        transaction_type="spend",
+        reference_type="job",
+        balance_after=db_user.credits,
+        description="AI generation job credit deduction",
+    )
+    db.add(credit_txn)
 
     # 4. Insert Job Record
     job = AIJob(

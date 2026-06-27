@@ -25,6 +25,10 @@ celery_app.conf.update(
             "task": "app.worker.purge_deleted_assets",
             "schedule": 86400,  # every 24 hours
         },
+        "weekly-usage-report": {
+            "task": "app.worker.weekly_usage_report",
+            "schedule": 604800,  # every 7 days
+        },
     },
     timezone="UTC",
     enable_utc=True,
@@ -55,7 +59,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -401,6 +405,16 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
                 refund_user = user_result.scalars().first()
                 if refund_user:
                     refund_user.credits += 1
+                    credit_txn = CreditTransaction(
+                        user_id=job.user_id,
+                        amount=1,
+                        transaction_type="refund",
+                        reference_type="job",
+                        reference_id=job.id,
+                        balance_after=refund_user.credits,
+                        description=f"Refund for failed generation job {job.id}",
+                    )
+                    db.add(credit_txn)
 
                 await db.commit()
             else:
@@ -933,3 +947,49 @@ async def _purge_deleted_assets_async():
 
         await db.commit()
         print(f"[Worker] Purge complete. {len(assets)} assets removed.")
+
+
+# ========================== Weekly Usage Report Task ==============
+
+@celery_app.task(name="app.worker.weekly_usage_report")
+def weekly_usage_report():
+    """
+    Celery Beat weekly task: aggregates credit usage per brand workspace
+    and generates a console log report (simulating an email to brand owners).
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_weekly_usage_report_async())
+
+
+async def _weekly_usage_report_async():
+    from datetime import timedelta
+    from sqlalchemy import func
+    week_ago = datetime.utcnow() - timedelta(days=7)
+
+    async with async_session_maker() as db:
+        # Aggregate credit spend per user in the last 7 days
+        result = await db.execute(
+            select(
+                CreditTransaction.user_id,
+                func.sum(CreditTransaction.amount).label("total_spent"),
+                func.count(CreditTransaction.id).label("total_transactions"),
+            )
+            .where(
+                CreditTransaction.created_at >= week_ago,
+                CreditTransaction.transaction_type == "spend"
+            )
+            .group_by(CreditTransaction.user_id)
+        )
+        rows = result.all()
+
+        print("[Worker] ===== Weekly Credit Usage Report =====")
+        if not rows:
+            print("[Worker] No credit spend recorded this week.")
+        for row in rows:
+            print(f"[Worker] User {row.user_id}: {abs(row.total_spent)} credits spent across {row.total_transactions} transactions")
+        print("[Worker] ==========================================")
+
