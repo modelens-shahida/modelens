@@ -19,7 +19,6 @@ def upgrade() -> None:
     op.create_index('idx_ai_jobs_brand_id_fk', 'ai_jobs', ['brand_id'], unique=False)
     op.create_index('idx_ai_jobs_user_id_fk', 'ai_jobs', ['user_id'], unique=False)
     op.create_index('idx_characters_brand_id_fk', 'characters', ['brand_id'], unique=False)
-    op.create_index('idx_prompt_templates_brand_id_fk', 'prompt_templates', ['brand_id'], unique=False)
 
 
 def downgrade() -> None:
@@ -28,4 +27,3 @@ def downgrade() -> None:
     op.drop_index('idx_ai_jobs_brand_id_fk', table_name='ai_jobs')
     op.drop_index('idx_ai_jobs_user_id_fk', table_name='ai_jobs')
     op.drop_index('idx_characters_brand_id_fk', table_name='characters')
-    op.drop_index('idx_prompt_templates_brand_id_fk', table_name='prompt_templates')
