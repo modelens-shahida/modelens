@@ -18,19 +18,27 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def create_index_safe(index_name, table_name, columns, **kwargs):
+    conn = op.get_bind()
+    result = conn.execute(sa.text(f"SELECT 1 FROM pg_class WHERE relname = '{index_name}'"))
+    if not result.scalar():
+        op.create_index(index_name, table_name, columns, **kwargs)
+
+
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_index('idx_brand_members_user_id', 'brand_members', ['user_id'])
-    op.create_index('idx_assets_brand_id', 'assets', ['brand_id'])
-    op.create_index('idx_ai_jobs_brand_id', 'ai_jobs', ['brand_id'])
-    op.create_index('idx_ai_jobs_user_id', 'ai_jobs', ['user_id'])
-    op.create_index('idx_characters_brand_id', 'characters', ['brand_id'])
+    create_index_safe('idx_brand_members_user_id', 'brand_members', ['user_id'])
+    create_index_safe('idx_assets_brand_id', 'assets', ['brand_id'])
+    create_index_safe('idx_ai_jobs_brand_id', 'ai_jobs', ['brand_id'])
+    create_index_safe('idx_ai_jobs_user_id', 'ai_jobs', ['user_id'])
+    create_index_safe('idx_characters_brand_id', 'characters', ['brand_id'])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index('idx_characters_brand_id', table_name='characters')
-    op.drop_index('idx_ai_jobs_user_id', table_name='ai_jobs')
-    op.drop_index('idx_ai_jobs_brand_id', table_name='ai_jobs')
-    op.drop_index('idx_assets_brand_id', table_name='assets')
-    op.drop_index('idx_brand_members_user_id', table_name='brand_members')
+    # Safe drops
+    conn = op.get_bind()
+    for idx in ['idx_characters_brand_id', 'idx_ai_jobs_user_id', 'idx_ai_jobs_brand_id', 'idx_assets_brand_id', 'idx_brand_members_user_id']:
+        result = conn.execute(sa.text(f"SELECT 1 FROM pg_class WHERE relname = '{idx}'"))
+        if result.scalar():
+            op.drop_index(idx)
