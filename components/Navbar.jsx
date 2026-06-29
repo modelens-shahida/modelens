@@ -192,7 +192,7 @@ const Navbar = ({ pathname }) => {
           )}
 
           <Link
-            href="/try-now"
+            href="/auth/register"
             className={`px-4 py-1.5 rounded-full font-semibold text-sm transition ${
               navbarVisible
                 ? "bg-black text-white hover:bg-gray-800"
