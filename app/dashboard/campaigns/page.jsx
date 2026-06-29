@@ -571,7 +571,7 @@ export default function CampaignsPage() {
                       <Sparkles size={16} className="text-purple-400" />
                       Campaign Aesthetics Theme
                     </h4>
-                    <p className="text-[10px] text-zinc-500">Apply visual preset styling guidelines to this campaign's assets.</p>
+                    <p className="text-[10px] text-zinc-500">Apply visual preset styling guidelines to this campaign&apos;s assets.</p>
                   </div>
                   <button
                     type="button"
