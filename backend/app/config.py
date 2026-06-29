@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # MLflow Tracking
     MLFLOW_URI: str = Field(default="http://localhost:5000")
 
+    # Stripe Billing
+    STRIPE_API_KEY: str = Field(default="sk_test_mock_key")
+    STRIPE_WEBHOOK_SECRET: str = Field(default="whsec_mock_secret")
+    STRIPE_MOCK_MODE: bool = Field(default=True)
+
     # Load configuration settings from the resolved .env file path
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,
