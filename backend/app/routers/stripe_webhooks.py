@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.db import async_session_maker, User, CreditTransaction
+from app.models.db import get_db, User, CreditTransaction
 from app.config import settings
 import json
 
@@ -17,31 +17,30 @@ PACKAGE_CREDITS = {
 }
 
 
-async def _provision_credits(user_id: int, credits: int, reference_type: str, description: str):
+async def _provision_credits(db: AsyncSession, user_id: int, credits: int, reference_type: str, description: str):
     """Add credits to user and log CreditTransaction."""
-    async with async_session_maker() as db:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalars().first()
-        if not user:
-            print(f"[Stripe] User {user_id} not found for provisioning.")
-            return
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        print(f"[Stripe] User {user_id} not found for provisioning.")
+        return
 
-        user.credits += credits
-        txn = CreditTransaction(
-            user_id=user_id,
-            amount=credits,
-            transaction_type="top_up",
-            reference_type=reference_type,
-            balance_after=user.credits,
-            description=description,
-        )
-        db.add(txn)
-        await db.commit()
-        print(f"[Stripe] Provisioned {credits} credits to user {user_id}. New balance: {user.credits}")
+    user.credits += credits
+    txn = CreditTransaction(
+        user_id=user_id,
+        amount=credits,
+        transaction_type="top_up",
+        reference_type=reference_type,
+        balance_after=user.credits,
+        description=description,
+    )
+    db.add(txn)
+    await db.commit()
+    print(f"[Stripe] Provisioned {credits} credits to user {user_id}. New balance: {user.credits}")
 
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request):
+async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Handle Stripe webhook events.
     Verifies signature and provisions credits on successful payments.
@@ -76,6 +75,7 @@ async def stripe_webhook(request: Request):
         if user_id:
             credits = PACKAGE_CREDITS.get(package, 50)
             await _provision_credits(
+                db,
                 int(user_id), credits,
                 reference_type="purchase_invoice",
                 description=f"Stripe checkout completed: {package} plan ({credits} credits)"
@@ -91,6 +91,7 @@ async def stripe_webhook(request: Request):
         if user_id:
             credits = PACKAGE_CREDITS.get(package, 50)
             await _provision_credits(
+                db,
                 int(user_id), credits,
                 reference_type="purchase_invoice",
                 description=f"Recurring payment succeeded: {package} plan ({credits} credits renewed)"

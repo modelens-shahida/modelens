@@ -3,6 +3,10 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 
 /* -------------------- FAQ ACCORDION COMPONENT -------------------- */
@@ -243,8 +247,38 @@ const features = [
 ];
 
 const PricingPage = () => {
+  const { user } = useAuth();
+  const router = useRouter();
   const [isMonthly, setIsMonthly] = useState(true);
   const [sliderValue, setSliderValue] = useState(0);
+  const [loadingPlan, setLoadingPlan] = useState(null);
+
+  const handleSelectPlan = async (index) => {
+    if (!user) {
+      router.push(`/auth/login?redirect=/pricing`);
+      return;
+    }
+
+    const packageMapping = ["lite", "plus", "pro"];
+    const planName = packageMapping[index];
+
+    setLoadingPlan(index);
+    try {
+      const response = await api.post("/api/v1/billing/checkout-session", {
+        package: planName,
+        frequency: isMonthly ? "monthly" : "annual",
+      });
+      if (response && response.session_url) {
+        window.location.href = response.session_url;
+      } else {
+        throw new Error("Invalid response from checkout session API");
+      }
+    } catch (error) {
+      console.error("Stripe Checkout Error:", error);
+      alert(error.message || "Failed to create checkout session");
+      setLoadingPlan(null);
+    }
+  };
 
   const sliderSteps = isMonthly ? monthlySteps : annualSteps;
   const prices = isMonthly ? monthlyPrices : annualPrices;
@@ -393,11 +427,20 @@ const PricingPage = () => {
                     <p className="mb-4 text-gray-500">
                       Billed {isMonthly ? "monthly" : "annually"}. Unlimited credit rollover
                     </p>
-                    <Link href="/signup">
-                      <button className="w-full py-3 rounded-full font-semibold mb-4 transition bg-purple-600 text-white hover:bg-purple-700">
-                        Get Started
-                      </button>
-                    </Link>
+                    <button
+                      disabled={loadingPlan !== null}
+                      onClick={() => handleSelectPlan(index)}
+                      className="w-full py-3 rounded-full font-semibold mb-4 transition bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {loadingPlan === index ? (
+                        <>
+                          <Loader2 className="animate-spin" size={16} />
+                          Processing...
+                        </>
+                      ) : (
+                        "Get Started"
+                      )}
+                    </button>
                   </>
                 )}
 
