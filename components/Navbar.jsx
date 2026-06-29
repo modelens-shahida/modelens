@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 
 const Navbar = ({ pathname }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -10,7 +11,8 @@ const Navbar = ({ pathname }) => {
   const [useCasesHovered, setUseCasesHovered] = useState(false);
   const [resourcesHovered, setResourcesHovered] = useState(false);
 
-  const { data: session } = useSession();
+  const { user, logout } = useAuth();
+  const router = useRouter();
 
   // Detect scroll
   useEffect(() => {
@@ -173,22 +175,25 @@ const Navbar = ({ pathname }) => {
 
         {/* RIGHT BUTTONS */}
         <div className="flex items-center gap-5 text-[15px] font-medium">
-          {session ? (
+          {user ? (
             <button
-              onClick={() => signOut()}
-              className={`relative group ${textColor}`}
+              onClick={() => {
+                logout();
+                router.push("/auth/login");
+              }}
+              className={`relative group cursor-pointer ${textColor}`}
             >
               Logout
               <span className="absolute left-1/2 bottom-0 w-0 h-[2px] bg-black transition-all group-hover:left-0 group-hover:w-full"></span>
             </button>
           ) : (
-            <button
-              onClick={() => signIn()}
-              className={`relative group ${textColor}`}
+            <Link
+              href="/auth/login"
+              className={`relative group cursor-pointer ${textColor}`}
             >
               Login
               <span className="absolute left-1/2 bottom-0 w-0 h-[2px] bg-black transition-all group-hover:left-0 group-hover:w-full"></span>
-            </button>
+            </Link>
           )}
 
           <Link
