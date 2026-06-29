@@ -596,7 +596,7 @@ export default function CampaignsPage() {
                           type="button"
                           key={theme.id}
                           onClick={() => handleSelectTheme(isSelected ? "" : theme.id.toString())}
-                          className={`text-left p-3.5 rounded-xl border flex flex-col justify-between gap-1.5 transition-all cursor-pointer relative overflow-hidden group/theme ${
+                          className={`text-left p-3.5 rounded-xl border flex flex-col justify-between gap-1.5 transition-all cursor-pointer relative overflow-hidden group ${
                             isSelected
                               ? "bg-purple-950/20 border-purple-500/40 shadow-inner"
                               : "bg-zinc-950/40 border-zinc-900 hover:border-zinc-850 hover:bg-zinc-900/10"
@@ -618,7 +618,7 @@ export default function CampaignsPage() {
                                   e.stopPropagation();
                                   handleDeleteTheme(theme.id);
                                 }}
-                                className="text-zinc-500 hover:text-rose-400 p-1 rounded-md opacity-0 group-hover/theme:opacity-100 transition-all cursor-pointer ml-1.5 shrink-0"
+                                className="text-zinc-500 hover:text-rose-400 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer ml-1.5 shrink-0"
                                 title="Delete Custom Theme"
                               >
                                 <Trash2 size={11} />
