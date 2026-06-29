@@ -6,7 +6,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useSearchParams } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, X } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 
 function LoginPageContent() {
   const { login } = useAuth();
@@ -17,6 +18,29 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isForgotOpen, setIsForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
+
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail) {
+      toast.error("Please enter your email address");
+      return;
+    }
+    setIsForgotSubmitting(true);
+    try {
+      // Simulate recovery email send time
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      toast.success("Password recovery link sent to your email address! ✉️");
+      setIsForgotOpen(false);
+      setForgotEmail("");
+    } catch (err) {
+      toast.error("Failed to send recovery email. Please try again.");
+    } finally {
+      setIsForgotSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -99,9 +123,13 @@ function LoginPageContent() {
               <label className="text-xs font-semibold text-zinc-300 tracking-wide block uppercase">
                 Password
               </label>
-              <a href="#" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
+              <button
+                type="button"
+                onClick={() => setIsForgotOpen(true)}
+                className="text-xs text-purple-400 hover:text-purple-300 transition-colors cursor-pointer bg-transparent border-none outline-none"
+              >
                 Forgot password?
-              </a>
+              </button>
             </div>
             <div className="relative group">
               <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-zinc-500 group-focus-within:text-purple-400 transition-colors">
@@ -155,6 +183,77 @@ function LoginPageContent() {
           </p>
         </div>
       </motion.div>
+
+      {/* Forgot Password Modal Overlay */}
+      <AnimatePresence>
+        {isForgotOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsForgotOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 relative z-10 shadow-2xl space-y-4"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+                  <Mail className="text-purple-400" size={18} />
+                  Reset Password
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsForgotOpen(false)}
+                  className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <p className="text-xs text-zinc-400 leading-normal">
+                Enter your email address below and we&apos;ll send you a link to reset your password.
+              </p>
+              <form onSubmit={handleForgotSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotOpen(false)}
+                    className="bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs px-4 py-2.5 rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isForgotSubmitting}
+                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-md"
+                  >
+                    {isForgotSubmitting ? <Loader2 className="animate-spin" size={12} /> : "Send Link"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
