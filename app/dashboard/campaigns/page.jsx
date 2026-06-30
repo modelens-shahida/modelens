@@ -669,6 +669,7 @@ export default function CampaignsPage() {
                     </div>
                   </div>
                 )}
+              </div>
 
               {/* Linked Assets Grid */}
               <div className="space-y-4 border-t border-zinc-850/60 pt-6">
