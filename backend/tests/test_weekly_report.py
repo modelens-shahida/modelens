@@ -6,6 +6,15 @@ from sqlalchemy import select
 from app.models.db import CreditTransaction, AuditLog
 
 
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 @pytest.mark.asyncio
 async def test_weekly_report_records_audit_log(db_session: AsyncSession, test_data: dict):
     """Weekly report should create AuditLog entries for brands with spend activity."""
@@ -25,7 +34,8 @@ async def test_weekly_report_records_audit_log(db_session: AsyncSession, test_da
     db_session.add(txn)
     await db_session.commit()
 
-    with patch("app.worker._send_weekly_report_email", new=AsyncMock()) as mock_email:
+    with patch("app.worker._send_weekly_report_email", new=AsyncMock()) as mock_email, \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         await _weekly_usage_report_async()
 
     result = await db_session.execute(
@@ -46,7 +56,8 @@ async def test_weekly_report_no_spend_no_audit_log(db_session: AsyncSession, tes
     """If no spend occurred, no email should be triggered."""
     from app.worker import _weekly_usage_report_async
 
-    with patch("app.worker._send_weekly_report_email", new=AsyncMock()) as mock_email:
+    with patch("app.worker._send_weekly_report_email", new=AsyncMock()) as mock_email, \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         await _weekly_usage_report_async()
 
     mock_email.assert_not_called()
