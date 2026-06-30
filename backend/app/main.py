@@ -214,3 +214,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 async def root():
     return {"message": "Welcome to ModeLens API"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}

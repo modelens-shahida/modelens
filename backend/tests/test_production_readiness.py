@@ -184,3 +184,10 @@ async def test_openapi_schema(client: AsyncClient):
             assert "Authentication" not in route_tags, f"Route {method.upper()} {path} is still using deprecated 'Authentication' tag"
             assert "Assets & Metadata" not in route_tags, f"Route {method.upper()} {path} is still using deprecated 'Assets & Metadata' tag"
 
+
+@pytest.mark.asyncio
+async def test_health_endpoint(client: AsyncClient):
+    res = await client.get("/health")
+    assert res.status_code == 200
+    assert res.json() == {"status": "healthy"}
+
