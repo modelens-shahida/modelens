@@ -12,7 +12,7 @@ const FAQAccordion = () => {
       question: "How many images can I upload per day?",
       answer: (
         <>
-          <p>There’s no daily cap. You can upload as many photos as you’d like.</p>
+          <p>There's no daily cap. You can upload as many photos as you'd like.</p>
           <br />
           <p>
             <strong>On-model workflow:</strong> Upload and process multiple
@@ -22,7 +22,7 @@ const FAQAccordion = () => {
           <p>
             <strong>Flat lay and mannequin workflows:</strong> Each look is
             created one by one to ensure the best visual consistency, but
-            there’s no daily limit.
+            there's no daily limit.
           </p>
         </>
       ),
@@ -43,7 +43,7 @@ const FAQAccordion = () => {
           <p>
             <strong>Flat lays and Mannequin:</strong> Upload front or back shots
             of your product or your clothing on a mannequin. You can then choose
-            the model, pose, and background for the new image—no studio setup
+            the model, pose, and background for the new image - no studio setup
             required.
           </p>
           <br />
@@ -68,7 +68,7 @@ const FAQAccordion = () => {
       question: "Does ModeLens have kids or baby models?",
       answer: (
         <p>
-          Not yet, but we may in the future. If you`re interested, let us know
+          Not yet, but we may in the future. If you're interested, let us know
           via{" "}
           <a href="mailto:info@ModeLens.io" className="text-[#A855F7]">
             info@ModeLens.io
@@ -138,7 +138,7 @@ const MaintainBrandConsistency = () => {
       id: 0,
       title: "Unlock More Model Variety",
       description:
-        "Increase your options at a fraction of the cost and time, without compromising on your brand’s quality.",
+        "Increase your options at a fraction of the cost and time, without compromising on your brand's quality.",
       image:
         "https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/6771027d5f406823edc0549f_Botika_UseCase_MaintainBrandConsistency_CreatePremiumShoppingExperience.avif",
     },
@@ -162,7 +162,7 @@ const MaintainBrandConsistency = () => {
       id: 3,
       title: "Refresh Images with Top Models",
       description:
-        "Easily test different models and see what works best for your brand—stay within budget and keep your customers engaged.",
+        "Easily test different models and see what works best for your brand - stay within budget and keep your customers engaged.",
       image:
         "https://cdn.prod.website-files.com/66faa4f99edc33598569d98f/677103589492cb74eb63cf12_Botika_UseCases_IncreaseDiversity_RefreshImageswithTopModels.avif",
     },
@@ -268,10 +268,10 @@ const MaintainBrandConsistency = () => {
             />
           </div>
           <h2 className="text-2xl text-black font-bold mb-6 leading-snug">
-            “The ModeLens platform is super easy to use, offers a great price and most importantly the quality is top notch! A real game changer for fashion brands, fashion agencies and stockists who need top images regularly and quickly.”
+            &ldquo;The ModeLens platform is super easy to use, offers a great price and most importantly the quality is top notch! A real game changer for fashion brands, fashion agencies and stockists who need top images regularly and quickly.&rdquo;
           </h2>
           <p className="text-gray-700 text-lg max-w-3xl mx-auto mb-10">
-            We`ve cut costs and reduced our production time significantly, all
+            We've cut costs and reduced our production time significantly, all
             while maintaining the high-quality standards our brand is known for.
           </p>
           <div className="flex flex-col items-center gap-4">
@@ -372,11 +372,11 @@ const MaintainBrandConsistency = () => {
             Case Study
           </p>
           <h2 className="text-5xl font-bold text-white mb-4 leading-snug">
-            JUAN & ME scales content with ModeLens AI—and sees 128% more
+            JUAN & ME scales content with ModeLens AI - and sees 128% more
             conversions
           </h2>
           <button className="bg-white text-black px-6 py-3 rounded-full font-semibold hover:bg-gray-200 transition">
-            Read More →
+            Read More ->
           </button>
         </div>
       </section>
@@ -461,13 +461,13 @@ const MaintainBrandConsistency = () => {
         >
           With ModeLens app, you have our AI-generated models for fashion right
           in your pocket. Snap, upload, and get stunning, realistic photos in
-          minutes — all on your phone.
+          minutes  -  all on your phone.
         </motion.p>
         <motion.button
           className="bg-white text-black px-8 py-3 rounded-full font-semibold hover:bg-gray-200 transition"
           whileHover={{ scale: 1.05 }}
         >
-          Get the App →
+          Get the App ->
         </motion.button>
       </section>
 

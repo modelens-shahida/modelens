@@ -52,7 +52,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
       {/* Navigation Links */}
       <nav className="flex-1 px-4 py-6 space-y-1">
         {menuItems.map((item) => {
-          const isActive = pathname === item.path || (item.path !== "/dashboard" && pathname.startsWith(item.path));
+          const isActive = pathname === item.path || (item.path !== "/dashboard" && pathname?.startsWith(item.path));
           const Icon = item.icon;
 
           return (

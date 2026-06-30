@@ -30,7 +30,7 @@ export default function TopBar({ toggleSidebar }) {
 
   // Helper to format pathname into a page title
   const getPageTitle = () => {
-    const segments = pathname.split("/").filter(Boolean);
+    const segments = (pathname || "").split("/").filter(Boolean);
     if (segments.length <= 1) return "Overview";
     
     // Capitalize each segment

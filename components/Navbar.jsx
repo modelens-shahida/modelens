@@ -35,13 +35,13 @@ const Navbar = ({ pathname }) => {
     "/resources/case-studies/*",
   ];
 
-  const isForcedWhitePage = forcedWhiteNavbarPages.some((page) => {
+  const isForcedWhitePage = pathname ? forcedWhiteNavbarPages.some((page) => {
     if (page.endsWith("/*")) {
       const base = page.replace("/*", "");
       return pathname.startsWith(base);
     }
     return pathname === page;
-  });
+  }) : false;
 
   const navbarVisible = isForcedWhitePage || scrolled || hovered;
   const textColor = navbarVisible ? "text-black" : "text-white";

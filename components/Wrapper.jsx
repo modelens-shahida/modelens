@@ -6,8 +6,8 @@ import Footer from "@/components/Footer";
 
 export default function Wrapper({ children }) {
   const pathname = usePathname();
-  const isDashboard = pathname.startsWith("/dashboard");
-  const isAuth = pathname.startsWith("/auth");
+  const isDashboard = pathname?.startsWith("/dashboard") || false;
+  const isAuth = pathname?.startsWith("/auth") || false;
 
   return (
     <>
