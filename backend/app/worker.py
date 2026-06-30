@@ -985,13 +985,25 @@ def weekly_usage_report():
     loop.run_until_complete(_weekly_usage_report_async())
 
 
+async def _send_weekly_report_email(owner_email: str, brand_name: str, total_spent: int, total_transactions: int):
+    """
+    Mock SMTP email dispatch simulation for weekly usage reports.
+    In production, this would integrate with a real SMTP provider (e.g. SendGrid, SES).
+    """
+    print(f"[Worker] [MOCK EMAIL] To: {owner_email}")
+    print(f"[Worker] [MOCK EMAIL] Subject: Weekly Usage Report for {brand_name}")
+    print(f"[Worker] [MOCK EMAIL] Body: This week, your brand spent {total_spent} credits across {total_transactions} transactions.")
+
+
 async def _weekly_usage_report_async():
     from datetime import timedelta
     from sqlalchemy import func
+    from app.models.db import Brand, BrandMember, User, AuditLog
     week_ago = datetime.utcnow() - timedelta(days=7)
 
     async with async_session_maker() as db:
-        # Aggregate credit spend per user in the last 7 days
+        # Aggregate credit spend per brand (via job-linked transactions joined through AIJob -> brand_id)
+        # Since CreditTransaction tracks per-user spend, we aggregate per user then map to brands
         result = await db.execute(
             select(
                 CreditTransaction.user_id,
@@ -1009,7 +1021,39 @@ async def _weekly_usage_report_async():
         print("[Worker] ===== Weekly Credit Usage Report =====")
         if not rows:
             print("[Worker] No credit spend recorded this week.")
+
+        # Get all brands and their owners to send reports
+        brands_result = await db.execute(select(Brand))
+        brands = brands_result.scalars().all()
+
         for row in rows:
-            print(f"[Worker] User {row.user_id}: {abs(row.total_spent)} credits spent across {row.total_transactions} transactions")
+            spent = abs(row.total_spent)
+            txns = row.total_transactions
+            print(f"[Worker] User {row.user_id}: {spent} credits spent across {txns} transactions")
+
+            # Find brands owned by this user and record + email report
+            for brand in brands:
+                if brand.owner_id == row.user_id:
+                    # Record report in AuditLog
+                    audit_log = AuditLog(
+                        user_id=row.user_id,
+                        brand_id=brand.id,
+                        action="weekly_usage_report_generated",
+                        details={
+                            "total_spent": spent,
+                            "total_transactions": txns,
+                            "period_start": week_ago.isoformat(),
+                            "period_end": datetime.utcnow().isoformat(),
+                        },
+                    )
+                    db.add(audit_log)
+
+                    # Get owner email and simulate sending email
+                    owner_result = await db.execute(select(User).where(User.id == brand.owner_id))
+                    owner = owner_result.scalars().first()
+                    if owner:
+                        await _send_weekly_report_email(owner.email, brand.name, spent, txns)
+
+        await db.commit()
         print("[Worker] ==========================================")
 
