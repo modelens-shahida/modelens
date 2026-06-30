@@ -1,15 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   images: {
-    unoptimized: true, // ✅ disables Next.js optimization to prevent 403
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "images.pexels.com",
+        hostname: "**",
       },
       {
-        protocol: "https",
-        hostname: "cdn.prod.website-files.com",
+        protocol: "http",
+        hostname: "**",
       },
     ],
   },

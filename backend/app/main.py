@@ -27,6 +27,7 @@ from app.routers.webhooks import router as webhooks_router
 from app.routers.credits import router as credits_router
 from app.routers.billing import router as billing_router
 from app.routers.stripe_webhooks import router as stripe_webhooks_router
+from app.routers.fix_requests import router as fix_requests_router
 from app.services.pubsub_listener import redis_pubsub_listener
 from app.routers.websockets import router as websockets_router
 
@@ -151,6 +152,7 @@ app.include_router(webhooks_router)
 app.include_router(credits_router)
 app.include_router(billing_router)
 app.include_router(stripe_webhooks_router)
+app.include_router(fix_requests_router)
 app.include_router(websockets_router)
 app.include_router(campaign_router)
 
