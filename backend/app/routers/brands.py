@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Request, Query
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, Brand, BrandMember, User
 from app.middleware.auth import get_current_user, require_brand_role, ROLE_HIERARCHY
+from app.models.db import AuditLog
 from app.services.audit import write_audit_log
 
 router = APIRouter(
@@ -346,3 +347,42 @@ async def remove_member(
 
     return
 
+
+
+@router.get("/{brand_id}/audit-logs", response_model=list[dict])
+async def get_brand_audit_logs(
+    brand_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve the audit log timeline for a brand.
+    Requires at least **admin** role (or owner).
+
+    Returns activity records such as asset deletions, API key changes,
+    webhook subscriptions, member role updates, and billing tier changes.
+    """
+    query = (
+        select(AuditLog)
+        .where(AuditLog.brand_id == brand_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    result = await db.execute(query)
+    logs = result.scalars().all()
+
+    return [
+        {
+            "id": log.id,
+            "user_id": log.user_id,
+            "brand_id": log.brand_id,
+            "action": log.action,
+            "details": log.details,
+            "client_ip": log.client_ip,
+            "created_at": log.created_at.isoformat(),
+        }
+        for log in logs
+    ]
