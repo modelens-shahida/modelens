@@ -286,7 +286,8 @@ async def test_webhook_dispatch_logs_success(db_session: AsyncSession, test_data
     mock_response.text = "OK"
     mock_response.raise_for_status = MagicMock()
 
-    with patch("httpx.Client") as mock_client:
+    with patch("httpx.Client") as mock_client, \
+         patch("app.worker.is_safe_url", return_value=True):
         mock_client.return_value.__enter__.return_value.post.return_value = mock_response
         with patch("app.worker.async_session_maker") as mock_session:
             from unittest.mock import AsyncMock

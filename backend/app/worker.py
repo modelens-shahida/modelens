@@ -820,15 +820,16 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
                         is_success=is_success,
                     )
                     db.add(log)
-                    await db.commit()
-            try:
-                loop = _asyncio.get_event_loop()
-                if loop.is_closed():
-                    raise RuntimeError
-            except RuntimeError:
+            import threading
+            def target():
                 loop = _asyncio.new_event_loop()
-                _asyncio.set_event_loop(loop)
-            loop.run_until_complete(_log())
+                try:
+                    loop.run_until_complete(_log())
+                finally:
+                    loop.close()
+            thread = threading.Thread(target=target)
+            thread.start()
+            thread.join()
         except Exception as log_err:
             print(f"[Worker] Failed to log webhook attempt: {log_err}")
 
