@@ -59,7 +59,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -230,7 +230,7 @@ async def _dispatch_brand_webhooks(db, brand_id: int, event: str, payload: dict)
     subscriptions = result.scalars().all()
     for sub in subscriptions:
         if event in (sub.events or []):
-            dispatch_webhook.delay(sub.url, payload)
+            dispatch_webhook.delay(sub.url, payload, subscription_id=sub.id)
 
 
 
@@ -783,16 +783,54 @@ def is_safe_url(url: str) -> bool:
     retry_backoff=True,
     max_retries=5
 )
-def dispatch_webhook(self, callback_url: str, payload: dict):
+def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: int = None):
     print(f"[Worker] Dispatching webhook to {callback_url}...")
+    status_code = None
+    response_body = None
+    is_success = False
+    attempt = self.request.retries + 1
+
     if not is_safe_url(callback_url):
         print(f"[Worker] Webhook dispatch aborted: unsafe URL {callback_url}")
         raise ValueError(f"SSRF warning: Unsafe webhook URL: {callback_url}")
 
-    with httpx.Client() as client:
-        response = client.post(callback_url, json=payload, timeout=10.0)
-        response.raise_for_status()
-    print(f"[Worker] Webhook dispatched successfully.")
+    try:
+        with httpx.Client() as client:
+            response = client.post(callback_url, json=payload, timeout=10.0)
+            status_code = response.status_code
+            response_body = response.text[:500] if response.text else None
+            response.raise_for_status()
+        is_success = True
+        print(f"[Worker] Webhook dispatched successfully: {status_code}")
+    except Exception as e:
+        print(f"[Worker] Webhook dispatch failed: {e}")
+        raise
+    finally:
+        try:
+            import asyncio as _asyncio
+            async def _log():
+                async with async_session_maker() as db:
+                    log = WebhookLog(
+                        subscription_id=subscription_id,
+                        event=payload.get("type", "unknown"),
+                        payload=payload,
+                        status_code=status_code,
+                        response_body=response_body,
+                        attempt=attempt,
+                        is_success=is_success,
+                    )
+                    db.add(log)
+                    await db.commit()
+            try:
+                loop = _asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError
+            except RuntimeError:
+                loop = _asyncio.new_event_loop()
+                _asyncio.set_event_loop(loop)
+            loop.run_until_complete(_log())
+        except Exception as log_err:
+            print(f"[Worker] Failed to log webhook attempt: {log_err}")
 
 
 

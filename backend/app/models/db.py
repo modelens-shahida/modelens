@@ -445,6 +445,25 @@ class CreditTransaction(Base):
     user = relationship("User")
 
 
+
+class WebhookLog(Base):
+    __tablename__ = "webhook_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscription_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("webhook_subscriptions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    event: Mapped[str] = mapped_column(String(100), index=True)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    response_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    is_success: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    subscription = relationship("WebhookSubscription")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
