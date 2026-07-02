@@ -440,3 +440,60 @@ async def train_character(
         status=job.status,
         credits_remaining=user.credits,
     )
+
+
+@router.get("/versions/{version_id}/metrics")
+async def get_character_version_metrics(
+    version_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get MLflow metrics for a character version.
+    Requires Admin or Owner role.
+    """
+    result = await db.execute(
+        select(CharacterVersion).where(CharacterVersion.id == version_id)
+    )
+    version = result.scalars().first()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character version not found.")
+
+    # Get character to check brand access
+    char_result = await db.execute(select(Character).where(Character.id == version.character_id))
+    character = char_result.scalars().first()
+
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role to view training metrics.")
+
+    if not version.mlflow_run_id:
+        return {
+            "version_id": version_id,
+            "mlflow_run_id": None,
+            "message": "No MLflow run associated with this version.",
+            "params": {},
+            "metrics": {},
+            "artifact_uri": None,
+        }
+
+    try:
+        import mlflow
+        from app.config import settings
+        mlflow.set_tracking_uri(settings.MLFLOW_URI)
+        client = mlflow.tracking.MlflowClient()
+        run = client.get_run(version.mlflow_run_id)
+
+        return {
+            "version_id": version_id,
+            "mlflow_run_id": version.mlflow_run_id,
+            "params": run.data.params,
+            "metrics": run.data.metrics,
+            "artifact_uri": run.info.artifact_uri,
+            "status": run.info.status,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to retrieve MLflow metrics: {str(e)}"
+        )

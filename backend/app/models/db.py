@@ -302,6 +302,7 @@ class CharacterVersion(Base):
     reference_image_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     validation_image_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     config_overrides: Mapped[dict] = mapped_column(JSONB, default=dict)
+    mlflow_run_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     character = relationship("Character")
