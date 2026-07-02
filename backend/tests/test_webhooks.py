@@ -297,3 +297,124 @@ async def test_webhook_dispatch_logs_success(db_session: AsyncSession, test_data
 
     # Verify mock_db.add was called (log was created)
     mock_db.add.assert_called()
+
+
+# ========================== HMAC Signing Tests ====================
+
+@pytest.mark.asyncio
+async def test_register_webhook_returns_secret_token(client: AsyncClient, test_data: dict):
+    """Registering a webhook should return a secret_token."""
+    brand = test_data["brand"]
+    owner_headers = test_data["get_headers"]("owner")
+
+    res = await client.post("/api/v1/webhooks", json={
+        "brand_id": brand.id,
+        "url": "https://example.com/hmac-test",
+        "events": ["job.completed"]
+    }, headers=owner_headers)
+    assert res.status_code == status.HTTP_201_CREATED
+    data = res.json()
+    assert "secret_token" in data
+    assert data["secret_token"].startswith("ml_sec_")
+
+
+@pytest.mark.asyncio
+async def test_rotate_secret_owner_success(client: AsyncClient, test_data: dict):
+    """Owner should be able to rotate webhook secret."""
+    brand = test_data["brand"]
+    owner_headers = test_data["get_headers"]("owner")
+
+    # Create webhook
+    res = await client.post("/api/v1/webhooks", json={
+        "brand_id": brand.id,
+        "url": "https://example.com/rotate-test",
+        "events": ["job.completed"]
+    }, headers=owner_headers)
+    webhook_id = res.json()["id"]
+    original_secret = res.json()["secret_token"]
+
+    # Rotate secret
+    res = await client.post(f"/api/v1/webhooks/{webhook_id}/rotate-secret", headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert "secret_token" in data
+    assert data["secret_token"].startswith("ml_sec_")
+    assert data["secret_token"] != original_secret
+
+
+@pytest.mark.asyncio
+async def test_rotate_secret_viewer_forbidden(client: AsyncClient, test_data: dict):
+    """Viewer should not be able to rotate webhook secret."""
+    brand = test_data["brand"]
+    owner_headers = test_data["get_headers"]("owner")
+    viewer_headers = test_data["get_headers"]("viewer")
+
+    res = await client.post("/api/v1/webhooks", json={
+        "brand_id": brand.id,
+        "url": "https://example.com/viewer-rotate",
+        "events": ["job.completed"]
+    }, headers=owner_headers)
+    webhook_id = res.json()["id"]
+
+    res = await client.post(f"/api/v1/webhooks/{webhook_id}/rotate-secret", headers=viewer_headers)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_rotate_secret_not_found(client: AsyncClient, test_data: dict):
+    """Rotating secret for non-existent webhook should return 404."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.post("/api/v1/webhooks/99999/rotate-secret", headers=owner_headers)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_dispatch_webhook_includes_hmac_header(db_session, test_data: dict):
+    """dispatch_webhook should include X-Modelens-Signature header."""
+    from app.models.db import WebhookSubscription
+    from unittest.mock import patch, MagicMock
+
+    brand = test_data["brand"]
+    sub = WebhookSubscription(
+        brand_id=brand.id,
+        url="https://example.com/hmac-hook",
+        events=["job.completed"],
+        is_active=True,
+        secret_token="ml_sec_testsecret123",
+    )
+    db_session.add(sub)
+    await db_session.commit()
+    await db_session.refresh(sub)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "OK"
+    mock_response.raise_for_status = MagicMock()
+
+    captured_headers = {}
+
+    def mock_post(url, json=None, headers=None, timeout=None):
+        captured_headers.update(headers or {})
+        return mock_response
+
+    with patch("httpx.Client") as mock_client:
+        mock_client.return_value.__enter__.return_value.post.side_effect = mock_post
+        with patch("app.worker.async_session_maker") as mock_session_maker:
+            from unittest.mock import AsyncMock
+            mock_db = AsyncMock()
+            mock_sub = MagicMock()
+            mock_sub.secret_token = "ml_sec_testsecret123"
+            mock_db.execute.return_value.scalars.return_value.first.return_value = mock_sub
+            mock_session_maker.return_value.__aenter__.return_value = mock_db
+
+            from app.worker import dispatch_webhook
+            dispatch_webhook(
+                "https://example.com/hmac-hook",
+                {"type": "job.completed", "job_id": 1},
+                subscription_id=sub.id
+            )
+
+    assert "X-Modelens-Signature" in captured_headers
+    sig = captured_headers["X-Modelens-Signature"]
+    assert sig.startswith("t=")
+    assert "v1=" in sig

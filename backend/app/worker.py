@@ -794,9 +794,44 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
         print(f"[Worker] Webhook dispatch aborted: unsafe URL {callback_url}")
         raise ValueError(f"SSRF warning: Unsafe webhook URL: {callback_url}")
 
+    # Build HMAC SHA256 signature if subscription has a secret_token
+    headers = {}
+    if subscription_id:
+        try:
+            import hashlib, hmac, time, json as _json
+            async def _get_secret():
+                async with async_session_maker() as db:
+                    from app.models.db import WebhookSubscription
+                    result = await db.execute(
+                        select(WebhookSubscription).where(WebhookSubscription.id == subscription_id)
+                    )
+                    sub = result.scalars().first()
+                    return sub.secret_token if sub else None
+            import asyncio as _asyncio2
+            try:
+                _loop = _asyncio2.get_event_loop()
+                if _loop.is_closed():
+                    raise RuntimeError
+            except RuntimeError:
+                _loop = _asyncio2.new_event_loop()
+                _asyncio2.set_event_loop(_loop)
+            secret = _loop.run_until_complete(_get_secret())
+            if secret:
+                timestamp = str(int(time.time()))
+                payload_str = _json.dumps(payload, separators=(",", ":"))
+                sig_payload = f"{timestamp}.{payload_str}"
+                signature = hmac.new(
+                    secret.encode("utf-8"),
+                    sig_payload.encode("utf-8"),
+                    hashlib.sha256
+                ).hexdigest()
+                headers["X-Modelens-Signature"] = f"t={timestamp},v1={signature}"
+        except Exception as sig_err:
+            print(f"[Worker] HMAC signing failed (non-fatal): {sig_err}")
+
     try:
         with httpx.Client() as client:
-            response = client.post(callback_url, json=payload, timeout=10.0)
+            response = client.post(callback_url, json=payload, headers=headers, timeout=10.0)
             status_code = response.status_code
             response_body = response.text[:500] if response.text else None
             response.raise_for_status()

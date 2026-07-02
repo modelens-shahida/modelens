@@ -283,6 +283,7 @@ class APIKey(Base):
         default=datetime.utcnow
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    secret_token: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default=None)
 
     user = relationship("User")
 
@@ -402,6 +403,7 @@ class WebhookSubscription(Base):
     url: Mapped[str] = mapped_column(String(1000))
     events: Mapped[list] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    secret_token: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     brand = relationship("Brand")

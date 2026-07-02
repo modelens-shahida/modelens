@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Query
+import secrets, Request
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +39,16 @@ class WebhookResponse(BaseModel):
     created_at: datetime
     model_config = {"from_attributes": True}
 
+class WebhookCreateResponse(BaseModel):
+    id: int
+    brand_id: int
+    url: str
+    events: list
+    is_active: bool
+    secret_token: Optional[str]
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
 # ========================== Helpers ==============================
 
 async def get_user_role_in_brand(user_id: int, brand_id: int, db: AsyncSession) -> str:
@@ -62,7 +73,7 @@ async def get_accessible_brand_ids(user_id: int, db: AsyncSession) -> set:
 
 # ========================== Endpoints ============================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=WebhookResponse)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=WebhookCreateResponse)
 async def register_webhook(
     payload: WebhookCreateRequest,
     request: Request,
@@ -189,3 +200,30 @@ async def get_webhook_logs(
         }
         for log in logs
     ]
+
+
+@router.post("/{subscription_id}/rotate-secret")
+async def rotate_webhook_secret(
+    subscription_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rotate the signing secret for a webhook subscription. Requires Admin or Owner role."""
+    result = await db.execute(select(WebhookSubscription).where(WebhookSubscription.id == subscription_id))
+    subscription = result.scalars().first()
+    if not subscription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook subscription not found.")
+
+    role = await get_user_role_in_brand(current_user.id, subscription.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role to rotate webhook secret.")
+
+    new_secret = f"ml_sec_{secrets.token_hex(32)}"
+    subscription.secret_token = new_secret
+    await db.commit()
+
+    return {
+        "message": "Webhook signing secret rotated successfully.",
+        "subscription_id": subscription_id,
+        "secret_token": new_secret,
+    }
