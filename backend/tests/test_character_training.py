@@ -7,6 +7,14 @@ from sqlalchemy import select
 
 from app.models.db import CharacterVersion, AIJob, Character
 
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 # ========================== MLflow Worker Tests ===================
 
@@ -23,7 +31,7 @@ async def test_training_job_logs_to_mlflow(db_session: AsyncSession, test_data: 
         brand_id=brand.id,
         name="Test Character",
         description="Test",
-        trigger_word="test_char",
+        image_path="/uploads/test_char.png",
     )
     db_session.add(character)
     await db_session.commit()
@@ -55,6 +63,7 @@ async def test_training_job_logs_to_mlflow(db_session: AsyncSession, test_data: 
     mock_mlflow.start_run.return_value.__exit__ = MagicMock(return_value=False)
 
     with patch("app.worker.asyncio.sleep", new=AsyncMock()), \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
          patch.dict("sys.modules", {"mlflow": mock_mlflow}):
         await _process_training_job_async(job.id, retries=0, max_retries=3)
 
@@ -81,7 +90,7 @@ async def test_training_mlflow_failure_is_non_fatal(db_session: AsyncSession, te
         brand_id=brand.id,
         name="Test Character 2",
         description="Test",
-        trigger_word="test_char_2",
+        image_path="/uploads/test_char_2.png",
     )
     db_session.add(character)
     await db_session.commit()
@@ -109,6 +118,7 @@ async def test_training_mlflow_failure_is_non_fatal(db_session: AsyncSession, te
     mock_mlflow.set_tracking_uri.side_effect = Exception("MLflow unavailable")
 
     with patch("app.worker.asyncio.sleep", new=AsyncMock()), \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
          patch.dict("sys.modules", {"mlflow": mock_mlflow}):
         await _process_training_job_async(job.id, retries=0, max_retries=3)
 
@@ -136,7 +146,7 @@ async def test_get_metrics_viewer_forbidden(client: AsyncClient, db_session: Asy
         brand_id=brand.id,
         name="Metrics Test Character",
         description="Test",
-        trigger_word="metrics_char",
+        image_path="/uploads/metrics_char.png",
     )
     db_session.add(character)
     await db_session.commit()
@@ -166,7 +176,7 @@ async def test_get_metrics_no_mlflow_run(client: AsyncClient, db_session: AsyncS
         brand_id=brand.id,
         name="No MLflow Character",
         description="Test",
-        trigger_word="no_mlflow",
+        image_path="/uploads/no_mlflow.png",
     )
     db_session.add(character)
     await db_session.commit()
@@ -198,7 +208,7 @@ async def test_get_metrics_owner_success(client: AsyncClient, db_session: AsyncS
         brand_id=brand.id,
         name="Owner Metrics Character",
         description="Test",
-        trigger_word="owner_metrics",
+        image_path="/uploads/owner_metrics.png",
     )
     db_session.add(character)
     await db_session.commit()
