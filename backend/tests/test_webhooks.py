@@ -292,6 +292,9 @@ async def test_webhook_dispatch_logs_success(db_session: AsyncSession, test_data
         with patch("app.worker.async_session_maker") as mock_session:
             from unittest.mock import AsyncMock
             mock_db = AsyncMock()
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.first.return_value = None
+            mock_db.execute.return_value = mock_result
             mock_session.return_value.__aenter__.return_value = mock_db
             dispatch_webhook("https://example.com/success-hook", {"type": "job.completed"}, subscription_id=sub.id)
 
@@ -397,22 +400,16 @@ async def test_dispatch_webhook_includes_hmac_header(db_session, test_data: dict
         captured_headers.update(headers or {})
         return mock_response
 
-    with patch("httpx.Client") as mock_client:
+    with patch("httpx.Client") as mock_client, \
+         patch("app.worker.is_safe_url", return_value=True), \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         mock_client.return_value.__enter__.return_value.post.side_effect = mock_post
-        with patch("app.worker.async_session_maker") as mock_session_maker:
-            from unittest.mock import AsyncMock
-            mock_db = AsyncMock()
-            mock_sub = MagicMock()
-            mock_sub.secret_token = "ml_sec_testsecret123"
-            mock_db.execute.return_value.scalars.return_value.first.return_value = mock_sub
-            mock_session_maker.return_value.__aenter__.return_value = mock_db
-
-            from app.worker import dispatch_webhook
-            dispatch_webhook(
-                "https://example.com/hmac-hook",
-                {"type": "job.completed", "job_id": 1},
-                subscription_id=sub.id
-            )
+        from app.worker import dispatch_webhook
+        dispatch_webhook(
+            "https://example.com/hmac-hook",
+            {"type": "job.completed", "job_id": 1},
+            subscription_id=sub.id
+        )
 
     assert "X-Modelens-Signature" in captured_headers
     sig = captured_headers["X-Modelens-Signature"]

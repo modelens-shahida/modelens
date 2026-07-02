@@ -807,15 +807,18 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
                     )
                     sub = result.scalars().first()
                     return sub.secret_token if sub else None
-            import asyncio as _asyncio2
-            try:
-                _loop = _asyncio2.get_event_loop()
-                if _loop.is_closed():
-                    raise RuntimeError
-            except RuntimeError:
+            import threading, asyncio as _asyncio2
+            secret = None
+            def target():
+                nonlocal secret
                 _loop = _asyncio2.new_event_loop()
-                _asyncio2.set_event_loop(_loop)
-            secret = _loop.run_until_complete(_get_secret())
+                try:
+                    secret = _loop.run_until_complete(_get_secret())
+                finally:
+                    _loop.close()
+            thread = threading.Thread(target=target)
+            thread.start()
+            thread.join()
             if secret:
                 timestamp = str(int(time.time()))
                 payload_str = _json.dumps(payload, separators=(",", ":"))

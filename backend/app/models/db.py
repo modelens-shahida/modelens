@@ -283,7 +283,6 @@ class APIKey(Base):
         default=datetime.utcnow
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    secret_token: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default=None)
 
     user = relationship("User")
 

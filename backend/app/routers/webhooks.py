@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query
-import secrets, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
+import secrets
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,11 +95,13 @@ async def register_webhook(
             detail=f"Invalid events: {invalid_events}. Allowed: {ALLOWED_EVENTS}"
         )
 
+    secret_token = f"ml_sec_{secrets.token_hex(32)}"
     subscription = WebhookSubscription(
         brand_id=payload.brand_id,
         url=payload.url,
         events=payload.events,
         is_active=True,
+        secret_token=secret_token,
     )
     db.add(subscription)
     await db.commit()
