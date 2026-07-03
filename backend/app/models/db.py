@@ -35,6 +35,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50))
     credits: Mapped[int] = mapped_column(Integer, default=100)
+    last_low_credit_warning_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

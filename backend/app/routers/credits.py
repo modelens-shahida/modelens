@@ -6,6 +6,7 @@ from sqlalchemy import select
 from datetime import datetime
 
 from app.models.db import get_db, CreditTransaction, User
+from datetime import timedelta
 from app.middleware.auth import get_current_user
 
 router = APIRouter(
@@ -41,6 +42,31 @@ CREDIT_PACKAGES = {
 }
 
 LOW_CREDIT_THRESHOLD = 20
+
+
+LOW_CREDIT_THRESHOLD = 20
+
+async def _trigger_low_credit_warning_if_needed(db, user: User):
+    """Trigger low credit warning email if balance below threshold and cooldown passed."""
+    if user.credits >= LOW_CREDIT_THRESHOLD:
+        # Reset warning state so next drop triggers immediately
+        if user.last_low_credit_warning_at is not None:
+            user.last_low_credit_warning_at = None
+            await db.flush()
+        return
+
+    from datetime import timedelta
+    now = datetime.utcnow()
+    should_warn = (
+        user.last_low_credit_warning_at is None or
+        (now - user.last_low_credit_warning_at) > timedelta(days=7)
+    )
+    if should_warn:
+        from app.worker import send_low_credit_warning_email
+        user.last_low_credit_warning_at = now
+        await db.flush()
+        send_low_credit_warning_email.delay(user.id)
+
 
 # ========================== Helper ===============================
 
@@ -134,6 +160,9 @@ async def mock_purchase(
         reference_type="purchase_invoice",
         description=f"Mock purchase: {package} package ({credits_to_add} credits)",
     )
+
+    # Reset low credit warning if balance now above threshold
+    await _trigger_low_credit_warning_if_needed(db, user)
 
     await db.commit()
 

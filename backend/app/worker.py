@@ -1160,3 +1160,63 @@ async def _weekly_usage_report_async():
         await db.commit()
         print("[Worker] ==========================================")
 
+
+
+
+# ========================== Low Credit Alert Helper ==============
+
+async def _check_and_send_low_credit_warning(db, user_id: int, current_balance: int):
+    """
+    Check if user balance dropped below threshold and send warning email.
+    Enforces 7-day cooldown between warnings.
+    """
+    LOW_CREDIT_THRESHOLD = 20
+    if current_balance >= LOW_CREDIT_THRESHOLD:
+        return
+
+    from datetime import timedelta
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        return
+
+    now = datetime.utcnow()
+    should_warn = (
+        user.last_low_credit_warning_at is None or
+        (now - user.last_low_credit_warning_at) > timedelta(days=7)
+    )
+
+    if should_warn:
+        user.last_low_credit_warning_at = now
+        await db.flush()
+        send_low_credit_warning_email.delay(user_id)
+        print(f"[Worker] Low credit warning triggered for user {user_id}. Balance: {current_balance}")
+
+
+# ========================== Low Credit Warning Task ===============
+
+@celery_app.task(name="app.worker.send_low_credit_warning_email")
+def send_low_credit_warning_email(user_id: int):
+    """
+    Celery task to send a mock low credit warning email to the user.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_send_low_credit_warning_async(user_id))
+
+
+async def _send_low_credit_warning_async(user_id: int):
+    async with async_session_maker() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalars().first()
+        if not user:
+            print(f"[Worker] Low credit warning: user {user_id} not found.")
+            return
+
+        print(f"[Worker] [MOCK EMAIL] To: {user.email}")
+        print(f"[Worker] [MOCK EMAIL] Subject: Low Credit Balance Warning - ModeLens")
+        print(f"[Worker] [MOCK EMAIL] Body: Your ModeLens credit balance has dropped to {user.credits} credits, which is below the warning threshold of 20 credits. Please top up your credits to continue generating content.")
+        print(f"[Worker] Low credit warning email sent to user {user_id} ({user.email}). Balance: {user.credits}")
