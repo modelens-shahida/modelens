@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.db import get_db, CreditTransaction, User
 from datetime import timedelta
 from app.middleware.auth import get_current_user
+from app.worker import send_low_credit_warning_email
 
 router = APIRouter(
     prefix="/api/v1/credits",
@@ -62,7 +63,6 @@ async def _trigger_low_credit_warning_if_needed(db, user: User):
         (now - user.last_low_credit_warning_at) > timedelta(days=7)
     )
     if should_warn:
-        from app.worker import send_low_credit_warning_email
         user.last_low_credit_warning_at = now
         await db.flush()
         send_low_credit_warning_email.delay(user.id)

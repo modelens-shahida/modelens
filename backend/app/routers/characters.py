@@ -412,6 +412,9 @@ async def train_character(
     )
     db.add(credit_txn)
 
+    from app.routers.credits import _trigger_low_credit_warning_if_needed
+    await _trigger_low_credit_warning_if_needed(db, user)
+
     # 5. Create AIJob
     job = AIJob(
         user_id=current_user.id,

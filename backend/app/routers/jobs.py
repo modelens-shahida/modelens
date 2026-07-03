@@ -145,6 +145,9 @@ async def generate_job(
     )
     db.add(credit_txn)
 
+    from app.routers.credits import _trigger_low_credit_warning_if_needed
+    await _trigger_low_credit_warning_if_needed(db, db_user)
+
     # 4. Insert Job Record
     job = AIJob(
         user_id=db_user.id,
@@ -313,6 +316,9 @@ async def generate_workflow_job(
         description=f"AI workflow job ({payload.workflow_type}) credit deduction",
     )
     db.add(credit_txn)
+
+    from app.routers.credits import _trigger_low_credit_warning_if_needed
+    await _trigger_low_credit_warning_if_needed(db, db_user)
 
     # Combine workflow_type into inputs
     job_inputs = {**payload.inputs, "workflow_type": payload.workflow_type}

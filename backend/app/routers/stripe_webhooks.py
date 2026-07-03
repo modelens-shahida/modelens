@@ -35,6 +35,10 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
         description=description,
     )
     db.add(txn)
+
+    from app.routers.credits import _trigger_low_credit_warning_if_needed
+    await _trigger_low_credit_warning_if_needed(db, user)
+
     await db.commit()
     print(f"[Stripe] Provisioned {credits} credits to user {user_id}. New balance: {user.credits}")
 
