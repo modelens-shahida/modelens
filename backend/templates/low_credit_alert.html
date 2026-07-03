@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Low Credit Balance Warning - ModeLens</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f7;font-family:'Segoe UI',Arial,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 0;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background:linear-gradient(135deg,#6B21A8,#9333EA);padding:32px 40px;text-align:center;">
+                            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">ModeLens</h1>
+                            <p style="color:#e9d5ff;margin:8px 0 0;font-size:14px;">Credit Balance Alert</p>
+                        </td>
+                    </tr>
+
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding:40px;">
+                            <p style="color:#374151;font-size:16px;margin:0 0 16px;">Hi {{user_name}},</p>
+                            <p style="color:#374151;font-size:16px;margin:0 0 24px;">
+                                Your ModeLens credit balance has dropped below the warning threshold. Please top up your credits to continue generating content without interruption.
+                            </p>
+
+                            <!-- Balance Box -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+                                <tr>
+                                    <td style="background-color:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:20px;text-align:center;">
+                                        <p style="color:#92400e;font-size:14px;margin:0 0 8px;font-weight:600;">CURRENT BALANCE</p>
+                                        <p style="color:#92400e;font-size:36px;margin:0;font-weight:700;">{{current_balance}} credits</p>
+                                        <p style="color:#92400e;font-size:13px;margin:8px 0 0;">Warning threshold: {{threshold}} credits</p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- CTA Button -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="{{credits_url}}" style="display:inline-block;background:linear-gradient(135deg,#6B21A8,#9333EA);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;">
+                                            Add Credits Now
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="color:#6b7280;font-size:14px;margin:0;">
+                                If you have any questions, please contact our support team.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+                            <p style="color:#9ca3af;font-size:12px;margin:0;">&copy; 2026 ModeLens. All rights reserved.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = Field(default="whsec_mock_secret")
     STRIPE_MOCK_MODE: bool = Field(default=True)
 
+    # Email Provider (for low-credit alerts)
+    EMAIL_PROVIDER: str = Field(default="sendgrid")  # 'sendgrid' or 'ses'
+    SENDGRID_API_KEY: Optional[str] = Field(default=None)
+    SES_REGION: str = Field(default="us-east-1")
+    FROM_EMAIL: str = Field(default="no-reply@modelens.com")
+
     # Load configuration settings from the resolved .env file path
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,

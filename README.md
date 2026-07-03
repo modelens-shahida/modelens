@@ -222,3 +222,45 @@ To execute tests:
   ```bash
   docker compose logs -f api
   ```
+
+---
+
+## 10. Email Provider Setup
+
+ModeLens supports transactional email delivery for low-credit alerts via **SendGrid** or **AWS SES**.
+
+### Environment Variables
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `EMAIL_PROVIDER` | Email provider to use (`sendgrid` or `ses`) | `sendgrid` |
+| `SENDGRID_API_KEY` | SendGrid API key (required if using SendGrid) | — |
+| `SES_REGION` | AWS SES region (required if using SES) | `us-east-1` |
+| `FROM_EMAIL` | Sender email address | `no-reply@modelens.com` |
+
+### SendGrid Setup
+1. Create a free account at [sendgrid.com](https://sendgrid.com/).
+2. Navigate to **Settings → API Keys** and create a key with "Mail Send" permissions.
+3. Add the key to your `.env`:
+   ```bash
+   EMAIL_PROVIDER=sendgrid
+   SENDGRID_API_KEY=SG.your_api_key_here
+   FROM_EMAIL=no-reply@modelens.com
+   ```
+
+### AWS SES Setup
+1. Ensure your AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) are configured.
+2. Verify your sender email in the SES console.
+3. Add the settings to your `.env`:
+   ```bash
+   EMAIL_PROVIDER=ses
+   SES_REGION=us-east-1
+   FROM_EMAIL=no-reply@modelens.com
+   ```
+
+### Testing Email Locally
+Run the email integration tests to verify your setup (no real emails are sent during testing):
+```bash
+python -m pytest tests/test_low_credit_email.py -v
+```
+

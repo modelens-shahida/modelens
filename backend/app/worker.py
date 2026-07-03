@@ -1195,17 +1195,80 @@ async def _check_and_send_low_credit_warning(db, user_id: int, current_balance: 
 
 # ========================== Low Credit Warning Task ===============
 
-@celery_app.task(name="app.worker.send_low_credit_warning_email")
-def send_low_credit_warning_email(user_id: int):
+LOW_CREDIT_THRESHOLD = 20
+CREDITS_URL = "https://modelens.com/credits"
+
+
+def _render_low_credit_template(user_name: str, current_balance: int, threshold: int = LOW_CREDIT_THRESHOLD, credits_url: str = CREDITS_URL) -> str:
+    """Render the low credit alert HTML email template with user data."""
+    import pathlib
+    template_path = pathlib.Path(__file__).resolve().parent.parent / "templates" / "low_credit_alert.html"
+    html = template_path.read_text(encoding="utf-8")
+    html = html.replace("{{user_name}}", user_name or "User")
+    html = html.replace("{{current_balance}}", str(current_balance))
+    html = html.replace("{{threshold}}", str(threshold))
+    html = html.replace("{{credits_url}}", credits_url)
+    return html
+
+
+def _send_email(to_email: str, subject: str, html_content: str):
+    """Send an email via SendGrid or AWS SES based on EMAIL_PROVIDER setting."""
+    from app.config import settings
+
+    provider = (settings.EMAIL_PROVIDER or "sendgrid").lower()
+    from_email = settings.FROM_EMAIL or "no-reply@modelens.com"
+
+    if provider == "sendgrid":
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+
+        message = Mail(
+            from_email=from_email,
+            to_emails=to_email,
+            subject=subject,
+            html_content=html_content,
+        )
+        client = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        response = client.send(message)
+        print(f"[Worker] SendGrid email sent to {to_email}. Status: {response.status_code}")
+
+    elif provider == "ses":
+        import boto3
+
+        ses_client = boto3.client("ses", region_name=settings.SES_REGION or "us-east-1")
+        ses_client.send_email(
+            Source=from_email,
+            Destination={"ToAddresses": [to_email]},
+            Message={
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Html": {"Data": html_content, "Charset": "UTF-8"},
+                },
+            },
+        )
+        print(f"[Worker] SES email sent to {to_email}.")
+
+    else:
+        print(f"[Worker] Unknown EMAIL_PROVIDER '{provider}'. Skipping email to {to_email}.")
+
+
+@celery_app.task(bind=True, name="app.worker.send_low_credit_warning_email", max_retries=3)
+def send_low_credit_warning_email(self, user_id: int):
     """
-    Celery task to send a mock low credit warning email to the user.
+    Celery task to send a low credit warning email to the user.
+    Retries up to 3 times with exponential backoff on failure.
     """
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    loop.run_until_complete(_send_low_credit_warning_async(user_id))
+
+    try:
+        loop.run_until_complete(_send_low_credit_warning_async(user_id))
+    except Exception as exc:
+        print(f"[Worker] Email send failed for user {user_id}: {exc}. Retrying...")
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
 
 
 async def _send_low_credit_warning_async(user_id: int):
@@ -1216,7 +1279,15 @@ async def _send_low_credit_warning_async(user_id: int):
             print(f"[Worker] Low credit warning: user {user_id} not found.")
             return
 
-        print(f"[Worker] [MOCK EMAIL] To: {user.email}")
-        print(f"[Worker] [MOCK EMAIL] Subject: Low Credit Balance Warning - ModeLens")
-        print(f"[Worker] [MOCK EMAIL] Body: Your ModeLens credit balance has dropped to {user.credits} credits, which is below the warning threshold of 20 credits. Please top up your credits to continue generating content.")
+        html_content = _render_low_credit_template(
+            user_name=user.email.split("@")[0],
+            current_balance=user.credits,
+        )
+
+        _send_email(
+            to_email=user.email,
+            subject="Low Credit Balance Warning - ModeLens",
+            html_content=html_content,
+        )
         print(f"[Worker] Low credit warning email sent to user {user_id} ({user.email}). Balance: {user.credits}")
+
