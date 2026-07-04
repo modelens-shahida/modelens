@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from app.models.db import get_db, WebhookSubscription, Brand, BrandMember, User, WebhookLog
+from app.models.db import get_db, WebhookSubscription, Brand, BrandMember, User, WebhookLog, WebhookDeliveryLog
 from app.middleware.auth import get_current_user
 from app.services.audit import write_audit_log
 
@@ -229,3 +229,80 @@ async def rotate_webhook_secret(
         "subscription_id": subscription_id,
         "secret_token": new_secret,
     }
+
+
+@router.get("/{subscription_id}/delivery-logs")
+async def get_webhook_delivery_logs(
+    subscription_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get delivery logs for a webhook subscription. Requires Admin or Owner role."""
+    result = await db.execute(select(WebhookSubscription).where(WebhookSubscription.id == subscription_id))
+    subscription = result.scalars().first()
+    if not subscription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook subscription not found.")
+
+    role = await get_user_role_in_brand(current_user.id, subscription.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role.")
+
+    logs_result = await db.execute(
+        select(WebhookDeliveryLog)
+        .where(WebhookDeliveryLog.subscription_id == subscription_id)
+        .order_by(WebhookDeliveryLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    logs = logs_result.scalars().all()
+
+    return [
+        {
+            "id": log.id,
+            "subscription_id": log.subscription_id,
+            "event_type": log.event_type,
+            "payload": log.payload,
+            "response_status": log.response_status,
+            "response_body": log.response_body,
+            "execution_time_ms": log.execution_time_ms,
+            "status": log.status,
+            "attempt_number": log.attempt_number,
+            "created_at": log.created_at.isoformat(),
+        }
+        for log in logs
+    ]
+
+
+@router.post("/logs/{log_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_webhook_delivery(
+    log_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually retry a failed or dead webhook delivery. Requires Admin or Owner role."""
+    from app.worker import dispatch_webhook
+
+    log_result = await db.execute(select(WebhookDeliveryLog).where(WebhookDeliveryLog.id == log_id))
+    log = log_result.scalars().first()
+    if not log:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery log not found.")
+
+    sub_result = await db.execute(select(WebhookSubscription).where(WebhookSubscription.id == log.subscription_id))
+    subscription = sub_result.scalars().first()
+    if not subscription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook subscription not found.")
+
+    role = await get_user_role_in_brand(current_user.id, subscription.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role.")
+
+    # Reset log status and queue fresh delivery
+    log.status = "retrying"
+    log.attempt_number = 1
+    await db.commit()
+
+    dispatch_webhook.delay(subscription.url, log.payload, subscription_id=subscription.id)
+
+    return {"message": "Webhook delivery queued for retry.", "log_id": log_id}

@@ -59,7 +59,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -787,51 +787,124 @@ def is_safe_url(url: str) -> bool:
         return False
 
 
+
+def _log_delivery(subscription_id, payload, status_code, response_body, execution_time_ms, status, attempt_number):
+    """Log webhook delivery attempt to WebhookDeliveryLog."""
+    import threading as _t
+    def _run():
+        import asyncio as _asyncio
+        loop = _asyncio.new_event_loop()
+        try:
+            async def _do():
+                async with async_session_maker() as db:
+                    log = WebhookDeliveryLog(
+                        subscription_id=subscription_id,
+                        event_type=payload.get("type", "unknown"),
+                        payload=payload,
+                        response_status=status_code,
+                        response_body=response_body[:1000] if response_body else None,
+                        execution_time_ms=execution_time_ms,
+                        status=status,
+                        attempt_number=attempt_number,
+                    )
+                    db.add(log)
+                    await db.commit()
+            loop.run_until_complete(_do())
+        except Exception as e:
+            print(f"[Worker] Failed to log delivery: {e}")
+        finally:
+            loop.close()
+    t = _t.Thread(target=_run)
+    t.start()
+    t.join()
+
+
+def _trigger_webhook_failed_notification(subscription_id, callback_url):
+    """Trigger in-app notification when webhook delivery permanently fails (DLQ)."""
+    import threading as _t
+    def _run():
+        import asyncio as _asyncio
+        loop = _asyncio.new_event_loop()
+        try:
+            async def _do():
+                async with async_session_maker() as db:
+                    if subscription_id:
+                        result = await db.execute(
+                            select(WebhookSubscription).where(WebhookSubscription.id == subscription_id)
+                        )
+                        sub = result.scalars().first()
+                        if sub:
+                            brand_result = await db.execute(
+                                select(Brand).where(Brand.id == sub.brand_id)
+                            )
+                            brand = brand_result.scalars().first()
+                            if brand:
+                                await _create_notification(
+                                    db, brand.owner_id, "webhook_failed",
+                                    "Webhook Delivery Failed",
+                                    f"Webhook to {callback_url} has failed after 5 attempts and has been moved to the Dead Letter Queue."
+                                )
+                                await db.commit()
+            loop.run_until_complete(_do())
+        except Exception as e:
+            print(f"[Worker] Failed to trigger webhook notification: {e}")
+        finally:
+            loop.close()
+    t = _t.Thread(target=_run)
+    t.start()
+    t.join()
+
+
 @celery_app.task(
     name="app.worker.dispatch_webhook",
     bind=True,
-    autoretry_for=(httpx.HTTPError,),
-    retry_backoff=True,
-    max_retries=5
+    max_retries=5,
+    default_retry_delay=60,
 )
 def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: int = None):
-    print(f"[Worker] Dispatching webhook to {callback_url}...")
+    """
+    Resilient webhook delivery with exponential backoff, DLQ logging, and in-app notifications.
+    Retries up to 5 times on 5xx, timeout, or network errors.
+    """
+    import time as _time
     status_code = None
     response_body = None
     is_success = False
     attempt = self.request.retries + 1
+    start_time = _time.time()
+    delivery_status = "failed"
 
     if not is_safe_url(callback_url):
         print(f"[Worker] Webhook dispatch aborted: unsafe URL {callback_url}")
         raise ValueError(f"SSRF warning: Unsafe webhook URL: {callback_url}")
 
-    # Build HMAC SHA256 signature if subscription has a secret_token
+    # Build HMAC signature
     headers = {}
     if subscription_id:
         try:
-            import hashlib, hmac, time, json as _json
+            import hashlib, hmac, json as _json
             async def _get_secret():
                 async with async_session_maker() as db:
-                    from app.models.db import WebhookSubscription
                     result = await db.execute(
                         select(WebhookSubscription).where(WebhookSubscription.id == subscription_id)
                     )
                     sub = result.scalars().first()
                     return sub.secret_token if sub else None
-            import threading, asyncio as _asyncio2
-            secret = None
-            def target():
-                nonlocal secret
-                _loop = _asyncio2.new_event_loop()
+            import threading as _threading
+            secret_holder = [None]
+            def _fetch():
+                import asyncio as _asyncio
+                loop = _asyncio.new_event_loop()
                 try:
-                    secret = _loop.run_until_complete(_get_secret())
+                    secret_holder[0] = loop.run_until_complete(_get_secret())
                 finally:
-                    _loop.close()
-            thread = threading.Thread(target=target)
-            thread.start()
-            thread.join()
+                    loop.close()
+            t = _threading.Thread(target=_fetch)
+            t.start()
+            t.join()
+            secret = secret_holder[0]
             if secret:
-                timestamp = str(int(time.time()))
+                timestamp = str(int(_time.time()))
                 payload_str = _json.dumps(payload, separators=(",", ":"))
                 sig_payload = f"{timestamp}.{payload_str}"
                 signature = hmac.new(
@@ -847,38 +920,65 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
         with httpx.Client() as client:
             response = client.post(callback_url, json=payload, headers=headers, timeout=10.0)
             status_code = response.status_code
-            response_body = response.text[:500] if response.text else None
+            response_body = response.text[:1000] if response.text else None
+            execution_time_ms = int((_time.time() - start_time) * 1000)
+
+            if status_code >= 500:
+                delivery_status = "retrying" if attempt <= self.max_retries else "dead"
+                _log_delivery(subscription_id, payload, status_code, response_body, execution_time_ms, delivery_status, attempt)
+                if attempt > self.max_retries:
+                    _trigger_webhook_failed_notification(subscription_id, callback_url)
+                raise self.retry(countdown=60 * (2 ** self.request.retries))
+
             response.raise_for_status()
-        is_success = True
-        print(f"[Worker] Webhook dispatched successfully: {status_code}")
+            is_success = True
+            delivery_status = "success"
+            print(f"[Worker] Webhook dispatched successfully to {callback_url}: {status_code}")
+
+    except httpx.TimeoutException as e:
+        execution_time_ms = int((_time.time() - start_time) * 1000)
+        delivery_status = "retrying" if attempt <= self.max_retries else "dead"
+        _log_delivery(subscription_id, payload, None, str(e)[:1000], execution_time_ms, delivery_status, attempt)
+        if attempt > self.max_retries:
+            _trigger_webhook_failed_notification(subscription_id, callback_url)
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+
     except Exception as e:
-        print(f"[Worker] Webhook dispatch failed: {e}")
-        raise
+        if not isinstance(e, celery_app.Task.__class__):
+            execution_time_ms = int((_time.time() - start_time) * 1000)
+            print(f"[Worker] Webhook dispatch error: {e}")
+
     finally:
+        if is_success:
+            execution_time_ms = int((_time.time() - start_time) * 1000)
+            _log_delivery(subscription_id, payload, status_code, response_body, execution_time_ms, "success", attempt)
+
+        # Legacy WebhookLog
         try:
-            import asyncio as _asyncio
-            async def _log():
-                async with async_session_maker() as db:
-                    log = WebhookLog(
-                        subscription_id=subscription_id,
-                        event=payload.get("type", "unknown"),
-                        payload=payload,
-                        status_code=status_code,
-                        response_body=response_body,
-                        attempt=attempt,
-                        is_success=is_success,
-                    )
-                    db.add(log)
-            import threading
-            def target():
-                loop = _asyncio.new_event_loop()
+            import threading as _threading2
+            def _log_legacy():
+                import asyncio as _asyncio2
+                loop = _asyncio2.new_event_loop()
                 try:
-                    loop.run_until_complete(_log())
+                    async def _do():
+                        async with async_session_maker() as db:
+                            log = WebhookLog(
+                                subscription_id=subscription_id,
+                                event=payload.get("type", "unknown"),
+                                payload=payload,
+                                status_code=status_code,
+                                response_body=response_body,
+                                attempt=attempt,
+                                is_success=is_success,
+                            )
+                            db.add(log)
+                            await db.commit()
+                    loop.run_until_complete(_do())
                 finally:
                     loop.close()
-            thread = threading.Thread(target=target)
-            thread.start()
-            thread.join()
+            t2 = _threading2.Thread(target=_log_legacy)
+            t2.start()
+            t2.join()
         except Exception as log_err:
             print(f"[Worker] Failed to log webhook attempt: {log_err}")
 
