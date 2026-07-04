@@ -3,7 +3,7 @@ import bcrypt
 from typing import Optional
 from app.config import settings
 from jose import jwt, JWTError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -69,6 +69,7 @@ def hash_api_key(api_key: str) -> str:
 # ========================== Core Auth Dependency ===========================
 
 async def get_current_user(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     api_key: Optional[str] = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
@@ -87,6 +88,10 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # --- Path 0: Cookie-based JWT ---
+    if request.cookies.get("modelens_access_token"):
+        token = request.cookies.get("modelens_access_token")
 
     # --- Path 1: X-API-Key header ---
     if api_key is not None:
