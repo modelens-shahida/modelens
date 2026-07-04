@@ -142,7 +142,7 @@ async def test_retry_owner_success(client: AsyncClient, db_session: AsyncSession
     await db_session.commit()
     await db_session.refresh(log)
 
-    with patch("app.routers.webhooks.dispatch_webhook") as mock_task:
+    with patch("app.worker.dispatch_webhook") as mock_task:
         mock_task.delay = MagicMock()
         res = await client.post(f"/api/v1/webhooks/logs/{log.id}/retry", headers=owner_headers)
         assert res.status_code == status.HTTP_202_ACCEPTED
