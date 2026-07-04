@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Bell, User as UserIcon, LogOut, Settings, CreditCard, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { notificationsApi } from "@/lib/notifications";
 
 export default function TopBar({ toggleSidebar }) {
   const pathname = usePathname();
@@ -11,8 +12,74 @@ export default function TopBar({ toggleSidebar }) {
   
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notificationsRef = useRef(null);
   const profileRef = useRef(null);
+
+  // Load notifications from backend
+  const fetchNotifications = async () => {
+    try {
+      const data = await notificationsApi.list(false, 10, 0);
+      setNotifications(data || []);
+      // Calculate unread count
+      const unread = (data || []).filter((n) => !n.is_read).length;
+      setUnreadCount(unread);
+    } catch (error) {
+      console.error("Failed to load notifications", error);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+      // Poll notifications every 30 seconds
+      const interval = setInterval(fetchNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  // Mark all as read
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationsApi.markAllAsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error("Failed to mark all as read", error);
+    }
+  };
+
+  // Mark single as read
+  const handleMarkAsRead = async (id) => {
+    try {
+      await notificationsApi.markAsRead(id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Failed to mark notification as read", error);
+    }
+  };
+
+  // Format created_at to a human readable time
+  const formatTime = (dateStr) => {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      const seconds = Math.floor((new Date() - date) / 1000);
+      if (seconds < 60) return "just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    } catch (e) {
+      return "";
+    }
+  };
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -72,45 +139,55 @@ export default function TopBar({ toggleSidebar }) {
             }`}
           >
             <Bell size={18} />
-            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-purple-500 rounded-full" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+            )}
           </button>
 
           {showNotifications && (
             <div className="absolute right-0 mt-2.5 w-80 bg-zinc-950 border border-zinc-850 rounded-2xl shadow-xl shadow-black/50 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-center justify-between px-4 pb-2 border-b border-zinc-900">
                 <span className="text-xs font-semibold text-zinc-200">Notifications</span>
-                <button 
-                  onClick={() => setShowNotifications(false)}
-                  className="text-[10px] text-purple-400 hover:text-purple-300 font-medium cursor-pointer"
-                >
-                  Clear all
-                </button>
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={handleMarkAllAsRead}
+                    className="text-[10px] text-purple-400 hover:text-purple-300 font-medium cursor-pointer"
+                  >
+                    Mark all as read
+                  </button>
+                )}
               </div>
               <div className="divide-y divide-zinc-900 max-h-64 overflow-y-auto mt-1">
-                <div className="p-3 hover:bg-zinc-900/40 transition-colors flex gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-purple-500 mt-1.5 shrink-0" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-medium text-zinc-100">Asset validation complete</span>
-                    <span className="text-[10px] text-zinc-400">Your upload "Blog_26_Banner" has been indexed.</span>
-                    <span className="text-[9px] text-zinc-500 mt-0.5">10 minutes ago</span>
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-zinc-500">
+                    No notifications
                   </div>
-                </div>
-                <div className="p-3 hover:bg-zinc-900/40 transition-colors flex gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-purple-500 mt-1.5 shrink-0" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-medium text-zinc-100">AI job rendering completed</span>
-                    <span className="text-[10px] text-zinc-400">Model replacement simulation #104 finished.</span>
-                    <span className="text-[9px] text-zinc-500 mt-0.5">1 hour ago</span>
-                  </div>
-                </div>
-                <div className="p-3 hover:bg-zinc-900/40 transition-colors flex gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-zinc-700 mt-1.5 shrink-0" />
-                  <div className="flex flex-col gap-0.5 opacity-80">
-                    <span className="text-xs font-medium text-zinc-300">Brand member joined</span>
-                    <span className="text-[10px] text-zinc-500">Anshu Roy joined your brand Chanel.</span>
-                    <span className="text-[9px] text-zinc-500 mt-0.5">Yesterday</span>
-                  </div>
-                </div>
+                ) : (
+                  notifications.map((notif) => (
+                    <div 
+                      key={notif.id} 
+                      onClick={() => !notif.is_read && handleMarkAsRead(notif.id)}
+                      className={`p-3 hover:bg-zinc-900/40 transition-colors flex gap-2.5 cursor-pointer ${
+                        !notif.is_read ? "bg-purple-950/5" : ""
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                        !notif.is_read ? "bg-purple-500" : "bg-zinc-700"
+                      }`} />
+                      <div className="flex flex-col gap-0.5">
+                        <span className={`text-xs font-medium ${!notif.is_read ? "text-zinc-100" : "text-zinc-300"}`}>
+                          {notif.title}
+                        </span>
+                        <span className={`text-[10px] ${!notif.is_read ? "text-zinc-400" : "text-zinc-500"}`}>
+                          {notif.message}
+                        </span>
+                        <span className="text-[9px] text-zinc-600 mt-0.5">
+                          {formatTime(notif.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
