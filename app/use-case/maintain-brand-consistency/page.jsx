@@ -376,7 +376,7 @@ const MaintainBrandConsistency = () => {
             conversions
           </h2>
           <button className="bg-white text-black px-6 py-3 rounded-full font-semibold hover:bg-gray-200 transition">
-            Read More ->
+            Read More &rarr;
           </button>
         </div>
       </section>
@@ -467,7 +467,7 @@ const MaintainBrandConsistency = () => {
           className="bg-white text-black px-8 py-3 rounded-full font-semibold hover:bg-gray-200 transition"
           whileHover={{ scale: 1.05 }}
         >
-          Get the App ->
+          Get the App &rarr;
         </motion.button>
       </section>
 
