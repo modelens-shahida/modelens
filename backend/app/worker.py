@@ -59,7 +59,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 
@@ -391,6 +391,17 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
 
             # Publish real-time event to Redis Pub/Sub
             await _publish_brand_event(job.brand_id, "job.completed", {"job_id": job.id, "status": "completed", "asset_id": job.asset_id})
+
+            # Create in-app notification if user preference enabled
+            user_result = await db.execute(select(User).where(User.id == job.user_id))
+            notif_user = user_result.scalars().first()
+            if notif_user and notif_user.notify_on_job_complete:
+                await _create_notification(
+                    db, job.user_id, "job_completed",
+                    "AI Generation Complete",
+                    f"Your AI generation job #{job.id} has completed successfully."
+                )
+                await db.commit()
 
         except Exception as e:
             print(f"[Worker] Job {job_id} execution error: {e}")
@@ -962,6 +973,16 @@ async def _process_training_job_async(job_id: int, retries: int = 0, max_retries
                 "training_bundle_size": len(training_bundle),
                 "mlflow_run_id": mlflow_run_id,
             }
+
+            # Create in-app notification if user preference enabled
+            user_result = await db.execute(select(User).where(User.id == job.user_id))
+            notif_user = user_result.scalars().first()
+            if notif_user and notif_user.notify_on_training_complete:
+                await _create_notification(
+                    db, job.user_id, "training_done",
+                    "Character Training Complete",
+                    f"Your LoRA character training job #{job.id} has completed. Version {version_number} is ready."
+                )
             await db.commit()
 
             print(f"[Worker] Training job {job_id} completed. CharacterVersion {new_version.id} created.")
@@ -1163,6 +1184,22 @@ async def _weekly_usage_report_async():
 
 
 
+
+# ========================== Notification Helper ==================
+
+async def _create_notification(db, user_id: int, notif_type: str, title: str, message: str):
+    """Create an in-app notification for a user."""
+    notification = Notification(
+        user_id=user_id,
+        type=notif_type,
+        title=title,
+        message=message,
+        is_read=False,
+    )
+    db.add(notification)
+    await db.flush()
+
+
 # ========================== Low Credit Alert Helper ==============
 
 async def _check_and_send_low_credit_warning(db, user_id: int, current_balance: int):
@@ -1190,6 +1227,11 @@ async def _check_and_send_low_credit_warning(db, user_id: int, current_balance: 
         user.last_low_credit_warning_at = now
         await db.flush()
         send_low_credit_warning_email.delay(user_id)
+        await _create_notification(
+            db, user_id, "low_credit",
+            "Low Credit Balance Warning",
+            f"Your credit balance has dropped to {current_balance} credits, below the threshold of {LOW_CREDIT_THRESHOLD}. Please top up to continue generating content."
+        )
         print(f"[Worker] Low credit warning triggered for user {user_id}. Balance: {current_balance}")
 
 

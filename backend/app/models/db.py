@@ -36,6 +36,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(50))
     credits: Mapped[int] = mapped_column(Integer, default=100)
     last_low_credit_warning_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    notify_on_job_complete: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_on_training_complete: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -465,6 +467,23 @@ class WebhookLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     subscription = relationship("WebhookSubscription")
+
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    message: Mapped[str] = mapped_column(Text)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
 
 
 # --- Production Ready Database Session Management ---
