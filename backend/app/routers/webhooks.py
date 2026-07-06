@@ -29,6 +29,8 @@ class WebhookCreateRequest(BaseModel):
     brand_id: int
     url: str = Field(..., max_length=1000)
     events: List[str] = Field(..., min_length=1)
+    filter_rules: Optional[dict] = None
+    payload_format: str = Field(default="verbose", pattern="^(verbose|summary)$")
 
 class WebhookResponse(BaseModel):
     id: int
@@ -36,6 +38,8 @@ class WebhookResponse(BaseModel):
     url: str
     events: list
     is_active: bool
+    filter_rules: Optional[dict]
+    payload_format: str
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -46,6 +50,8 @@ class WebhookCreateResponse(BaseModel):
     events: list
     is_active: bool
     secret_token: Optional[str]
+    filter_rules: Optional[dict]
+    payload_format: str
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -102,6 +108,8 @@ async def register_webhook(
         events=payload.events,
         is_active=True,
         secret_token=secret_token,
+        filter_rules=payload.filter_rules,
+        payload_format=payload.payload_format,
     )
     db.add(subscription)
     await db.commit()

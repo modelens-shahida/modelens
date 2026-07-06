@@ -231,7 +231,13 @@ async def _dispatch_brand_webhooks(db, brand_id: int, event: str, payload: dict)
     subscriptions = result.scalars().all()
     for sub in subscriptions:
         if event in (sub.events or []):
-            dispatch_webhook.delay(sub.url, payload, subscription_id=sub.id)
+            # Apply filter rules
+            if not _apply_filter_rules(payload, sub.filter_rules or {}):
+                print(f"[Worker] Webhook {sub.id} skipped: payload did not match filter rules")
+                continue
+            # Apply payload format
+            formatted_payload = _format_payload(payload, sub.payload_format or "verbose")
+            dispatch_webhook.delay(sub.url, formatted_payload, subscription_id=sub.id)
 
 
 
@@ -1294,6 +1300,55 @@ async def _create_notification(db, user_id: int, notif_type: str, title: str, me
     )
     db.add(notification)
     await db.flush()
+
+
+
+# ========================== Webhook Filtering Helpers ============
+
+def _apply_filter_rules(payload: dict, filter_rules: dict) -> bool:
+    """
+    Check if payload matches subscription filter rules.
+    Returns True if payload should be dispatched, False if it should be skipped.
+    
+    Supported filter rules:
+    - character_id: only dispatch if payload.character_id matches
+    - brand_id: only dispatch if payload.brand_id matches
+    - status: only dispatch if payload.status matches
+    - job_type: only dispatch if payload.job_type matches
+    """
+    if not filter_rules:
+        return True  # No filters = dispatch all
+
+    for key, expected_value in filter_rules.items():
+        actual_value = payload.get(key)
+        if actual_value is None:
+            return False
+        if isinstance(expected_value, list):
+            if actual_value not in expected_value:
+                return False
+        else:
+            if str(actual_value) != str(expected_value):
+                return False
+
+    return True
+
+
+def _format_payload(payload: dict, payload_format: str) -> dict:
+    """
+    Format payload based on subscription preference.
+    
+    verbose: full payload (default)
+    summary: minimal payload with only essential fields
+    """
+    if payload_format == "summary":
+        return {
+            "type": payload.get("type"),
+            "brand_id": payload.get("brand_id"),
+            "job_id": payload.get("job_id"),
+            "status": payload.get("status"),
+            "timestamp": payload.get("timestamp"),
+        }
+    return payload  # verbose = full payload
 
 
 # ========================== Low Credit Alert Helper ==============

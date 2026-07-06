@@ -406,6 +406,8 @@ class WebhookSubscription(Base):
     events: Mapped[list] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     secret_token: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default=None)
+    filter_rules: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True, default=None)
+    payload_format: Mapped[str] = mapped_column(String(50), default="verbose")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     brand = relationship("Brand")
