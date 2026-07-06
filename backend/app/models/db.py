@@ -52,6 +52,10 @@ class Brand(Base):
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE")
     )
+    tier: Mapped[str] = mapped_column(String(50), default="free", index=True)
+    monthly_credit_quota: Mapped[int] = mapped_column(Integer, default=100)
+    credits_used_this_month: Mapped[int] = mapped_column(Integer, default=0)
+    tier_reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
     owner = relationship("User")
 

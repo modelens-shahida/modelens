@@ -33,6 +33,10 @@ celery_app.conf.update(
             "task": "app.worker.prune_old_webhook_delivery_logs",
             "schedule": 86400,  # every 24 hours
         },
+        "reset-monthly-brand-credits": {
+            "task": "app.worker.reset_monthly_brand_credits",
+            "schedule": 2592000,  # every 30 days
+        },
     },
     timezone="UTC",
     enable_utc=True,
@@ -1545,3 +1549,48 @@ async def _prune_webhook_logs_async():
                 break
 
     print(f"[Worker] Webhook log pruning complete. Total deleted: {total_deleted} logs older than {retention_days} days.")
+
+
+# ========================== Monthly Credit Quota Reset Task ======
+
+@celery_app.task(name="app.worker.reset_monthly_brand_credits")
+def reset_monthly_brand_credits():
+    """
+    Celery Beat monthly task: reset credits_used_this_month to 0 for all brands.
+    Processes in batches to keep DB transactions fast.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_reset_monthly_brand_credits_async())
+
+
+async def _reset_monthly_brand_credits_async():
+    from app.models.db import Brand
+    BATCH_SIZE = 100
+    offset = 0
+    total_reset = 0
+
+    async with async_session_maker() as db:
+        while True:
+            result = await db.execute(
+                select(Brand).limit(BATCH_SIZE).offset(offset)
+            )
+            brands = result.scalars().all()
+            if not brands:
+                break
+
+            for brand in brands:
+                brand.credits_used_this_month = 0
+                brand.tier_reset_at = datetime.utcnow()
+
+            await db.commit()
+            total_reset += len(brands)
+            offset += BATCH_SIZE
+
+            if len(brands) < BATCH_SIZE:
+                break
+
+    print(f"[Worker] Monthly credit quota reset complete. {total_reset} brands reset.")
