@@ -9,6 +9,15 @@ from app.models.db import Brand
 from app.middleware.rate_limit import TIER_LIMITS, invalidate_brand_tier_cache
 
 
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 # ========================== Tier Definition Tests ================
 
 def test_tier_limits_defined():
@@ -128,16 +137,13 @@ async def test_monthly_reset_resets_all_brands(db_session: AsyncSession, test_da
     b.credits_used_this_month = 500
     await db_session.commit()
 
-    with patch("app.worker.async_session_maker") as mock_session:
-        mock_db = AsyncMock()
-        mock_brand = MagicMock()
-        mock_brand.credits_used_this_month = 500
-        mock_db.execute.return_value.scalars.return_value.all.side_effect = [
-            [mock_brand], []
-        ]
-        mock_session.return_value.__aenter__.return_value = mock_db
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         await _reset_monthly_brand_credits_async()
-        assert mock_brand.credits_used_this_month == 0
+
+    # Reload from DB and assert
+    result = await db_session.execute(select(Brand).where(Brand.id == brand.id))
+    b = result.scalars().first()
+    assert b.credits_used_this_month == 0
 
 
 def test_monthly_reset_task_in_beat():
@@ -157,7 +163,7 @@ async def test_rate_limit_headers_on_429():
             mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
             mock_pipe.__aexit__ = AsyncMock(return_value=None)
             mock_pipe.execute = AsyncMock(return_value=[None, 999, None, None])
-            mock_redis.pipeline.return_value = mock_pipe
+            mock_redis.pipeline = MagicMock(return_value=mock_pipe)
 
             from app.middleware.rate_limit import RateLimiter
             limiter = RateLimiter(requests_limit=10, window_seconds=60)
