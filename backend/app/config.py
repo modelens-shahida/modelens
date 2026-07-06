@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = Field(default="whsec_mock_secret")
     STRIPE_MOCK_MODE: bool = Field(default=True)
 
+    # Log Retention
+    WEBHOOK_LOG_RETENTION_DAYS: int = Field(default=30)
+    WEBHOOK_LOG_PRUNE_BATCH_SIZE: int = Field(default=1000)
+
     # Email Provider (for low-credit alerts)
     EMAIL_PROVIDER: str = Field(default="sendgrid")  # 'sendgrid' or 'ses'
     SENDGRID_API_KEY: Optional[str] = Field(default=None)

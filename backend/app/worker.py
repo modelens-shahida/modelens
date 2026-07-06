@@ -29,6 +29,10 @@ celery_app.conf.update(
             "task": "app.worker.weekly_usage_report",
             "schedule": 604800,  # every 7 days
         },
+        "prune-webhook-delivery-logs-daily": {
+            "task": "app.worker.prune_old_webhook_delivery_logs",
+            "schedule": 86400,  # every 24 hours
+        },
     },
     timezone="UTC",
     enable_utc=True,
@@ -1484,3 +1488,59 @@ async def _send_low_credit_warning_async(user_id: int):
         )
         print(f"[Worker] Low credit warning email sent to user {user_id} ({user.email}). Balance: {user.credits}")
 
+
+
+# ========================== Webhook Log Pruning Task =============
+
+@celery_app.task(name="app.worker.prune_old_webhook_delivery_logs")
+def prune_old_webhook_delivery_logs():
+    """
+    Celery Beat daily task: delete WebhookDeliveryLog records older than
+    WEBHOOK_LOG_RETENTION_DAYS (default: 30) in batches to avoid DB locks.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_prune_webhook_logs_async())
+
+
+async def _prune_webhook_logs_async():
+    from datetime import timedelta
+    retention_days = settings.WEBHOOK_LOG_RETENTION_DAYS
+    batch_size = settings.WEBHOOK_LOG_PRUNE_BATCH_SIZE
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+
+    total_deleted = 0
+
+    async with async_session_maker() as db:
+        while True:
+            # Fetch a batch of old log IDs
+            result = await db.execute(
+                select(WebhookDeliveryLog.id)
+                .where(WebhookDeliveryLog.created_at < cutoff)
+                .limit(batch_size)
+            )
+            ids = [row[0] for row in result.all()]
+
+            if not ids:
+                break
+
+            # Delete batch
+            for log_id in ids:
+                log_result = await db.execute(
+                    select(WebhookDeliveryLog).where(WebhookDeliveryLog.id == log_id)
+                )
+                log = log_result.scalars().first()
+                if log:
+                    await db.delete(log)
+
+            await db.commit()
+            total_deleted += len(ids)
+            print(f"[Worker] Pruned {len(ids)} webhook delivery logs (total: {total_deleted})")
+
+            if len(ids) < batch_size:
+                break
+
+    print(f"[Worker] Webhook log pruning complete. Total deleted: {total_deleted} logs older than {retention_days} days.")
