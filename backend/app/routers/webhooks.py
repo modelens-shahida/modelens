@@ -314,3 +314,55 @@ async def retry_webhook_delivery(
     dispatch_webhook.delay(subscription.url, log.payload, subscription_id=subscription.id)
 
     return {"message": "Webhook delivery queued for retry.", "log_id": log_id}
+
+
+@router.get("/{subscription_id}/metrics")
+async def get_webhook_metrics(
+    subscription_id: int,
+    time_range: str = Query("7d", pattern="^(24h|7d|30d)$"),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get delivery metrics for a webhook subscription. Requires Admin or Owner role."""
+    from app.services.webhook_metrics_service import get_subscription_metrics
+
+    result = await db.execute(select(WebhookSubscription).where(WebhookSubscription.id == subscription_id))
+    subscription = result.scalars().first()
+    if not subscription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook subscription not found.")
+
+    role = await get_user_role_in_brand(current_user.id, subscription.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role.")
+
+    return await get_subscription_metrics(db, subscription_id, time_range, start_date, end_date)
+
+
+@router.get("/admin/metrics")
+async def get_admin_webhook_metrics(
+    time_range: str = Query("7d", pattern="^(24h|7d|30d)$"),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get platform-wide webhook delivery metrics. Requires Admin or Owner role."""
+    from app.services.webhook_metrics_service import get_admin_metrics
+    from app.models.db import Brand, BrandMember
+    from sqlalchemy import select as _select
+
+    # Check admin/owner of any brand
+    owned = await db.execute(_select(Brand).where(Brand.owner_id == current_user.id))
+    if not owned.scalars().first():
+        member = await db.execute(
+            _select(BrandMember).where(
+                BrandMember.user_id == current_user.id,
+                BrandMember.role.in_(["admin", "owner"])
+            )
+        )
+        if not member.scalars().first():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role.")
+
+    return await get_admin_metrics(db, time_range, start_date, end_date)
