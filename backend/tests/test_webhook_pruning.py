@@ -7,6 +7,15 @@ from datetime import datetime, timedelta
 from app.models.db import WebhookDeliveryLog, WebhookSubscription
 
 
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 # ========================== Helper ===============================
 
 async def create_log(db_session, sub_id, days_old):
@@ -56,7 +65,8 @@ async def test_prune_deletes_old_logs(db_session: AsyncSession, test_data: dict)
     # Create recent log (10 days) - should be preserved
     recent_log = await create_log(db_session, sub.id, days_old=10)
 
-    with patch("app.worker.settings") as mock_settings:
+    with patch("app.worker.settings") as mock_settings, \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         mock_settings.WEBHOOK_LOG_RETENTION_DAYS = 30
         mock_settings.WEBHOOK_LOG_PRUNE_BATCH_SIZE = 1000
         await _prune_webhook_logs_async()
@@ -96,7 +106,8 @@ async def test_prune_preserves_recent_logs(db_session: AsyncSession, test_data: 
     log2 = await create_log(db_session, sub.id, days_old=15)
     log3 = await create_log(db_session, sub.id, days_old=29)
 
-    with patch("app.worker.settings") as mock_settings:
+    with patch("app.worker.settings") as mock_settings, \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         mock_settings.WEBHOOK_LOG_RETENTION_DAYS = 30
         mock_settings.WEBHOOK_LOG_PRUNE_BATCH_SIZE = 1000
         await _prune_webhook_logs_async()
@@ -114,7 +125,8 @@ async def test_prune_empty_table_no_error(db_session: AsyncSession, test_data: d
     """Pruning with no logs should not raise errors."""
     from app.worker import _prune_webhook_logs_async
 
-    with patch("app.worker.settings") as mock_settings:
+    with patch("app.worker.settings") as mock_settings, \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         mock_settings.WEBHOOK_LOG_RETENTION_DAYS = 30
         mock_settings.WEBHOOK_LOG_PRUNE_BATCH_SIZE = 1000
         # Should complete without error
@@ -142,7 +154,8 @@ async def test_prune_configurable_retention(db_session: AsyncSession, test_data:
     log = await create_log(db_session, sub.id, days_old=15)
 
     # With 7-day retention, 15-day log should be deleted
-    with patch("app.worker.settings") as mock_settings:
+    with patch("app.worker.settings") as mock_settings, \
+         patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
         mock_settings.WEBHOOK_LOG_RETENTION_DAYS = 7
         mock_settings.WEBHOOK_LOG_PRUNE_BATCH_SIZE = 1000
         await _prune_webhook_logs_async()

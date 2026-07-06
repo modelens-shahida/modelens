@@ -67,6 +67,7 @@ from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTempl
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 from app.services.webhook_security import build_signature_header
+from app.config import settings
 
 @celery_app.task
 def test_task(x, y):
