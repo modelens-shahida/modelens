@@ -62,6 +62,7 @@ from sqlalchemy import select
 from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
+from app.services.webhook_security import build_signature_header
 
 @celery_app.task
 def test_task(x, y):
@@ -904,15 +905,10 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
             t.join()
             secret = secret_holder[0]
             if secret:
-                timestamp = str(int(_time.time()))
                 payload_str = _json.dumps(payload, separators=(",", ":"))
-                sig_payload = f"{timestamp}.{payload_str}"
-                signature = hmac.new(
-                    secret.encode("utf-8"),
-                    sig_payload.encode("utf-8"),
-                    hashlib.sha256
-                ).hexdigest()
-                headers["X-Modelens-Signature"] = f"t={timestamp},v1={signature}"
+                sig_header, ts_header, timestamp = build_signature_header(secret, payload_str)
+                headers["X-Modelens-Signature"] = sig_header
+                headers["X-Modelens-Request-Timestamp"] = ts_header
         except Exception as sig_err:
             print(f"[Worker] HMAC signing failed (non-fatal): {sig_err}")
 
