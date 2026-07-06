@@ -70,6 +70,7 @@ from sqlalchemy import select
 from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
+from app.services.asset_pipeline import process_image
 from app.services.webhook_security import build_signature_header
 from app.config import settings
 
@@ -152,39 +153,45 @@ async def _process_asset_upload_async(asset_id: int):
                             value = str(value)
                         exif_data[str(decoded)] = value
 
-            # 8. Generate 256px and 512px thumbnails
-            file_ext = os.path.splitext(unique_filename)[1] or ".png"
-            base_name = os.path.splitext(unique_filename)[0]
+            # 8. Process image pipeline - WebP conversion + thumbnails
+            pipeline_result = process_image(file_bytes, unique_filename)
 
-            # Generate 256px thumb
-            thumb_256_img = img.copy()
-            thumb_256_img.thumbnail((256, 256))
-            thumb_256_buf = io.BytesIO()
-            thumb_256_img.save(thumb_256_buf, format=img.format or "PNG")
-            thumb_256_bytes = thumb_256_buf.getvalue()
-            thumb_256_filename = f"thumb_256_{base_name}{file_ext}"
-            thumb_256_path = storage_service.save_file_bytes(thumb_256_filename, thumb_256_bytes)
+            # Save WebP converted image
+            webp_path = storage_service.save_file_bytes(
+                pipeline_result["webp_filename"], pipeline_result["webp_bytes"]
+            )
 
-            # Generate 512px thumb
-            thumb_512_img = img.copy()
-            thumb_512_img.thumbnail((512, 512))
-            thumb_512_buf = io.BytesIO()
-            thumb_512_img.save(thumb_512_buf, format=img.format or "PNG")
-            thumb_512_bytes = thumb_512_buf.getvalue()
-            thumb_512_filename = f"thumb_512_{base_name}{file_ext}"
-            thumb_512_path = storage_service.save_file_bytes(thumb_512_filename, thumb_512_bytes)
+            # Save thumbnail (250x250 WebP)
+            thumbnail_path = storage_service.save_file_bytes(
+                pipeline_result["thumbnail_filename"], pipeline_result["thumbnail_bytes"]
+            )
 
-            # 9. Update asset metadata
+            # Save preview (800x800 WebP)
+            preview_path = storage_service.save_file_bytes(
+                pipeline_result["preview_filename"], pipeline_result["preview_bytes"]
+            )
+
+            img_metadata = pipeline_result["metadata"]
+
+            # 9. Update asset DB columns and metadata
+            asset.width = img_metadata["width"]
+            asset.height = img_metadata["height"]
+            asset.aspect_ratio = img_metadata["aspect_ratio"]
+            asset.thumbnail_url = thumbnail_path
+            asset.preview_url = preview_path
+
             updated_meta = dict(asset.meta)
             updated_meta.update({
                 "status": "active",
                 "sha256": sha256,
                 "mime_type": mime_type,
-                "width": img.size[0],
-                "height": img.size[1],
+                "width": img_metadata["width"],
+                "height": img_metadata["height"],
+                "aspect_ratio": img_metadata["aspect_ratio"],
                 "exif": exif_data,
-                "thumbnail_256": thumb_256_path,
-                "thumbnail_512": thumb_512_path,
+                "webp_path": webp_path,
+                "thumbnail_url": thumbnail_path,
+                "preview_url": preview_path,
             })
             if duplicate_id:
                 updated_meta["duplicate_of"] = duplicate_id

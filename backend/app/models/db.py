@@ -92,6 +92,11 @@ class Asset(Base):
     asset_type: Mapped[str] = mapped_column(String(100), index=True)
     status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    preview_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     meta: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     brand = relationship("Brand")
