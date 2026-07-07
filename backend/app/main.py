@@ -30,6 +30,7 @@ from app.routers.stripe_webhooks import router as stripe_webhooks_router
 from app.routers.fix_requests import router as fix_requests_router
 from app.routers.admin_stats import router as admin_stats_router
 from app.routers.analytics import router as analytics_router
+from app.routers.health import router as health_router
 from app.routers.notifications import router as notifications_router
 from app.services.pubsub_listener import redis_pubsub_listener
 from app.routers.websockets import router as websockets_router
@@ -92,6 +93,24 @@ app = FastAPI(
 async def startup_event():
     import asyncio
     asyncio.create_task(redis_pubsub_listener())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully close DB pools and Redis connections on shutdown."""
+    try:
+        from app.models.db import engine
+        await engine.dispose()
+        print("[App] Database connection pool closed.")
+    except Exception as e:
+        print(f"[App] DB pool close error: {e}")
+
+    try:
+        from app.middleware.rate_limit import redis_client
+        await redis_client.aclose()
+        print("[App] Redis connection closed.")
+    except Exception as e:
+        print(f"[App] Redis close error: {e}")
 
 
 # Request ID & Logging Middleware
@@ -158,6 +177,7 @@ app.include_router(stripe_webhooks_router)
 app.include_router(fix_requests_router)
 app.include_router(admin_stats_router)
 app.include_router(analytics_router)
+app.include_router(health_router)
 app.include_router(notifications_router)
 app.include_router(websockets_router)
 app.include_router(campaign_router)
