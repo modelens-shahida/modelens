@@ -135,10 +135,12 @@ def export_as_csv(data: Dict[str, Any]) -> str:
         writer.writerow(["Webhook Delivery", key, val])
 
     # Job stats
+    writer.writerow(["Jobs", "total_jobs", sum(data["job_stats"].values())])
     for status, count in data["job_stats"].items():
         writer.writerow(["Jobs", f"status_{status}", count])
 
     # Quota usage
+    writer.writerow(["Quota Usage (30d)", "total_transactions", sum(stats["count"] for stats in data["quota_usage_last_30_days"].values())])
     for txn_type, stats in data["quota_usage_last_30_days"].items():
         writer.writerow(["Quota Usage (30d)", f"{txn_type}_count", stats["count"]])
         writer.writerow(["Quota Usage (30d)", f"{txn_type}_total_amount", stats["total_amount"]])
