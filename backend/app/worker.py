@@ -1576,14 +1576,20 @@ def reset_monthly_brand_credits():
 
 async def _reset_monthly_brand_credits_async():
     from app.models.db import Brand
+    from datetime import timedelta
     BATCH_SIZE = 100
     offset = 0
     total_reset = 0
+    now = datetime.utcnow()
+    cutoff = now - timedelta(days=30)
 
     async with async_session_maker() as db:
         while True:
+            # Only reset brands where tier_reset_at is older than 30 days or null
             result = await db.execute(
-                select(Brand).limit(BATCH_SIZE).offset(offset)
+                select(Brand).where(
+                    (Brand.tier_reset_at == None) | (Brand.tier_reset_at <= cutoff)
+                ).limit(BATCH_SIZE).offset(offset)
             )
             brands = result.scalars().all()
             if not brands:
@@ -1591,11 +1597,22 @@ async def _reset_monthly_brand_credits_async():
 
             for brand in brands:
                 brand.credits_used_this_month = 0
-                brand.tier_reset_at = datetime.utcnow()
+                brand.tier_reset_at = now
 
             await db.commit()
+
+            # Invalidate Redis cache for each reset brand
+            for brand in brands:
+                try:
+                    from app.middleware.rate_limit import invalidate_brand_tier_cache
+                    import asyncio as _asyncio
+                    _asyncio.create_task(invalidate_brand_tier_cache(brand.id))
+                except Exception as e:
+                    print(f"[Worker] Cache invalidation failed for brand {brand.id}: {e}")
+
             total_reset += len(brands)
             offset += BATCH_SIZE
+            print(f"[Worker] Reset {len(brands)} brands (batch). Total so far: {total_reset}")
 
             if len(brands) < BATCH_SIZE:
                 break
