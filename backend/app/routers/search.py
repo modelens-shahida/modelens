@@ -80,3 +80,66 @@ async def search_assets(
         )
 
     return results
+
+
+@router.get("/faceted")
+async def faceted_search(
+    q: Optional[str] = Query(None, description="Text search query"),
+    brand_id: Optional[int] = Query(None, description="Filter by brand ID"),
+    asset_type: Optional[str] = Query(None, description="Filter by asset type"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags"),
+    created_after: Optional[str] = Query(None, description="ISO date filter start"),
+    created_before: Optional[str] = Query(None, description="ISO date filter end"),
+    sort_by: str = Query("created_at", pattern="^(created_at|name|relevance)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Enhanced faceted search with multi-filter support, brand isolation,
+    weighted relevance ranking, and custom sorting.
+    """
+    from app.services.search_service import search_assets, verify_brand_access
+    from datetime import datetime
+
+    # Verify brand access if specified
+    if brand_id:
+        has_access = await verify_brand_access(current_user.id, brand_id, db)
+        if not has_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this brand."
+            )
+
+    # Parse date filters
+    after = None
+    before = None
+    if created_after:
+        try:
+            after = datetime.fromisoformat(created_after)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid created_after date format.")
+    if created_before:
+        try:
+            before = datetime.fromisoformat(created_before)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid created_before date format.")
+
+    return await search_assets(
+        db=db,
+        user_id=current_user.id,
+        q=q,
+        brand_id=brand_id,
+        asset_type=asset_type,
+        status=status,
+        tags=tags,
+        created_after=after,
+        created_before=before,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=limit,
+        offset=offset,
+    )
