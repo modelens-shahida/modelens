@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status as fastapi_status, Query
 from app.middleware.rate_limit import RateLimiter
 from typing import Optional, List, Any, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +43,7 @@ async def verify_brand_access(user_id: int, brand_id: int, db: AsyncSession) -> 
     if m:
         return m.role
     raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
+        status_code=fastapi_status.HTTP_403_FORBIDDEN,
         detail="You do not have access to this brand workspace."
     )
 
@@ -75,7 +75,7 @@ async def search_assets(
         results = await hybrid_search(db, q, brand_id, limit, offset)
     else:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=fastapi_status.HTTP_400_BAD_REQUEST,
             detail="Invalid search type. Use: fts, vector, or hybrid."
         )
 
@@ -110,7 +110,7 @@ async def faceted_search(
         has_access = await verify_brand_access(current_user.id, brand_id, db)
         if not has_access:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=fastapi_status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this brand."
             )
 
@@ -121,12 +121,12 @@ async def faceted_search(
         try:
             after = datetime.fromisoformat(created_after)
         except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid created_after date format.")
+            raise HTTPException(status_code=fastapi_status.HTTP_400_BAD_REQUEST, detail="Invalid created_after date format.")
     if created_before:
         try:
             before = datetime.fromisoformat(created_before)
         except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid created_before date format.")
+            raise HTTPException(status_code=fastapi_status.HTTP_400_BAD_REQUEST, detail="Invalid created_before date format.")
 
     return await search_assets(
         db=db,

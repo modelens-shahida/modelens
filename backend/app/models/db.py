@@ -92,6 +92,7 @@ class Asset(Base):
     asset_type: Mapped[str] = mapped_column(String(100), index=True)
     status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), server_default=func.now(), nullable=False)
     width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
