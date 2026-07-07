@@ -40,11 +40,16 @@ async def test_reset_brands_with_null_tier_reset_at(db_session: AsyncSession, te
 
     with patch("app.worker.async_session_maker") as mock_session:
         mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_db.execute.return_value = mock_result
+        mock_result.scalars.return_value = mock_scalars
+
         mock_brand = MagicMock()
         mock_brand.id = brand.id
         mock_brand.credits_used_this_month = 50
         mock_brand.tier_reset_at = None
-        mock_db.execute.return_value.scalars.return_value.all.side_effect = [
+        mock_scalars.all.side_effect = [
             [mock_brand], []
         ]
         mock_session.return_value.__aenter__.return_value = mock_db
@@ -71,11 +76,16 @@ async def test_reset_brands_older_than_30_days(db_session: AsyncSession, test_da
 
     with patch("app.worker.async_session_maker") as mock_session:
         mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_db.execute.return_value = mock_result
+        mock_result.scalars.return_value = mock_scalars
+
         mock_brand = MagicMock()
         mock_brand.id = brand.id
         mock_brand.credits_used_this_month = 75
         mock_brand.tier_reset_at = old_reset
-        mock_db.execute.return_value.scalars.return_value.all.side_effect = [
+        mock_scalars.all.side_effect = [
             [mock_brand], []
         ]
         mock_session.return_value.__aenter__.return_value = mock_db
@@ -101,8 +111,11 @@ async def test_recent_brands_not_reset(db_session: AsyncSession, test_data: dict
 
     with patch("app.worker.async_session_maker") as mock_session:
         mock_db = AsyncMock()
-        # Return empty list - no brands due for reset
-        mock_db.execute.return_value.scalars.return_value.all.return_value = []
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_db.execute.return_value = mock_result
+        mock_result.scalars.return_value = mock_scalars
+        mock_scalars.all.return_value = []
         mock_session.return_value.__aenter__.return_value = mock_db
 
         from app.worker import _reset_monthly_brand_credits_async
@@ -117,11 +130,16 @@ async def test_reset_invalidates_redis_cache():
     """Reset should call cache invalidation for each brand."""
     with patch("app.worker.async_session_maker") as mock_session:
         mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_db.execute.return_value = mock_result
+        mock_result.scalars.return_value = mock_scalars
+
         mock_brand = MagicMock()
         mock_brand.id = 42
         mock_brand.credits_used_this_month = 100
         mock_brand.tier_reset_at = None
-        mock_db.execute.return_value.scalars.return_value.all.side_effect = [
+        mock_scalars.all.side_effect = [
             [mock_brand], []
         ]
         mock_session.return_value.__aenter__.return_value = mock_db
@@ -140,11 +158,16 @@ async def test_reset_sets_tier_reset_at_to_now():
 
     with patch("app.worker.async_session_maker") as mock_session:
         mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_db.execute.return_value = mock_result
+        mock_result.scalars.return_value = mock_scalars
+
         mock_brand = MagicMock()
         mock_brand.id = 1
         mock_brand.credits_used_this_month = 50
         mock_brand.tier_reset_at = None
-        mock_db.execute.return_value.scalars.return_value.all.side_effect = [
+        mock_scalars.all.side_effect = [
             [mock_brand], []
         ]
         mock_session.return_value.__aenter__.return_value = mock_db
