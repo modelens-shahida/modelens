@@ -10,6 +10,7 @@ export async function POST(request: Request) {
 
   const response = NextResponse.json({ success: true })
 
+
   response.cookies.set('modelens_access_token', access_token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     path: '/',
     maxAge: 60 * 60, // 1 hour, aligns with FastAPI access token expiry
   })
+
 
   if (refresh_token) {
     response.cookies.set('modelens_refresh_token', refresh_token, {
@@ -38,3 +40,9 @@ export async function DELETE() {
   response.cookies.delete('modelens_refresh_token')
   return response
 }
+
+
+
+
+
+
