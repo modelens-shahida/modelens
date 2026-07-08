@@ -4,7 +4,9 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.db import get_db, Brand, BrandMember, User
+import uuid
+from datetime import datetime, timedelta
+from app.models.db import get_db, Brand, BrandMember, User, Invitation
 from app.middleware.auth import get_current_user, require_brand_role, ROLE_HIERARCHY
 from app.models.db import AuditLog
 from app.services.audit import write_audit_log
@@ -55,6 +57,35 @@ class BrandMemberResponse(BaseModel):
     user_id: int
     role: str
     user_email: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class BrandInvitationRequest(BaseModel):
+    email: EmailStr
+    role: str = Field(default="viewer")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        allowed = {"viewer", "editor", "admin"}
+        if v not in allowed:
+            raise ValueError(
+                f"Role must be one of: {', '.join(sorted(allowed))}. "
+            )
+        return v
+
+
+class InvitationResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    brand_id: int
+    token: str
+    expires_at: datetime
+    created_at: datetime
+    accepted_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -386,3 +417,136 @@ async def get_brand_audit_logs(
         }
         for log in logs
     ]
+
+
+# ========================== Brand Invitations ==============================
+
+@router.post(
+    "/{brand_id}/invites",
+    status_code=status.HTTP_201_CREATED,
+    response_model=InvitationResponse,
+)
+async def create_brand_invitation(
+    brand_id: int,
+    payload: BrandInvitationRequest,
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Invite a user to a brand by email.
+    Generates a secure token and queues invitation email sending task.
+    Requires at least **admin** role on the brand.
+    """
+    # Verify if email is already the owner of the brand
+    brand_query = select(Brand).where(Brand.id == brand_id)
+    brand_result = await db.execute(brand_query)
+    brand = brand_result.scalars().first()
+    
+    # Resolve user if exists to check if they are already owner/member
+    user_query = select(User).where(User.email == payload.email)
+    user_result = await db.execute(user_query)
+    user = user_result.scalars().first()
+    
+    if brand and user and brand.owner_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This user is already the brand owner",
+        )
+
+    # Check if already a member
+    if user:
+        member_query = select(BrandMember).where(
+            BrandMember.brand_id == brand_id,
+            BrandMember.user_id == user.id,
+        )
+        member_result = await db.execute(member_query)
+        if member_result.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is already a member of this brand",
+            )
+
+    # Revoke any previous active invitations for this email + brand to avoid duplicates
+    old_invites_query = select(Invitation).where(
+        Invitation.brand_id == brand_id,
+        Invitation.email == payload.email,
+        Invitation.accepted_at == None,
+        Invitation.revoked_at == None,
+        Invitation.expires_at > datetime.utcnow(),
+    )
+    old_invites_result = await db.execute(old_invites_query)
+    old_invites = old_invites_result.scalars().all()
+    for old_invite in old_invites:
+        old_invite.revoked_at = datetime.utcnow()
+
+    # Create new invitation
+    token = str(uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    
+    invitation = Invitation(
+        email=payload.email,
+        role=payload.role,
+        brand_id=brand_id,
+        token=token,
+        expires_at=expires_at,
+    )
+    db.add(invitation)
+    await db.commit()
+    await db.refresh(invitation)
+
+    # Queue Celery task to send invitation email
+    from app.worker import send_invitation_email
+    send_invitation_email.delay(invitation.id, _caller.full_name or _caller.email)
+
+    return invitation
+
+
+@router.get("/{brand_id}/invites", response_model=list[InvitationResponse])
+async def list_pending_brand_invitations(
+    brand_id: int,
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all pending invitations for a brand.
+    Pending means not accepted, not revoked, and not expired.
+    Requires at least **admin** role on the brand.
+    """
+    query = select(Invitation).where(
+        Invitation.brand_id == brand_id,
+        Invitation.accepted_at == None,
+        Invitation.revoked_at == None,
+        Invitation.expires_at > datetime.utcnow(),
+    )
+    result = await db.execute(query)
+    invitations = result.scalars().all()
+    return invitations
+
+
+@router.delete("/{brand_id}/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_brand_invitation(
+    brand_id: int,
+    invite_id: int,
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Revoke a pending brand invitation.
+    Requires at least **admin** role on the brand.
+    """
+    query = select(Invitation).where(
+        Invitation.id == invite_id,
+        Invitation.brand_id == brand_id,
+    )
+    result = await db.execute(query)
+    invitation = result.scalars().first()
+    if invitation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invitation not found",
+        )
+
+    invitation.revoked_at = datetime.utcnow()
+    await db.commit()
+    return
+
