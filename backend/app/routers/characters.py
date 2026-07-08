@@ -253,6 +253,30 @@ async def create_character_version(
     else:
         version_number = payload.version_number
 
+    # MLflow experiment & run registration
+    mlflow_run_id = None
+    try:
+        import mlflow
+        from app.config import settings
+        mlflow.set_tracking_uri(settings.MLFLOW_URI)
+        experiment_name = f"character_{character_id}"
+        mlflow.set_experiment(experiment_name)
+
+        with mlflow.start_run(run_name=f"version-{version_number}") as run:
+            mlflow_run_id = run.info.run_id
+            # Log metadata as parameters
+            mlflow.log_param("character_id", character_id)
+            mlflow.log_param("version_number", version_number)
+            mlflow.log_param("prompt_trigger", payload.prompt_trigger or "")
+            # Flatten config_overrides
+            for k, v in (payload.config_overrides or {}).items():
+                mlflow.log_param(f"config_{k}", str(v))
+
+        print(f"[MLflow] Registered run {mlflow_run_id} for character {character_id} v{version_number}")
+    except Exception as mlflow_err:
+        print(f"[MLflow] Warning: MLflow registration failed (non-fatal): {mlflow_err}")
+        mlflow_run_id = None
+
     version = CharacterVersion(
         character_id=character_id,
         version_number=version_number,
@@ -260,6 +284,7 @@ async def create_character_version(
         reference_image_path=payload.reference_image_path,
         validation_image_path=payload.validation_image_path,
         config_overrides=payload.config_overrides or {},
+        mlflow_run_id=mlflow_run_id,
     )
     db.add(version)
     await db.commit()
