@@ -279,7 +279,8 @@ async def test_workflow_job_asset_wrong_brand(client: AsyncClient, db_session: A
     editor_headers = test_data["get_headers"]("editor")
 
     result = await db_session.execute(text("""
-        INSERT INTO brands (name, owner_id) VALUES ('Other Brand', :owner_id) RETURNING id
+        INSERT INTO brands (name, owner_id, tier, monthly_credit_quota, credits_used_this_month)
+        VALUES ('Other Brand', :owner_id, 'free', 100, 0) RETURNING id
     """), {"owner_id": test_data["users"]["owner"].id})
     await db_session.commit()
     other_brand_id = result.fetchone()[0]
@@ -368,7 +369,8 @@ async def test_workflow_job_character_wrong_brand(client: AsyncClient, db_sessio
 
     # Create another brand and character under it
     result = await db_session.execute(text("""
-        INSERT INTO brands (name, owner_id) VALUES ('Other Brand 2', :owner_id) RETURNING id
+        INSERT INTO brands (name, owner_id, tier, monthly_credit_quota, credits_used_this_month)
+        VALUES ('Other Brand 2', :owner_id, 'free', 100, 0) RETURNING id
     """), {"owner_id": test_data["users"]["owner"].id})
     await db_session.commit()
     other_brand_id = result.fetchone()[0]
