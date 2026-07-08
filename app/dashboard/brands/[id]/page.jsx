@@ -26,6 +26,9 @@ export default function BrandDetailPage() {
   // Settings states
   const [newBrandName, setNewBrandName] = useState("");
   const [isUpdatingName, setIsUpdatingName] = useState(false);
+  const [domainWhitelist, setDomainWhitelist] = useState([]);
+  const [whitelistInput, setWhitelistInput] = useState("");
+  const [isUpdatingWhitelist, setIsUpdatingWhitelist] = useState(false);
 
   // Invite states
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -114,11 +117,42 @@ export default function BrandDetailPage() {
     }
   }, [id]);
 
+  const fetchAuthSettings = async () => {
+    try {
+      const data = await api.get(`/api/v1/brands/${id}/auth-settings`);
+      setDomainWhitelist(data.domain_whitelist || []);
+    } catch (error) {
+      console.error("Failed to load auth settings", error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "settings" && id) {
+      fetchAuthSettings();
+    }
+  }, [activeTab, id]);
+
   useEffect(() => {
     if (activeTab === "webhooks") {
       fetchWebhooks();
     }
   }, [activeTab]);
+
+  const handleUpdateWhitelist = async (e) => {
+    e?.preventDefault();
+    setIsUpdatingWhitelist(true);
+    try {
+      const updated = await api.patch(`/api/v1/brands/${id}/auth-settings`, {
+        domain_whitelist: domainWhitelist,
+      });
+      setDomainWhitelist(updated.domain_whitelist || []);
+      toast.success("SSO domain whitelist saved!");
+    } catch (error) {
+      toast.error(error.message || "Failed to update auth settings");
+    } finally {
+      setIsUpdatingWhitelist(false);
+    }
+  };
 
   const handleUpdateName = async (e) => {
     e.preventDefault();
@@ -599,6 +633,96 @@ export default function BrandDetailPage() {
                 <p className="text-[10px] text-amber-500/80 flex items-center gap-1">
                   Requires Admin or Owner credentials to edit brand settings.
                 </p>
+              )}
+            </div>
+
+            {/* SSO & Domain Whitelist settings */}
+            <div className="border-t border-zinc-850/60 pt-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-200">SSO & Domain Whitelist</h3>
+                <p className="text-xs text-zinc-500">
+                  Allow users with matching email domains to automatically join this workspace as Viewers.
+                </p>
+              </div>
+
+              {/* Tag List display */}
+              <div className="flex flex-wrap gap-2 py-1">
+                {domainWhitelist.length === 0 ? (
+                  <span className="text-[10px] text-zinc-500 italic bg-zinc-950/40 px-3 py-1.5 rounded-lg border border-zinc-900">
+                    No domains whitelisted. Only invited members can join.
+                  </span>
+                ) : (
+                  domainWhitelist.map((domain) => (
+                    <span
+                      key={domain}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-purple-400 bg-purple-950/20 border border-purple-900/40 px-3 py-1.5 rounded-full"
+                    >
+                      {domain}
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDomainWhitelist(domainWhitelist.filter((d) => d !== domain));
+                          }}
+                          className="hover:text-purple-300 text-purple-500 transition-colors bg-transparent border-none outline-none p-0 cursor-pointer"
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {canManage && (
+                <div className="space-y-3">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const cleaned = whitelistInput.trim().toLowerCase();
+                      if (!cleaned) return;
+                      if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/.test(cleaned)) {
+                        toast.error("Invalid domain format (e.g. company.com)");
+                        return;
+                      }
+                      if (domainWhitelist.includes(cleaned)) {
+                        toast.error("Domain already added");
+                        return;
+                      }
+                      setDomainWhitelist([...domainWhitelist, cleaned]);
+                      setWhitelistInput("");
+                    }}
+                    className="flex gap-3 max-w-md"
+                  >
+                    <input
+                      type="text"
+                      placeholder="e.g. company.com"
+                      value={whitelistInput}
+                      onChange={(e) => setWhitelistInput(e.target.value)}
+                      className="flex-1 bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    disabled={isUpdatingWhitelist}
+                    onClick={handleUpdateWhitelist}
+                    className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white text-xs font-semibold px-5 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-purple-950/20"
+                  >
+                    {isUpdatingWhitelist ? (
+                      <Loader2 className="animate-spin" size={14} />
+                    ) : (
+                      <Check size={14} />
+                    )}
+                    Save Whitelist Settings
+                  </button>
+                </div>
               )}
             </div>
 

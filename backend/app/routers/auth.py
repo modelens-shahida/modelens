@@ -41,6 +41,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SSOLoginRequest(BaseModel):
+    email: EmailStr
+    full_name: str
+    provider: str
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 
@@ -146,6 +152,60 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         await handle_sso_login(user.email, db)
     except Exception as sso_err:
         print(f"[Auth] SSO provisioning error (non-fatal): {sso_err}")
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
+
+
+@router.post("/sso-login")
+async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)):
+    """
+    SSO login/registration callback from the frontend.
+    Verifies/creates the user in the database and returns a standard JWT session.
+    """
+    query = select(User).where(User.email == payload.email)
+    result = await db.execute(query)
+    user = result.scalars().first()
+
+    if not user:
+        # Auto-register user since they successfully authenticated via SSO (OAuth)
+        h_password = hash_password(secrets.token_urlsafe(24))
+        user = User(
+            email=payload.email,
+            hashed_password=h_password,
+            full_name=payload.full_name,
+            role="user",
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    # Generate standard JWT access and refresh tokens
+    access_token = jwt.encode(
+        {
+            "sub": user.email,
+            "exp": datetime.utcnow() + timedelta(minutes=60),
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    refresh_token = jwt.encode(
+        {
+            "sub": user.email,
+            "exp": datetime.utcnow() + timedelta(days=30),
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    # Perform domain whitelist auto-provisioning and accept pending invitations
+    try:
+        await handle_sso_login(user.email, db)
+    except Exception as sso_err:
+        print(f"[Auth] SSO provisioning error: {sso_err}")
 
     return {
         "access_token": access_token,

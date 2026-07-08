@@ -14,6 +14,18 @@ export default function DashboardOverview() {
   const [assets, setAssets] = useState([]);
   const [recentJobs, setRecentJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [ssoWelcome, setSsoWelcome] = useState(null);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("sso_welcome");
+    if (stored) {
+      try {
+        setSsoWelcome(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse SSO welcome", e);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchStats() {
@@ -86,6 +98,45 @@ export default function DashboardOverview() {
 
   return (
     <div className="space-y-8 max-w-6xl">
+      {/* SSO Welcome Alert Banner */}
+      {ssoWelcome && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-purple-950/20 border border-purple-900/40 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-lg shadow-purple-950/10"
+        >
+          <div className="flex gap-3">
+            <span className="p-2 bg-purple-900/30 rounded-xl text-purple-400 max-fit">
+              <Sparkles size={20} />
+            </span>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-zinc-100">Auto-Enrollment Successful!</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                You've been automatically provisioned as a member of the **{ssoWelcome.brandName}** workspace.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 w-full sm:w-auto">
+            <Link
+              href={`/dashboard/brands/${ssoWelcome.brandId}`}
+              onClick={() => sessionStorage.removeItem("sso_welcome")}
+              className="flex-1 sm:flex-initial bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition-all text-center cursor-pointer"
+            >
+              Go to Workspace
+            </Link>
+            <button
+              onClick={() => {
+                sessionStorage.removeItem("sso_welcome");
+                setSsoWelcome(null);
+              }}
+              className="bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-semibold py-2.5 px-4 rounded-xl transition-all cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Welcome Hero Banner */}
       <div className="bg-gradient-to-r from-zinc-900 via-zinc-900 to-purple-950/20 border border-zinc-850/80 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-xl relative overflow-hidden">
         <div className="absolute inset-0 bg-grid-white/[0.02] pointer-events-none" />

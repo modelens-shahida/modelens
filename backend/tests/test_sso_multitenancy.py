@@ -214,3 +214,46 @@ async def test_update_domain_whitelist_viewer_forbidden(client: AsyncClient, tes
         headers=viewer_headers,
     )
     assert res.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_sso_login_endpoint_auto_registers_and_provisions(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """POST /api/v1/auth/sso-login should register a new user and generate JWT tokens."""
+    brand = test_data["brand"]
+    # Update brand whitelist
+    result = await db_session.execute(select(Brand).where(Brand.id == brand.id))
+    b = result.scalars().first()
+    b.domain_whitelist = ["sso-company.com"]
+    await db_session.commit()
+
+    # Request SSO login for a non-existent user with matching whitelist domain
+    res = await client.post(
+        "/api/v1/auth/sso-login",
+        json={
+            "email": "newuser@sso-company.com",
+            "full_name": "New SSO User",
+            "provider": "google"
+        }
+    )
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+
+    # Verify user was created
+    user_query = select(User).where(User.email == "newuser@sso-company.com")
+    user_res = await db_session.execute(user_query)
+    user = user_res.scalars().first()
+    assert user is not None
+    assert user.full_name == "New SSO User"
+
+    # Verify user was auto-provisioned as Viewer in the brand
+    member_query = select(BrandMember).where(
+        BrandMember.brand_id == brand.id,
+        BrandMember.user_id == user.id
+    )
+    m_result = await db_session.execute(member_query)
+    member = m_result.scalars().first()
+    assert member is not None
+    assert member.role == "viewer"
+
