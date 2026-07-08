@@ -67,7 +67,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
-from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand
+from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand, Invitation
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 from app.services.asset_pipeline import process_image
@@ -1499,6 +1499,69 @@ async def _send_low_credit_warning_async(user_id: int):
             html_content=html_content,
         )
         print(f"[Worker] Low credit warning email sent to user {user_id} ({user.email}). Balance: {user.credits}")
+
+
+def _render_invitation_template(inviter_name: str, brand_name: str, role: str, invite_url: str) -> str:
+    """Render the invitation HTML email template."""
+    import pathlib
+    template_path = pathlib.Path(__file__).resolve().parent.parent / "templates" / "team_invitation.html"
+    html = template_path.read_text(encoding="utf-8")
+    html = html.replace("{{inviter_name}}", inviter_name)
+    html = html.replace("{{brand_name}}", brand_name)
+    html = html.replace("{{role}}", role)
+    html = html.replace("{{invite_url}}", invite_url)
+    return html
+
+
+@celery_app.task(bind=True, name="app.worker.send_invitation_email", max_retries=3)
+def send_invitation_email(self, invitation_id: int, inviter_name: str):
+    """
+    Celery task to send a brand invitation email to the user.
+    Retries up to 3 times with exponential backoff on failure.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    try:
+        loop.run_until_complete(_send_invitation_async(invitation_id, inviter_name))
+    except Exception as exc:
+        print(f"[Worker] Email send failed for invitation {invitation_id}: {exc}. Retrying...")
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+
+
+async def _send_invitation_async(invitation_id: int, inviter_name: str):
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(Invitation, Brand.name)
+            .join(Brand, Brand.id == Invitation.brand_id)
+            .where(Invitation.id == invitation_id)
+        )
+        row = result.first()
+        if not row:
+            print(f"[Worker] Invitation {invitation_id} not found.")
+            return
+
+        invitation, brand_name = row
+
+        invite_accept_url = os.getenv("INVITE_ACCEPT_URL", "http://localhost:3000/invites/accept")
+        invite_url = f"{invite_accept_url}?token={invitation.token}"
+
+        html_content = _render_invitation_template(
+            inviter_name=inviter_name,
+            brand_name=brand_name,
+            role=invitation.role,
+            invite_url=invite_url,
+        )
+
+        _send_email(
+            to_email=invitation.email,
+            subject=f"Invitation to join {brand_name} on ModeLens",
+            html_content=html_content,
+        )
+        print(f"[Worker] Invitation email sent to {invitation.email} for brand {brand_name}")
 
 
 

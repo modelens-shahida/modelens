@@ -34,6 +34,7 @@ from app.routers.health import router as health_router
 from app.routers.notifications import router as notifications_router
 from app.services.pubsub_listener import redis_pubsub_listener
 from app.routers.websockets import router as websockets_router
+from app.routers.invites import router as invites_router
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -180,6 +181,7 @@ app.include_router(analytics_router)
 app.include_router(health_router)
 app.include_router(notifications_router)
 app.include_router(websockets_router)
+app.include_router(invites_router)
 app.include_router(campaign_router)
 
 

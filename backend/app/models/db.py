@@ -519,6 +519,25 @@ class WebhookDeliveryLog(Base):
     subscription = relationship("WebhookSubscription")
 
 
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    role: Mapped[str] = mapped_column(String(50))
+    brand_id: Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+
+    brand = relationship("Brand")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
