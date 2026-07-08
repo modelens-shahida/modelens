@@ -74,14 +74,14 @@ async def test_celery_asset_processing(
     assert processed_asset.meta["sha256"] == hashlib.sha256(mock_image_file).hexdigest()
     assert processed_asset.meta["width"] == 1
     assert processed_asset.meta["height"] == 1
-    assert "thumbnail_256" in processed_asset.meta
-    assert "thumbnail_512" in processed_asset.meta
+    assert "thumbnail_url" in processed_asset.meta
+    assert "preview_url" in processed_asset.meta
 
     # Verify thumbnails are actually created on local storage
-    thumb_256_name = os.path.basename(processed_asset.meta["thumbnail_256"])
-    thumb_512_name = os.path.basename(processed_asset.meta["thumbnail_512"])
-    assert storage_service.verify_file_exists(thumb_256_name)
-    assert storage_service.verify_file_exists(thumb_512_name)
+    thumb_name = os.path.basename(processed_asset.meta["thumbnail_url"])
+    preview_name = os.path.basename(processed_asset.meta["preview_url"])
+    assert storage_service.verify_file_exists(thumb_name)
+    assert storage_service.verify_file_exists(preview_name)
 
     # Verify associated validation AIJob completed
     job_res = await db_session.execute(
@@ -92,7 +92,7 @@ async def test_celery_asset_processing(
     assert job.status == "completed"
 
     # Cleanup local test files
-    for fname in [unique_filename, thumb_256_name, thumb_512_name]:
+    for fname in [unique_filename, thumb_name, preview_name]:
         lpath = os.path.join("uploads", fname)
         if os.path.exists(lpath):
             os.remove(lpath)
