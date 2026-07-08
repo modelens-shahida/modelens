@@ -53,6 +53,7 @@ class Brand(Base):
         ForeignKey("users.id", ondelete="CASCADE")
     )
     tier: Mapped[str] = mapped_column(String(50), default="free", index=True)
+    domain_whitelist: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True, default=None)
     monthly_credit_quota: Mapped[int] = mapped_column(Integer, default=100)
     credits_used_this_month: Mapped[int] = mapped_column(Integer, default=0)
     tier_reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)

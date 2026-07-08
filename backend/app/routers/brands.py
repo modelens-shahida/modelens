@@ -386,3 +386,55 @@ async def get_brand_audit_logs(
         }
         for log in logs
     ]
+
+
+# ========================== Auth Settings Endpoint ===============
+
+class AuthSettingsUpdate(BaseModel):
+    domain_whitelist: Optional[list] = None
+
+@router.patch("/{brand_id}/auth-settings", status_code=status.HTTP_200_OK)
+async def update_auth_settings(
+    brand_id: int,
+    payload: AuthSettingsUpdate,
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update brand SSO auth settings including domain whitelist.
+    Requires at least **admin** role (or owner).
+    """
+    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
+    brand = brand_result.scalars().first()
+    if not brand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found.")
+
+    if payload.domain_whitelist is not None:
+        brand.domain_whitelist = payload.domain_whitelist
+
+    await db.commit()
+    await db.refresh(brand)
+
+    return {
+        "brand_id": brand_id,
+        "domain_whitelist": brand.domain_whitelist,
+        "message": "Auth settings updated successfully.",
+    }
+
+
+@router.get("/{brand_id}/auth-settings")
+async def get_auth_settings(
+    brand_id: int,
+    _caller: User = Depends(require_brand_role("viewer")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get brand SSO auth settings. Requires at least **viewer** role."""
+    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
+    brand = brand_result.scalars().first()
+    if not brand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found.")
+
+    return {
+        "brand_id": brand_id,
+        "domain_whitelist": brand.domain_whitelist or [],
+    }

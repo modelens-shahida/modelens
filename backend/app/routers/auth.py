@@ -9,6 +9,7 @@ from sqlalchemy import select
 import secrets
 
 from app.models.db import get_db, User, APIKey
+from app.services.sso_service import handle_sso_login
 from app.middleware.auth import (
     hash_password,
     verify_password,
@@ -139,6 +140,12 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         SECRET_KEY,
         algorithm=ALGORITHM,
     )
+
+    # SSO: auto-accept invitations and domain whitelist provisioning
+    try:
+        await handle_sso_login(user.email, db)
+    except Exception as sso_err:
+        print(f"[Auth] SSO provisioning error (non-fatal): {sso_err}")
 
     return {
         "access_token": access_token,
