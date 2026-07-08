@@ -42,8 +42,21 @@ async def test_v2_search_fallback_to_v1(client: AsyncClient, test_data: dict):
 @pytest.mark.asyncio
 async def test_v2_health_fallback(client: AsyncClient):
     """v2 health endpoint should fall back to v1."""
-    res = await client.get("/api/v2/health")
-    assert res.status_code == status.HTTP_200_OK
+    from unittest.mock import patch, AsyncMock
+    with patch("app.routers.health.async_session_maker") as mock_session, \
+         patch("app.routers.health.aioredis.from_url") as mock_redis:
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock()
+        mock_session.return_value.__aenter__.return_value = mock_db
+
+        mock_redis_instance = AsyncMock()
+        mock_redis_instance.ping = AsyncMock(return_value=True)
+        mock_redis_instance.aclose = AsyncMock()
+        mock_redis.return_value = mock_redis_instance
+
+        res = await client.get("/api/v2/health")
+        assert res.status_code == status.HTTP_200_OK
 
 
 # ========================== Header-Based Versioning Tests ========

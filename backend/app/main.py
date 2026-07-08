@@ -35,6 +35,7 @@ from app.routers.notifications import router as notifications_router
 from app.services.pubsub_listener import redis_pubsub_listener
 from app.routers.websockets import router as websockets_router
 from app.routers.invites import router as invites_router
+from app.middleware.api_versioning import APIVersionMiddleware
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
