@@ -4,6 +4,8 @@ from typing import List, Dict, Any
 
 from app.models.db import get_db, User, Brand, BrandMember
 from app.middleware.auth import get_current_user
+from app.services.cache_service import get_cached, set_cached, admin_stats_cache_key
+from app.config import settings
 from app.services.admin_stats_service import (
     get_summary_stats,
     get_daily_jobs,
@@ -60,7 +62,14 @@ async def get_stats_summary(
     Returns platform-wide summary statistics.
     Requires Admin or Owner role.
     """
-    return await get_summary_stats(db)
+    cache_key = admin_stats_cache_key()
+    cached = await get_cached(cache_key)
+    if cached is not None:
+        return cached
+
+    result = await get_summary_stats(db)
+    await set_cached(cache_key, result, settings.CACHE_TTL_ADMIN_STATS)
+    return result
 
 
 @router.get("/jobs/daily")

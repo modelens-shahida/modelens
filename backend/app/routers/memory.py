@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import get_db, Asset, AssetTag, Campaign, Brand, BrandMember, User
 from app.middleware.auth import get_current_user
+from app.services.cache_service import get_cached, set_cached, brand_memory_cache_key
+from app.config import settings
 
 router = APIRouter(tags=["Memory"])
 
@@ -39,6 +41,11 @@ async def get_brand_memory(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Check cache first
+    cache_key = brand_memory_cache_key(brand_id)
+    cached = await get_cached(cache_key)
+    if cached is not None:
+        return cached
     """
     Returns approved asset count and tag frequency for a brand workspace.
     Requires at least Viewer role.
@@ -59,10 +66,13 @@ async def get_brand_memory(
             key = f"{tag.tag}"
             tag_frequency[key] = tag_frequency.get(key, 0) + 1
 
-    return MemoryResponse(
+    response = MemoryResponse(
         total_assets=len(assets),
         tag_frequency=tag_frequency,
     )
+    # Cache the response
+    await set_cached(cache_key, response.model_dump(), settings.CACHE_TTL_BRAND_MEMORY)
+    return response
 
 # ========================== Campaign Memory =======================
 

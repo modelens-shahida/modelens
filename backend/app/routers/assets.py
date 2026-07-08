@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from app.models.db import get_db, Asset, AssetTag, User, Brand, BrandMember
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 from app.services.audit import write_audit_log
+from app.services.cache_service import invalidate_brand_memory_cache, invalidate_admin_stats_cache
 from app.services.storage import storage_service
 from app.middleware.rate_limit import RateLimiter
 

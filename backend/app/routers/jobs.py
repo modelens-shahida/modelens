@@ -7,6 +7,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.services.cache_service import invalidate_admin_stats_cache
 from app.models.db import (
     get_db,
     AIJob,
@@ -163,6 +164,7 @@ async def generate_job(
     db.add(job)
     await db.commit()
     await db.refresh(job)
+    await invalidate_admin_stats_cache()
 
     # 5. Cache initial job state in Redis
     job_data = {

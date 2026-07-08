@@ -40,6 +40,26 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = Field(default="whsec_mock_secret")
     STRIPE_MOCK_MODE: bool = Field(default=True)
 
+    # Database Connection Pool
+    DB_POOL_SIZE: int = Field(default=10)
+    DB_MAX_OVERFLOW: int = Field(default=20)
+    DB_POOL_TIMEOUT: int = Field(default=30)
+    DB_POOL_RECYCLE: int = Field(default=1800)
+
+    # Cache TTL
+    CACHE_TTL_BRAND_MEMORY: int = Field(default=300)
+    CACHE_TTL_ADMIN_STATS: int = Field(default=600)
+
+    # Database Connection Pool
+    DB_POOL_SIZE: int = Field(default=10)
+    DB_MAX_OVERFLOW: int = Field(default=20)
+    DB_POOL_TIMEOUT: int = Field(default=30)
+    DB_POOL_RECYCLE: int = Field(default=1800)
+
+    # Cache TTL
+    CACHE_TTL_BRAND_MEMORY: int = Field(default=300)
+    CACHE_TTL_ADMIN_STATS: int = Field(default=600)
+
     # Log Retention
     WEBHOOK_LOG_RETENTION_DAYS: int = Field(default=30)
     WEBHOOK_LOG_PRUNE_BATCH_SIZE: int = Field(default=1000)
