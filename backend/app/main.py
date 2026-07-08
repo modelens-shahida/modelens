@@ -145,6 +145,7 @@ class ProductionLoggingMiddleware(BaseHTTPMiddleware):
             raise e
 
 app.add_middleware(ProductionLoggingMiddleware)
+app.add_middleware(APIVersionMiddleware)
 
 # CORS Middleware Setup
 app.add_middleware(
