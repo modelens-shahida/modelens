@@ -32,6 +32,7 @@ export default function BrandDetailPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("viewer");
   const [isInviting, setIsInviting] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState([]);
 
   // Webhooks states
   const [webhooks, setWebhooks] = useState([]);
@@ -80,6 +81,13 @@ export default function BrandDetailPage() {
 
       const membersData = await api.get(`/api/v1/brands/${id}/members`);
       setMembers(membersData);
+
+      try {
+        const invitesData = await api.get(`/api/v1/brands/${id}/invites`);
+        setPendingInvites(invitesData || []);
+      } catch (err) {
+        console.error("Failed to load invitations", err);
+      }
     } catch (error) {
       toast.error(error.message || "Failed to load brand details");
       router.push("/dashboard/brands");
@@ -140,21 +148,35 @@ export default function BrandDetailPage() {
 
     setIsInviting(true);
     try {
-      await api.post(`/api/v1/brands/${id}/members`, {
+      await api.post(`/api/v1/brands/${id}/invites`, {
         email: inviteEmail,
         role: inviteRole,
       });
-      toast.success("Member invited successfully!");
+      toast.success("Invitation sent successfully!");
       setInviteEmail("");
       setInviteRole("viewer");
       setIsInviteModalOpen(false);
-      // Refresh members list
-      const membersData = await api.get(`/api/v1/brands/${id}/members`);
-      setMembers(membersData);
+      // Refresh pending invites list
+      const invitesData = await api.get(`/api/v1/brands/${id}/invites`);
+      setPendingInvites(invitesData || []);
     } catch (error) {
-      toast.error(error.message || "Failed to invite member");
+      toast.error(error.message || "Failed to send invitation");
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  const handleRevokeInvite = async (inviteId) => {
+    if (!confirm("Are you sure you want to revoke this invitation?")) return;
+
+    try {
+      await api.delete(`/api/v1/brands/${id}/invites/${inviteId}`);
+      toast.success("Invitation revoked successfully!");
+      // Refresh pending invites list
+      const invitesData = await api.get(`/api/v1/brands/${id}/invites`);
+      setPendingInvites(invitesData || []);
+    } catch (error) {
+      toast.error(error.message || "Failed to revoke invitation");
     }
   };
 
@@ -342,7 +364,7 @@ export default function BrandDetailPage() {
               : "border-transparent text-zinc-400 hover:text-zinc-200"
           }`}
         >
-          <Users size={14} /> Team Members ({members.length + 1})
+          <Users size={14} /> Team Members ({members.length + 1 + pendingInvites.length})
         </button>
         <button
           onClick={() => setActiveTab("webhooks")}
@@ -410,6 +432,37 @@ export default function BrandDetailPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-zinc-400">Active</td>
+                  </tr>
+                ))}
+
+                {/* Pending invites */}
+                {pendingInvites.map((invite) => (
+                  <tr key={`invite-${invite.id}`} className="hover:bg-zinc-900/10 transition-all opacity-80">
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-zinc-300">{invite.email} (Pending)</span>
+                        <span className="text-[10px] text-zinc-500">Expires: {new Date(invite.expires_at).toLocaleDateString()}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(invite.role)}`}>
+                        {invite.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-amber-550 font-semibold">Invited</span>
+                        {canManage && (
+                          <button
+                            onClick={() => handleRevokeInvite(invite.id)}
+                            className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-950/20 cursor-pointer"
+                            title="Revoke Invitation"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
