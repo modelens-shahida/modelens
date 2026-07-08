@@ -71,7 +71,8 @@ async def accept_pending_invitation(user: User, db: AsyncSession) -> Optional[Br
     result = await db.execute(
         select(Invitation).where(
             Invitation.email == user.email,
-            Invitation.is_accepted == False,
+            Invitation.accepted_at == None,
+            Invitation.revoked_at == None,
             Invitation.expires_at > datetime.utcnow(),
         )
     )
@@ -87,7 +88,7 @@ async def accept_pending_invitation(user: User, db: AsyncSession) -> Optional[Br
         )
     )
     if existing.scalars().first():
-        invite.is_accepted = True
+        invite.accepted_at = datetime.utcnow()
         await db.flush()
         return None
 
@@ -97,7 +98,7 @@ async def accept_pending_invitation(user: User, db: AsyncSession) -> Optional[Br
         role=invite.role,
     )
     db.add(member)
-    invite.is_accepted = True
+    invite.accepted_at = datetime.utcnow()
     await db.flush()
     print(f"[SSO] Auto-accepted invitation for {user.email} into brand {invite.brand_id} as {invite.role}")
     return member
