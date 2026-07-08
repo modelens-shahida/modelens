@@ -210,6 +210,7 @@ class CharacterVersionResponse(BaseModel):
     reference_image_path: Optional[str]
     validation_image_path: Optional[str]
     config_overrides: dict
+    mlflow_run_id: Optional[str] = None
     model_config = {"from_attributes": True}
 
 class CharacterEmbeddingCreateRequest(BaseModel):

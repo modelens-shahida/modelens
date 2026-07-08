@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { User, Plus, X, Loader2, Folder, Sparkles, AlertCircle, Image as ImageIcon } from "lucide-react";
+import { User, Plus, X, Loader2, Folder, Sparkles, AlertCircle, Image as ImageIcon, Database, Copy, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 
@@ -27,6 +27,20 @@ export default function CharactersPage() {
   const [charDescription, setCharDescription] = useState("");
   const [selectedAssetPath, setSelectedAssetPath] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  // Selected character & version details states
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
+  const [characterVersions, setCharacterVersions] = useState([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [copiedRunId, setCopiedRunId] = useState("");
+
+  // Train new version modal states
+  const [isTrainModalOpen, setIsTrainModalOpen] = useState(false);
+  const [promptTrigger, setPromptTrigger] = useState("");
+  const [learningRate, setLearningRate] = useState("0.0001");
+  const [batchSize, setBatchSize] = useState("4");
+  const [epochs, setEpochs] = useState("10");
+  const [isTraining, setIsTraining] = useState(false);
 
   // Initialize: Load brands
   useEffect(() => {
@@ -129,6 +143,64 @@ export default function CharactersPage() {
     }
   };
 
+  // Fetch versions for selected character
+  const fetchVersions = async (characterId) => {
+    if (!characterId) return;
+    try {
+      setLoadingVersions(true);
+      const data = await api.get(`/api/v1/characters/${characterId}/versions`);
+      const sorted = [...data].sort((a, b) => b.version_number - a.version_number);
+      setCharacterVersions(sorted);
+    } catch (error) {
+      toast.error(error.message || "Failed to load character versions");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedCharacter) {
+      fetchVersions(selectedCharacter.id);
+    } else {
+      setCharacterVersions([]);
+    }
+  }, [selectedCharacter]);
+
+  // Handle triggering character training run
+  const handleTrainVersion = async (e) => {
+    e.preventDefault();
+    if (!promptTrigger.trim()) {
+      toast.error("Prompt trigger is required");
+      return;
+    }
+
+    setIsTraining(true);
+    try {
+      const payload = {
+        prompt_trigger: promptTrigger.trim(),
+        config_overrides: {
+          learning_rate: learningRate,
+          batch_size: batchSize,
+          epochs: epochs
+        }
+      };
+
+      await api.post(`/api/v1/characters/${selectedCharacter.id}/versions`, payload);
+      toast.success("LoRA character training run started successfully! 🚀");
+      
+      // Reset training parameters
+      setPromptTrigger("");
+      setIsTrainModalOpen(false);
+      
+      // Refresh versions log
+      fetchVersions(selectedCharacter.id);
+    } catch (error) {
+      toast.error(error.message || "Failed to start training run");
+    } finally {
+      setIsTraining(false);
+    }
+  };
+
   if (loadingBrands) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -212,7 +284,8 @@ export default function CharactersPage() {
             <motion.div
               key={char.id}
               whileHover={{ y: -4 }}
-              className="bg-zinc-900/30 border border-zinc-850 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg"
+              onClick={() => setSelectedCharacter(char)}
+              className="bg-zinc-900/30 border border-zinc-850 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg cursor-pointer"
             >
               {/* Image Preview Container */}
               <div className="h-44 bg-zinc-950 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-zinc-900">
@@ -385,6 +458,239 @@ export default function CharactersPage() {
                       <Loader2 className="animate-spin" size={14} />
                     ) : (
                       "Save Character"
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Character Details Drawer */}
+      <AnimatePresence>
+        {selectedCharacter && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedCharacter(null)}
+              className="fixed inset-0 bg-black z-40"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 w-full max-w-md bg-zinc-900 border-l border-zinc-800 shadow-2xl z-50 flex flex-col"
+            >
+              <div className="p-6 border-b border-zinc-850 flex items-center justify-between shrink-0 bg-zinc-950/50">
+                <div className="space-y-1">
+                  <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+                    <User className="text-purple-400" size={20} />
+                    {selectedCharacter.name}
+                  </h2>
+                  <p className="text-[10px] text-zinc-500 font-mono">ID: {selectedCharacter.id}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedCharacter(null)}
+                  className="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 flex-1 overflow-y-auto space-y-6">
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Description</h3>
+                  <p className="text-sm text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-xl border border-zinc-850/50">
+                    {selectedCharacter.description || "No description provided."}
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                      <Database size={14} />
+                      Model Versions
+                    </h3>
+                    <button
+                      onClick={() => setIsTrainModalOpen(true)}
+                      className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 text-xs font-semibold px-3 py-1.5 rounded-lg border border-purple-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus size={14} />
+                      Train New Version
+                    </button>
+                  </div>
+
+                  {loadingVersions ? (
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="animate-spin text-purple-500" size={24} />
+                    </div>
+                  ) : characterVersions.length === 0 ? (
+                    <div className="text-center py-8 bg-zinc-950/30 rounded-xl border border-dashed border-zinc-800">
+                      <p className="text-sm text-zinc-500">No versions trained yet.</p>
+                      <p className="text-xs text-zinc-600 mt-1">Train a new version to get started.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {characterVersions.map((version) => (
+                        <div key={version.id} className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 hover:border-zinc-700 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <span className="bg-purple-500/20 text-purple-300 text-xs font-bold px-2.5 py-1 rounded-md border border-purple-500/30">
+                              v{version.version_number}
+                            </span>
+                            <span className="text-[10px] text-zinc-500">
+                              {new Date(version.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="space-y-1">
+                              <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Trigger Prompt</span>
+                              <div className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-lg text-xs text-zinc-300 font-mono">
+                                {version.prompt_trigger}
+                              </div>
+                            </div>
+                            
+                            {version.mlflow_run_id && (
+                              <div className="space-y-1">
+                                <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold flex items-center gap-1">
+                                  MLflow Run ID
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <div className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-lg text-xs text-zinc-400 font-mono flex-1 truncate">
+                                    {version.mlflow_run_id}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(version.mlflow_run_id);
+                                      setCopiedRunId(version.mlflow_run_id);
+                                      setTimeout(() => setCopiedRunId(""), 2000);
+                                    }}
+                                    className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors"
+                                    title="Copy Run ID"
+                                  >
+                                    {copiedRunId === version.mlflow_run_id ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Train New Version Modal */}
+      <AnimatePresence>
+        {isTrainModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isTraining && setIsTrainModalOpen(false)}
+              className="fixed inset-0 bg-black"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg p-6 relative z-10 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+                  <Sparkles className="text-purple-400" size={18} />
+                  Train New LoRA Version
+                </h3>
+                <button
+                  onClick={() => !isTraining && setIsTrainModalOpen(false)}
+                  disabled={isTraining}
+                  className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleTrainVersion} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
+                    Prompt Trigger (Unique Token) <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={promptTrigger}
+                    onChange={(e) => setPromptTrigger(e.target.value)}
+                    placeholder="e.g. ohwx, sz_man, sks_woman"
+                    disabled={isTraining}
+                    className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all disabled:opacity-50"
+                  />
+                  <p className="text-[10px] text-zinc-500">The specific token used to invoke this character in prompts.</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 border-t border-zinc-800/50 pt-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold text-zinc-400 block uppercase tracking-wider">Learning Rate</label>
+                    <input
+                      type="text"
+                      value={learningRate}
+                      onChange={(e) => setLearningRate(e.target.value)}
+                      disabled={isTraining}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:border-purple-500 outline-none transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold text-zinc-400 block uppercase tracking-wider">Batch Size</label>
+                    <input
+                      type="number"
+                      value={batchSize}
+                      onChange={(e) => setBatchSize(e.target.value)}
+                      disabled={isTraining}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:border-purple-500 outline-none transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold text-zinc-400 block uppercase tracking-wider">Epochs</label>
+                    <input
+                      type="number"
+                      value={epochs}
+                      onChange={(e) => setEpochs(e.target.value)}
+                      disabled={isTraining}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:border-purple-500 outline-none transition-all disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-zinc-855">
+                  <button
+                    type="button"
+                    onClick={() => setIsTrainModalOpen(false)}
+                    disabled={isTraining}
+                    className="bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isTraining || !promptTrigger.trim()}
+                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-purple-950/20 disabled:bg-zinc-800 disabled:text-zinc-500"
+                  >
+                    {isTraining ? (
+                      <>
+                        <Loader2 className="animate-spin" size={14} />
+                        Starting Run...
+                      </>
+                    ) : (
+                      "Start Training Run"
                     )}
                   </button>
                 </div>
