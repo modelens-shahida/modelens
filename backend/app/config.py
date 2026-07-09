@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     WEBHOOK_LOG_RETENTION_DAYS: int = Field(default=30)
     WEBHOOK_LOG_PRUNE_BATCH_SIZE: int = Field(default=1000)
 
+    # OpenAI
+    OPENAI_API_KEY: str = Field(default="sk.mock")
+
     # Email Provider (for low-credit alerts)
     EMAIL_PROVIDER: str = Field(default="sendgrid")  # 'sendgrid' or 'ses'
     SENDGRID_API_KEY: Optional[str] = Field(default=None)
