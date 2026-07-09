@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Image as ImageIcon, Search, Plus, Filter, X, Upload, Loader2, Sparkles, Folder, ChevronDown, ChevronUp, Sun, Camera, User, Users, Shirt, Tag, Megaphone, MapPin, Check } from "lucide-react";
+import { Image as ImageIcon, Search, Plus, Filter, X, Upload, Loader2, Sparkles, Folder, ChevronDown, ChevronUp, Sun, Camera, User, Users, Shirt, Tag, Megaphone, MapPin, Check, Trash2, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 
@@ -53,6 +53,41 @@ export default function AssetsPage() {
   const [uploadMeta, setUploadMeta] = useState({});
   const [isUploading, setIsUploading] = useState(false);
 
+  // Details Modal and Trash states
+  const [isTrashView, setIsTrashView] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  const handleDeleteAsset = async (assetId) => {
+    if (!confirm("Are you sure you want to delete this asset? It will be moved to the Trash Bin.")) return;
+    setIsDeleting(true);
+    try {
+      await api.delete(`/api/v1/assets/${assetId}`);
+      toast.success("Asset moved to Trash");
+      setSelectedAsset(null);
+      fetchAssets();
+    } catch (error) {
+      toast.error(error.message || "Failed to delete asset");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRestoreAsset = async (e, assetId) => {
+    e.stopPropagation();
+    setIsRestoring(true);
+    try {
+      await api.post(`/api/v1/assets/${assetId}/restore`);
+      toast.success("Asset restored successfully");
+      fetchAssets();
+    } catch (error) {
+      toast.error(error.message || "Failed to restore asset");
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   // Debounce search query
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -91,10 +126,13 @@ export default function AssetsPage() {
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      let endpoint = `/api/v1/assets?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`;
+      let endpoint = isTrashView 
+        ? `/api/v1/assets/trash?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`
+        : `/api/v1/assets?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`;
+      
       if (selectedBrand) endpoint += `brand_id=${selectedBrand}&`;
-      if (selectedTag) endpoint += `tag=${selectedTag}&`;
-      if (debouncedSearch) endpoint += `search=${encodeURIComponent(debouncedSearch)}&`;
+      if (!isTrashView && selectedTag) endpoint += `tag=${selectedTag}&`;
+      if (!isTrashView && debouncedSearch) endpoint += `search=${encodeURIComponent(debouncedSearch)}&`;
 
       const data = await api.get(endpoint);
       setAssets(data);
@@ -105,14 +143,14 @@ export default function AssetsPage() {
     }
   };
 
-  // Reset page when search or filters change
+  // Reset page when search, filters, or view changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedBrand, selectedTag, debouncedSearch]);
+  }, [selectedBrand, selectedTag, debouncedSearch, isTrashView]);
 
   useEffect(() => {
     fetchAssets();
-  }, [selectedBrand, selectedTag, debouncedSearch, currentPage]);
+  }, [selectedBrand, selectedTag, debouncedSearch, currentPage, isTrashView]);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -188,15 +226,28 @@ export default function AssetsPage() {
             Browse, search, and classify your catalog images with AI taxonomy tags
           </p>
         </div>
-        {brands.length > 0 && (
+        <div className="flex gap-2">
           <button
-            onClick={() => setIsUploadOpen(true)}
-            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-md shadow-purple-950/20"
+            onClick={() => setIsTrashView(!isTrashView)}
+            className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer border ${
+              isTrashView
+                ? "bg-purple-950/40 border-purple-500/40 text-purple-300 hover:bg-purple-900/30"
+                : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+            }`}
           >
-            <Upload size={14} />
-            Upload Asset
+            <Trash2 size={14} />
+            {isTrashView ? "View Active" : "View Trash"}
           </button>
-        )}
+          {!isTrashView && brands.length > 0 && (
+            <button
+              onClick={() => setIsUploadOpen(true)}
+              className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-md shadow-purple-950/20"
+            >
+              <Upload size={14} />
+              Upload Asset
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Control panel & Filter bar */}
@@ -409,7 +460,8 @@ export default function AssetsPage() {
                   <motion.div
                     key={asset.id}
                     whileHover={{ y: -3 }}
-                    className="bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg"
+                    onClick={() => !isTrashView && setSelectedAsset(asset)}
+                    className={`bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg ${!isTrashView ? "cursor-pointer" : ""}`}
                   >
                     {/* Thumbnail container */}
                     <div className="h-44 bg-zinc-950 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-zinc-900">
@@ -447,21 +499,32 @@ export default function AssetsPage() {
                         </p>
                       </div>
 
-                      {/* Tags List */}
-                      <div className="flex flex-wrap gap-1 mt-2.5 max-h-12 overflow-hidden">
-                        {asset.tags && asset.tags.length > 0 ? (
-                          asset.tags.map((t) => (
-                            <span
-                              key={t}
-                              className="text-[8px] font-bold bg-zinc-900 border border-zinc-850/60 text-zinc-400 px-1.5 py-0.5 rounded-md uppercase tracking-wider"
-                            >
-                              {t}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[8px] italic text-zinc-600">No semantic tags assigned</span>
-                        )}
-                      </div>
+                      {isTrashView ? (
+                        <button
+                          onClick={(e) => handleRestoreAsset(e, asset.id)}
+                          disabled={isRestoring}
+                          className="mt-3 w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          {isRestoring ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                          Restore Asset
+                        </button>
+                      ) : (
+                        /* Tags List */
+                        <div className="flex flex-wrap gap-1 mt-2.5 max-h-12 overflow-hidden">
+                          {asset.tags && asset.tags.length > 0 ? (
+                            asset.tags.map((t) => (
+                              <span
+                                key={t}
+                                className="text-[8px] font-bold bg-zinc-900 border border-zinc-850/60 text-zinc-400 px-1.5 py-0.5 rounded-md uppercase tracking-wider"
+                              >
+                                {t}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[8px] italic text-zinc-600">No semantic tags assigned</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -636,6 +699,126 @@ export default function AssetsPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Asset Details Modal */}
+      <AnimatePresence>
+        {selectedAsset && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 overflow-y-auto">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedAsset(null)}
+              className="fixed inset-0 bg-black"
+            />
+
+            {/* Modal Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl p-6 relative z-10 shadow-2xl overflow-hidden flex flex-col md:flex-row gap-6 max-h-[90vh]"
+            >
+              {/* Left Side: Image Preview */}
+              <div className="flex-1 bg-zinc-950 rounded-xl overflow-hidden flex items-center justify-center border border-zinc-850 relative min-h-[300px] md:min-h-[400px]">
+                <img
+                  src={selectedAsset.storage_path}
+                  alt={selectedAsset.name}
+                  className="max-w-full max-h-[60vh] object-contain"
+                />
+              </div>
+
+              {/* Right Side: Details & Actions */}
+              <div className="w-full md:w-80 flex flex-col justify-between space-y-6">
+                <div className="space-y-5 overflow-y-auto pr-1 max-h-[50vh] md:max-h-[60vh] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-zinc-800/85 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+                  {/* Header info */}
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-zinc-100 truncate max-w-[200px]" title={selectedAsset.name}>
+                        {selectedAsset.name}
+                      </h3>
+                      <p className="text-[10px] text-zinc-500 font-mono truncate max-w-[200px]">
+                        ID: {selectedAsset.id}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedAsset(null)}
+                      className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Metadata fields */}
+                  <div className="space-y-3.5 border-t border-zinc-850 pt-4">
+                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                      Asset Metadata
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs py-1 border-b border-zinc-850/40">
+                        <span className="text-zinc-500 font-medium">Filename</span>
+                        <span className="text-zinc-300 truncate max-w-[150px]" title={selectedAsset.filename}>
+                          {selectedAsset.filename}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs py-1 border-b border-zinc-850/40">
+                        <span className="text-zinc-500 font-medium">Asset Type</span>
+                        <span className="text-zinc-300 capitalize">{selectedAsset.asset_type}</span>
+                      </div>
+                      {selectedAsset.metadata && Object.entries(selectedAsset.metadata).map(([k, v]) => (
+                        <div key={k} className="flex justify-between text-xs py-1 border-b border-zinc-850/40">
+                          <span className="text-zinc-500 font-medium capitalize">{k}</span>
+                          <span className="text-zinc-300">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="space-y-2.5 border-t border-zinc-850 pt-4">
+                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                      Semantic Tags
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedAsset.tags && selectedAsset.tags.length > 0 ? (
+                        selectedAsset.tags.map((t) => (
+                          <span
+                            key={t}
+                            className="text-[9px] font-bold bg-zinc-950 border border-zinc-800 text-zinc-300 px-2 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"
+                          >
+                            {t}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] italic text-zinc-600">No tags assigned</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="border-t border-zinc-850 pt-4 flex gap-2">
+                  <button
+                    onClick={() => setSelectedAsset(null)}
+                    className="flex-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs font-semibold py-2.5 rounded-xl transition-all cursor-pointer text-center"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => handleDeleteAsset(selectedAsset.id)}
+                    disabled={isDeleting}
+                    className="flex-1 bg-rose-600/90 hover:bg-rose-650 text-white text-xs font-semibold py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+                  >
+                    {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    Delete Asset
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
