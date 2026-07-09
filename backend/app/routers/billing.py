@@ -85,12 +85,7 @@ async def create_checkout_session(
             payment_method_types=["card"],
             mode="subscription",
             line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {"name": f"ModeLens {payload.package.title()} Plan"},
-                    "unit_amount": CREDIT_PACKAGES[payload.package][payload.frequency],
-                    "recurring": {"interval": "month" if payload.frequency == "monthly" else "year"},
-                },
+                "price": get_stripe_price_id(payload.package, payload.frequency),
                 "quantity": 1,
             }],
             metadata={

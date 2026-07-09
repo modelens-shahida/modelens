@@ -66,6 +66,36 @@ async def test_checkout_session_all_packages(client: AsyncClient, test_data: dic
         assert res.json()["mock"] is True
 
 
+@pytest.mark.asyncio
+async def test_checkout_session_real_stripe_resolves_price_id(client: AsyncClient, test_data: dict):
+    """With mock mode disabled, should pass resolved Stripe Price ID to Stripe Session."""
+    editor_headers = test_data["get_headers"]("editor")
+    
+    mock_session = MagicMock()
+    mock_session.id = "cs_real_123"
+    mock_session.url = "https://checkout.stripe.com/pay/cs_real_123"
+    
+    with patch("app.routers.billing.settings") as mock_settings:
+        mock_settings.STRIPE_MOCK_MODE = False
+        mock_settings.STRIPE_API_KEY = "sk_test_key"
+        mock_settings.STRIPE_PRICE_LITE_MONTHLY = "price_lite_monthly_real_id"
+        mock_settings.STRIPE_SUCCESS_URL = "https://success"
+        mock_settings.STRIPE_CANCEL_URL = "https://cancel"
+        
+        with patch("stripe.checkout.Session.create", return_value=mock_session) as mock_create:
+            res = await client.post("/api/v1/billing/checkout-session", json={
+                "package": "lite", "frequency": "monthly"
+            }, headers=editor_headers)
+            
+            assert res.status_code == status.HTTP_200_OK
+            assert res.json()["mock"] is False
+            assert res.json()["session_url"] == "https://checkout.stripe.com/pay/cs_real_123"
+            
+            mock_create.assert_called_once()
+            called_kwargs = mock_create.call_args[1]
+            assert called_kwargs["line_items"][0]["price"] == "price_lite_monthly_real_id"
+
+
 # ========================== Portal Tests =========================
 
 @pytest.mark.asyncio
