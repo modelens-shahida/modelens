@@ -790,3 +790,83 @@ async def restore_asset(
     await db.commit()
 
     return {"message": "Asset restored successfully.", "asset_id": asset_id}
+
+
+# ========================== Asset Tags Endpoints =================
+
+@router.get("/{asset_id}/tags")
+async def get_asset_tags(
+    asset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all tags for an asset."""
+    from app.models.db import AssetTag
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    asset = result.scalars().first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+
+    tags_result = await db.execute(
+        select(AssetTag).where(AssetTag.asset_id == asset_id)
+    )
+    tags = tags_result.scalars().all()
+    return [{"id": t.id, "tag": t.tag} for t in tags]
+
+
+@router.post("/{asset_id}/tags", status_code=status.HTTP_201_CREATED)
+async def add_asset_tag(
+    asset_id: int,
+    tag: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually add a tag to an asset."""
+    from app.models.db import AssetTag
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    asset = result.scalars().first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+
+    # Check duplicate
+    existing = await db.execute(
+        select(AssetTag).where(AssetTag.asset_id == asset_id, AssetTag.tag == tag.lower().strip())
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tag already exists.")
+
+    new_tag = AssetTag(asset_id=asset_id, tag=tag.lower().strip())
+    db.add(new_tag)
+    await db.commit()
+    await db.refresh(new_tag)
+
+    # Invalidate brand memory cache
+    await invalidate_brand_memory_cache(asset.brand_id)
+
+    return {"id": new_tag.id, "tag": new_tag.tag}
+
+
+@router.delete("/{asset_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_asset_tag(
+    asset_id: int,
+    tag_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a tag from an asset."""
+    from app.models.db import AssetTag
+    result = await db.execute(
+        select(AssetTag).where(AssetTag.id == tag_id, AssetTag.asset_id == asset_id)
+    )
+    tag = result.scalars().first()
+    if not tag:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found.")
+
+    asset_result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    asset = asset_result.scalars().first()
+
+    await db.delete(tag)
+    await db.commit()
+
+    if asset:
+        await invalidate_brand_memory_cache(asset.brand_id)

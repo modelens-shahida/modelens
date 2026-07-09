@@ -71,6 +71,7 @@ from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTempl
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 from app.services.asset_pipeline import process_image
+from app.services.ai_tagging_service import generate_ai_tags
 from app.services.webhook_security import build_signature_header
 from app.config import settings
 
@@ -179,6 +180,24 @@ async def _process_asset_upload_async(asset_id: int):
             asset.aspect_ratio = img_metadata["aspect_ratio"]
             asset.thumbnail_url = thumbnail_path
             asset.preview_url = preview_path
+
+            # AI Auto-labeling: generate tags
+            try:
+                ai_tags = await generate_ai_tags(file_bytes, asset.asset_type or "default")
+                from app.models.db import AssetTag
+                for tag_text in ai_tags:
+                    existing_tag = await db.execute(
+                        select(AssetTag).where(
+                            AssetTag.asset_id == asset.id,
+                            AssetTag.tag == tag_text
+                        )
+                    )
+                    if not existing_tag.scalars().first():
+                        tag = AssetTag(asset_id=asset.id, tag=tag_text)
+                        db.add(tag)
+                print(f"[Worker] AI auto-labeled asset {asset_id} with tags: {ai_tags}")
+            except Exception as tag_err:
+                print(f"[Worker] AI tagging failed (non-fatal): {tag_err}")
 
             updated_meta = dict(asset.meta)
             updated_meta.update({
