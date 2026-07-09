@@ -30,6 +30,27 @@ class PortalRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
+
+
+# ========================== Stripe Price Mapping =================
+
+STRIPE_PRICE_MAP = {
+    ("lite", "monthly"): "STRIPE_PRICE_LITE_MONTHLY",
+    ("lite", "yearly"): "STRIPE_PRICE_LITE_YEARLY",
+    ("plus", "monthly"): "STRIPE_PRICE_PLUS_MONTHLY",
+    ("plus", "yearly"): "STRIPE_PRICE_PLUS_YEARLY",
+    ("pro", "monthly"): "STRIPE_PRICE_PRO_MONTHLY",
+    ("pro", "yearly"): "STRIPE_PRICE_PRO_YEARLY",
+}
+
+def get_stripe_price_id(package: str, frequency: str) -> str:
+    """Get Stripe price ID from settings based on package and frequency."""
+    key = (package.lower(), frequency.lower())
+    setting_name = STRIPE_PRICE_MAP.get(key)
+    if not setting_name:
+        raise ValueError(f"Invalid package/frequency: {package}/{frequency}")
+    return getattr(settings, setting_name)
+
 @router.post("/checkout-session")
 async def create_checkout_session(
     payload: CheckoutRequest,
@@ -77,8 +98,8 @@ async def create_checkout_session(
                 "package": payload.package,
                 "frequency": payload.frequency,
             },
-            success_url="https://modelens-xi.vercel.app/dashboard?checkout=success",
-            cancel_url="https://modelens-xi.vercel.app/dashboard?checkout=cancelled",
+            success_url=settings.STRIPE_SUCCESS_URL,
+            cancel_url=settings.STRIPE_CANCEL_URL,
         )
         return {"session_url": session.url, "session_id": session.id, "mock": False}
 

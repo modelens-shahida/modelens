@@ -64,6 +64,16 @@ class Settings(BaseSettings):
     WEBHOOK_LOG_RETENTION_DAYS: int = Field(default=30)
     WEBHOOK_LOG_PRUNE_BATCH_SIZE: int = Field(default=1000)
 
+    # Stripe Price IDs
+    STRIPE_PRICE_LITE_MONTHLY: str = Field(default="price_lite_monthly_mock")
+    STRIPE_PRICE_LITE_YEARLY: str = Field(default="price_lite_yearly_mock")
+    STRIPE_PRICE_PLUS_MONTHLY: str = Field(default="price_plus_monthly_mock")
+    STRIPE_PRICE_PLUS_YEARLY: str = Field(default="price_plus_yearly_mock")
+    STRIPE_PRICE_PRO_MONTHLY: str = Field(default="price_pro_monthly_mock")
+    STRIPE_PRICE_PRO_YEARLY: str = Field(default="price_pro_yearly_mock")
+    STRIPE_SUCCESS_URL: str = Field(default="https://modelens-xi.vercel.app/billing/success")
+    STRIPE_CANCEL_URL: str = Field(default="https://modelens-xi.vercel.app/billing/cancel")
+
     # OpenAI
     OPENAI_API_KEY: str = Field(default="sk.mock")
 
