@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Sparkles, Loader2, Play, CheckCircle2, AlertTriangle, ArrowRight, Clock, ExternalLink, RefreshCw, Layers, Video, ImageIcon, Film, Sliders } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
+import { useWebSocket } from "@/lib/useWebSocket";
 
 function JobsPageContent() {
   const { user } = useAuth();
@@ -21,6 +22,18 @@ function JobsPageContent() {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [characters, setCharacters] = useState([]);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
+
+  // Real-time WebSocket for job updates
+  const { token } = useAuth();
+  useWebSocket({
+    token,
+    brandId: selectedBrandId,
+    onEvent: (event) => {
+      if (event.type === "job.completed" || event.type === "job.failed") {
+        fetchJobsList();
+      }
+    },
+  });
   const [prompts, setPrompts] = useState([]);
   const [selectedPromptId, setSelectedPromptId] = useState("");
   

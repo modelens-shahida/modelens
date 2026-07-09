@@ -5,10 +5,21 @@ import { usePathname } from "next/navigation";
 import { Menu, Bell, User as UserIcon, LogOut, Settings, CreditCard, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { notificationsApi } from "@/lib/notifications";
+import { useWebSocket } from "@/lib/useWebSocket";
 
 export default function TopBar({ toggleSidebar }) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
+
+  // Real-time WebSocket for notifications
+  useWebSocket({
+    token,
+    brandId: user?.activeBrandId,
+    onEvent: (event) => {
+      // Refresh notifications on any real-time event
+      fetchNotifications();
+    },
+  });
   
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
