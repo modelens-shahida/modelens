@@ -1,5 +1,6 @@
 import os
 import base64
+from app.config import settings
 import logging
 from typing import List
 
@@ -25,7 +26,6 @@ async def generate_ai_tags(image_bytes: bytes, asset_type: str = "default") -> L
     """
     try:
         import openai
-        from app.config import settings
 
         openai_api_key = getattr(settings, "OPENAI_API_KEY", None)
         if not openai_api_key or openai_api_key == "sk.mock":
