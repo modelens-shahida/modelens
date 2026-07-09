@@ -88,6 +88,55 @@ export default function AssetsPage() {
     }
   };
 
+  // Tag management states & handlers inside details modal
+  const [modalTags, setModalTags] = useState([]);
+  const [newTagInput, setNewTagInput] = useState("");
+  const [isAddingTag, setIsAddingTag] = useState(false);
+
+  const fetchModalTags = async (assetId) => {
+    try {
+      const tags = await api.get(`/api/v1/assets/${assetId}/tags`);
+      setModalTags(tags || []);
+    } catch (err) {
+      console.error("Failed to fetch tags for asset", err);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedAsset) {
+      fetchModalTags(selectedAsset.id);
+    } else {
+      setModalTags([]);
+    }
+  }, [selectedAsset]);
+
+  const handleAddTag = async (e) => {
+    e.preventDefault();
+    if (!newTagInput.trim() || !selectedAsset) return;
+    setIsAddingTag(true);
+    try {
+      const addedTag = await api.post(`/api/v1/assets/${selectedAsset.id}/tags?tag=${encodeURIComponent(newTagInput.trim())}`);
+      setModalTags((prev) => [...prev, addedTag]);
+      setNewTagInput("");
+      fetchAssets();
+    } catch (err) {
+      toast.error(err.message || "Failed to add tag");
+    } finally {
+      setIsAddingTag(false);
+    }
+  };
+
+  const handleDeleteTag = async (tagId) => {
+    if (!selectedAsset) return;
+    try {
+      await api.delete(`/api/v1/assets/${selectedAsset.id}/tags/${tagId}`);
+      setModalTags((prev) => prev.filter((t) => t.id !== tagId));
+      fetchAssets();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete tag");
+    }
+  };
+
   // Debounce search query
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -785,19 +834,45 @@ export default function AssetsPage() {
                       Semantic Tags
                     </h4>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedAsset.tags && selectedAsset.tags.length > 0 ? (
-                        selectedAsset.tags.map((t) => (
+                      {modalTags.length > 0 ? (
+                        modalTags.map((t) => (
                           <span
-                            key={t}
-                            className="text-[9px] font-bold bg-zinc-950 border border-zinc-800 text-zinc-300 px-2 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"
+                            key={t.id}
+                            className="text-[9px] font-bold bg-zinc-950 border border-zinc-800 text-zinc-300 pl-2.5 pr-1 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"
                           >
-                            {t}
+                            {t.tag}
+                            <button
+                              onClick={() => handleDeleteTag(t.id)}
+                              className="text-zinc-500 hover:text-rose-400 p-0.5 transition-colors cursor-pointer"
+                              title="Delete tag"
+                            >
+                              <X size={10} strokeWidth={3} />
+                            </button>
                           </span>
                         ))
                       ) : (
-                        <span className="text-[10px] italic text-zinc-600">No tags assigned</span>
+                        <span className="text-[10px] italic text-zinc-650">No tags assigned</span>
                       )}
                     </div>
+
+                    {/* Add Tag Form */}
+                    <form onSubmit={handleAddTag} className="flex gap-1.5 pt-1.5">
+                      <input
+                        type="text"
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        placeholder="Add tag (e.g. outdoor)..."
+                        disabled={isAddingTag}
+                        className="flex-1 bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-[10px] text-zinc-200 placeholder-zinc-600 outline-none transition-all disabled:opacity-50"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isAddingTag || !newTagInput.trim()}
+                        className="bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:bg-zinc-800 disabled:text-zinc-650"
+                      >
+                        {isAddingTag ? <Loader2 size={10} className="animate-spin" /> : "Add"}
+                      </button>
+                    </form>
                   </div>
                 </div>
 
