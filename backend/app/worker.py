@@ -1700,3 +1700,189 @@ async def _reset_monthly_brand_credits_async():
                 break
 
     print(f"[Worker] Monthly credit quota reset complete. {total_reset} brands reset.")
+
+
+# ========================== Campaign Generation Task =============
+
+@celery_app.task(
+    name="app.worker.process_campaign_generation",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
+def process_campaign_generation(self, parent_job_id: int):
+    """
+    Celery task to orchestrate AI campaign generation pipeline.
+    Processes child jobs via ComfyUI service with mock fallback.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_process_campaign_generation_async(self, parent_job_id))
+
+
+async def _process_campaign_generation_async(task_self, parent_job_id: int):
+    from app.services.comfyui_service import get_comfyui_service
+    from app.models.db import Asset, AssetTag
+
+    async with async_session_maker() as db:
+        result = await db.execute(select(AIJob).where(AIJob.id == parent_job_id))
+        parent_job = result.scalars().first()
+        if not parent_job:
+            print(f"[Worker] Campaign generation job {parent_job_id} not found.")
+            return
+
+        parent_job.status = "processing"
+        await db.commit()
+
+        # Publish started event
+        await _publish_brand_event(parent_job.brand_id, "generation.started", {
+            "brand_id": parent_job.brand_id,
+            "campaign_id": parent_job.inputs.get("campaign_id"),
+            "job_id": parent_job_id,
+            "status": "processing",
+            "progress": 0,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+        try:
+            # Get child jobs
+            children_result = await db.execute(
+                select(AIJob).where(
+                    AIJob.inputs["parent_job_id"].astext == str(parent_job_id),
+                    AIJob.job_type == "campaign_generation_output",
+                )
+            )
+            children = children_result.scalars().all()
+
+            comfyui = get_comfyui_service()
+            generated_asset_ids = []
+            completed = 0
+            failed = 0
+
+            for child_job in children:
+                try:
+                    child_job.status = "processing"
+                    await db.commit()
+
+                    # Submit to ComfyUI
+                    workflow = {"mock_workflow": True}
+                    prompt_id = await comfyui.submit_workflow(workflow)
+                    result_data = await comfyui.poll_until_complete(prompt_id)
+
+                    # Download and store outputs
+                    for output in result_data.get("outputs", []):
+                        filename = output.get("filename", f"output_{prompt_id}.png")
+                        image_bytes = await comfyui.download_output(filename)
+
+                        # Save to storage
+                        output_filename = f"generated_{parent_job_id}_{filename}"
+                        storage_path = storage_service.save_file_bytes(output_filename, image_bytes)
+
+                        # Create Asset record
+                        new_asset = Asset(
+                            brand_id=parent_job.brand_id,
+                            name=f"Generated - {filename}",
+                            filename=output_filename,
+                            storage_path=storage_path,
+                            asset_type="generated",
+                            status="active",
+                            meta={
+                                "source": "campaign_generation",
+                                "campaign_id": parent_job.inputs.get("campaign_id"),
+                                "character_version_id": child_job.inputs.get("character_version_id"),
+                                "mlflow_run_id": child_job.inputs.get("mlflow_run_id"),
+                                "parent_job_id": parent_job_id,
+                                "prompt_id": prompt_id,
+                            }
+                        )
+                        db.add(new_asset)
+                        await db.flush()
+                        generated_asset_ids.append(new_asset.id)
+
+                        # Trigger AI auto-tagging
+                        try:
+                            from app.services.ai_tagging_service import generate_ai_tags
+                            tags = await generate_ai_tags(image_bytes, "generated")
+                            for tag_text in tags:
+                                db.add(AssetTag(asset_id=new_asset.id, tag=tag_text))
+                        except Exception as tag_err:
+                            print(f"[Worker] Auto-tagging failed: {tag_err}")
+
+                    child_job.status = "completed"
+                    child_job.outputs = {"prompt_id": prompt_id, "generated_asset_ids": generated_asset_ids}
+                    await db.commit()
+                    completed += 1
+
+                except Exception as child_err:
+                    print(f"[Worker] Child job {child_job.id} failed: {child_err}")
+                    child_job.status = "failed"
+                    child_job.outputs = {"error": str(child_err)[:200]}
+                    await db.commit()
+                    failed += 1
+
+                # Publish progress event
+                total = len(children)
+                progress = int(((completed + failed) / total) * 100)
+                await _publish_brand_event(parent_job.brand_id, "generation.progress", {
+                    "brand_id": parent_job.brand_id,
+                    "campaign_id": parent_job.inputs.get("campaign_id"),
+                    "job_id": parent_job_id,
+                    "status": "processing",
+                    "progress": progress,
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+
+            # Update parent job
+            if failed == 0:
+                parent_job.status = "completed"
+                event_type = "generation.completed"
+            elif completed == 0:
+                parent_job.status = "failed"
+                event_type = "generation.failed"
+            else:
+                parent_job.status = "partially_completed"
+                event_type = "generation.partially_completed"
+
+            updated_outputs = dict(parent_job.outputs)
+            updated_outputs["generated_asset_ids"] = generated_asset_ids
+            updated_outputs["completed_outputs"] = completed
+            updated_outputs["failed_outputs"] = failed
+            parent_job.outputs = updated_outputs
+            await db.commit()
+
+            # Invalidate caches
+            from app.services.cache_service import invalidate_brand_memory_cache, invalidate_admin_stats_cache
+            await invalidate_brand_memory_cache(parent_job.brand_id)
+            await invalidate_admin_stats_cache()
+
+            # Publish completion event
+            await _publish_brand_event(parent_job.brand_id, event_type, {
+                "brand_id": parent_job.brand_id,
+                "campaign_id": parent_job.inputs.get("campaign_id"),
+                "job_id": parent_job_id,
+                "status": parent_job.status,
+                "progress": 100,
+                "generated_asset_ids": generated_asset_ids,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+
+        except Exception as e:
+            print(f"[Worker] Campaign generation failed: {e}")
+            parent_job.status = "failed"
+            updated_outputs = dict(parent_job.outputs)
+            updated_outputs["error"] = str(e)[:200]
+            parent_job.outputs = updated_outputs
+            await db.commit()
+
+            await _publish_brand_event(parent_job.brand_id, "generation.failed", {
+                "brand_id": parent_job.brand_id,
+                "job_id": parent_job_id,
+                "status": "failed",
+                "progress": 0,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+
+            raise task_self.retry(exc=e, countdown=60 * (2 ** task_self.request.retries))

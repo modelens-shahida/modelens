@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     STRIPE_SUCCESS_URL: str = Field(default="https://modelens-xi.vercel.app/billing/success")
     STRIPE_CANCEL_URL: str = Field(default="https://modelens-xi.vercel.app/billing/cancel")
 
+    # ComfyUI
+    COMFYUI_URL: str = Field(default="http://localhost:8188")
+    COMFYUI_MOCK_MODE: bool = Field(default=True)
+
     # OpenAI
     OPENAI_API_KEY: str = Field(default="sk.mock")
 
