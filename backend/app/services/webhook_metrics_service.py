@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Optional, Dict, Any, List
 
 from app.models.db import WebhookDeliveryLog
@@ -10,7 +10,7 @@ def _get_time_range(time_range: Optional[str], start_date: Optional[datetime], e
     """Resolve time range from parameters."""
     if start_date and end_date:
         return start_date, end_date
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if time_range == "24h":
         return now - timedelta(hours=24), now
     elif time_range == "7d":

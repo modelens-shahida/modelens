@@ -4,7 +4,7 @@ import json
 from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.models.db import (
     WebhookDeliveryLog, WebhookSubscription,
@@ -71,7 +71,7 @@ async def get_brand_analytics(db: AsyncSession, brand_id: int) -> Dict[str, Any]
     job_stats = {row.status: row.count for row in job_rows}
 
     # 3. Quota usage history (last 30 days credit transactions)
-    since = datetime.utcnow() - timedelta(days=30)
+    since = datetime.now(UTC) - timedelta(days=30)
     quota_result = await db.execute(
         select(
             CreditTransaction.transaction_type,
@@ -102,7 +102,7 @@ async def get_brand_analytics(db: AsyncSession, brand_id: int) -> Dict[str, Any]
         "tier": brand.tier if brand else "free",
         "monthly_credit_quota": brand.monthly_credit_quota if brand else 0,
         "credits_used_this_month": brand.credits_used_this_month if brand else 0,
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": datetime.now(UTC).isoformat(),
         "webhook_delivery_stats": webhook_stats,
         "job_stats": job_stats,
         "quota_usage_last_30_days": quota_stats,

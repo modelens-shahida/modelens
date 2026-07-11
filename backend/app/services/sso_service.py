@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app.models.db import Brand, BrandMember, User, Invitation
 
@@ -73,7 +73,7 @@ async def accept_pending_invitation(user: User, db: AsyncSession) -> Optional[Br
             Invitation.email == user.email,
             Invitation.accepted_at == None,
             Invitation.revoked_at == None,
-            Invitation.expires_at > datetime.utcnow(),
+            Invitation.expires_at > datetime.now(UTC),
         )
     )
     invite = result.scalars().first()
@@ -88,7 +88,7 @@ async def accept_pending_invitation(user: User, db: AsyncSession) -> Optional[Br
         )
     )
     if existing.scalars().first():
-        invite.accepted_at = datetime.utcnow()
+        invite.accepted_at = datetime.now(UTC)
         await db.flush()
         return None
 
@@ -98,7 +98,7 @@ async def accept_pending_invitation(user: User, db: AsyncSession) -> Optional[Br
         role=invite.role,
     )
     db.add(member)
-    invite.accepted_at = datetime.utcnow()
+    invite.accepted_at = datetime.now(UTC)
     await db.flush()
     print(f"[SSO] Auto-accepted invitation for {user.email} into brand {invite.brand_id} as {invite.role}")
     return member

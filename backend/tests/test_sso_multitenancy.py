@@ -3,7 +3,7 @@ from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.models.db import Brand, BrandMember, Invitation, User
 from app.services.sso_service import (
@@ -122,7 +122,7 @@ async def test_accept_pending_invitation_success(db_session: AsyncSession, test_
         email=viewer_user.email,
         role="editor",
         token="sso_test_token_abc",
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=datetime.now(UTC) + timedelta(days=7),
     )
     db_session.add(invite)
     await db_session.commit()
@@ -158,7 +158,7 @@ async def test_accept_expired_invitation_ignored(db_session: AsyncSession, test_
         email=viewer_user.email,
         role="editor",
         token="expired_sso_token",
-        expires_at=datetime.utcnow() - timedelta(days=1),
+        expires_at=datetime.now(UTC) - timedelta(days=1),
     )
     db_session.add(invite)
     await db_session.commit()

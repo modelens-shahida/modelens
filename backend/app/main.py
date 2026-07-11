@@ -37,6 +37,7 @@ from app.services.pubsub_listener import redis_pubsub_listener
 from app.routers.websockets import router as websockets_router
 from app.routers.invites import router as invites_router
 from app.middleware.api_versioning import APIVersionMiddleware
+import app.services.metrics
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -58,7 +59,30 @@ logger = logging.getLogger("modelens")
 for handler in logging.getLogger().handlers:
     handler.addFilter(RequestIdFilter())
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    import asyncio
+    asyncio.create_task(redis_pubsub_listener())
+    yield
+    # Shutdown
+    try:
+        from app.models.db import engine
+        await engine.dispose()
+        print("[App] Database connection pool closed.")
+    except Exception as e:
+        print(f"[App] DB pool close error: {e}")
+    try:
+        from app.middleware.rate_limit import redis_client
+        await redis_client.aclose()
+        print("[App] Redis connection closed.")
+    except Exception as e:
+        print(f"[App] Redis close error: {e}")
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Mode Lens API",
     description="""
 ## Mode Lens — AI Fashion Content Production Platform
@@ -91,29 +115,6 @@ app = FastAPI(
         {"name": "Memory", "description": "Brand and campaign tag frequency analytics"},
     ],
 )
-
-@app.on_event("startup")
-async def startup_event():
-    import asyncio
-    asyncio.create_task(redis_pubsub_listener())
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Gracefully close DB pools and Redis connections on shutdown."""
-    try:
-        from app.models.db import engine
-        await engine.dispose()
-        print("[App] Database connection pool closed.")
-    except Exception as e:
-        print(f"[App] DB pool close error: {e}")
-
-    try:
-        from app.middleware.rate_limit import redis_client
-        await redis_client.aclose()
-        print("[App] Redis connection closed.")
-    except Exception as e:
-        print(f"[App] Redis close error: {e}")
 
 
 # Request ID & Logging Middleware
@@ -253,3 +254,10 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/metrics")
+async def metrics():
+    from fastapi import Response
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.models.db import WebhookDeliveryLog, WebhookSubscription
 
@@ -20,7 +20,7 @@ class MockSessionContext:
 
 async def create_log(db_session, sub_id, days_old):
     """Create a WebhookDeliveryLog with a specific age."""
-    created_at = datetime.utcnow() - timedelta(days=days_old)
+    created_at = datetime.now(UTC) - timedelta(days=days_old)
     log = WebhookDeliveryLog(
         subscription_id=sub_id,
         event_type="job.completed",

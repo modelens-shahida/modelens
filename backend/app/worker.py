@@ -1,6 +1,6 @@
 import os
 import base64
-from datetime import datetime
+from datetime import datetime, UTC
 import socket
 import ipaddress
 from urllib.parse import urlparse
@@ -1191,7 +1191,7 @@ def purge_deleted_assets():
 
 async def _purge_deleted_assets_async():
     from datetime import timedelta
-    cutoff = datetime.utcnow() - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
 
     async with async_session_maker() as db:
         result = await db.execute(
@@ -1260,7 +1260,7 @@ async def _weekly_usage_report_async():
     from datetime import timedelta
     from sqlalchemy import func
     from app.models.db import Brand, BrandMember, User, AuditLog
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    week_ago = datetime.now(UTC) - timedelta(days=7)
 
     async with async_session_maker() as db:
         # Aggregate credit spend per brand (via job-linked transactions joined through AIJob -> brand_id)
@@ -1304,7 +1304,7 @@ async def _weekly_usage_report_async():
                             "total_spent": spent,
                             "total_transactions": txns,
                             "period_start": week_ago.isoformat(),
-                            "period_end": datetime.utcnow().isoformat(),
+                            "period_end": datetime.now(UTC).isoformat(),
                         },
                     )
                     db.add(audit_log)
@@ -1403,7 +1403,7 @@ async def _check_and_send_low_credit_warning(db, user_id: int, current_balance: 
     if not user:
         return
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     should_warn = (
         user.last_low_credit_warning_at is None or
         (now - user.last_low_credit_warning_at) > timedelta(days=7)
@@ -1604,7 +1604,7 @@ async def _prune_webhook_logs_async():
     from datetime import timedelta
     retention_days = settings.WEBHOOK_LOG_RETENTION_DAYS
     batch_size = settings.WEBHOOK_LOG_PRUNE_BATCH_SIZE
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
 
     total_deleted = 0
 
@@ -1662,7 +1662,7 @@ async def _reset_monthly_brand_credits_async():
     BATCH_SIZE = 100
     offset = 0
     total_reset = 0
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=30)
 
     async with async_session_maker() as db:
@@ -1726,6 +1726,12 @@ def process_campaign_generation(self, parent_job_id: int):
 async def _process_campaign_generation_async(task_self, parent_job_id: int):
     from app.services.comfyui_service import get_comfyui_service
     from app.models.db import Asset, AssetTag
+    from app.services.metrics import campaigns_total, campaigns_retries, campaigns_success, campaigns_failed
+
+    if task_self.request.retries == 0:
+        campaigns_total.inc()
+    else:
+        campaigns_retries.inc()
 
     async with async_session_maker() as db:
         result = await db.execute(select(AIJob).where(AIJob.id == parent_job_id))
@@ -1744,7 +1750,7 @@ async def _process_campaign_generation_async(task_self, parent_job_id: int):
             "job_id": parent_job_id,
             "status": "processing",
             "progress": 0,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
 
         try:
@@ -1832,19 +1838,22 @@ async def _process_campaign_generation_async(task_self, parent_job_id: int):
                     "job_id": parent_job_id,
                     "status": "processing",
                     "progress": progress,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 })
 
             # Update parent job
             if failed == 0:
                 parent_job.status = "completed"
                 event_type = "generation.completed"
+                campaigns_success.inc()
             elif completed == 0:
                 parent_job.status = "failed"
                 event_type = "generation.failed"
+                campaigns_failed.inc()
             else:
                 parent_job.status = "partially_completed"
                 event_type = "generation.partially_completed"
+                campaigns_success.inc()
 
             updated_outputs = dict(parent_job.outputs)
             updated_outputs["generated_asset_ids"] = generated_asset_ids
@@ -1866,10 +1875,11 @@ async def _process_campaign_generation_async(task_self, parent_job_id: int):
                 "status": parent_job.status,
                 "progress": 100,
                 "generated_asset_ids": generated_asset_ids,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             })
 
         except Exception as e:
+            campaigns_failed.inc()
             print(f"[Worker] Campaign generation failed: {e}")
             parent_job.status = "failed"
             updated_outputs = dict(parent_job.outputs)
@@ -1882,7 +1892,7 @@ async def _process_campaign_generation_async(task_self, parent_job_id: int):
                 "job_id": parent_job_id,
                 "status": "failed",
                 "progress": 0,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             })
 
             raise task_self.retry(exc=e, countdown=60 * (2 ** task_self.request.retries))

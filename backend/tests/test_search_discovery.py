@@ -3,7 +3,7 @@ from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.models.db import Asset
 from app.services.search_service import (
@@ -28,7 +28,7 @@ async def create_asset(db_session, brand_id, name, asset_type="catalog", status_
     await db_session.commit()
     await db_session.refresh(asset)
     if days_old > 0:
-        asset.created_at = datetime.utcnow() - timedelta(days=days_old)
+        asset.created_at = datetime.now(UTC) - timedelta(days=days_old)
         await db_session.commit()
     return asset
 
@@ -198,7 +198,7 @@ async def test_faceted_search_date_range_filter(client: AsyncClient, db_session:
     await create_asset(db_session, brand.id, "Old Asset", "catalog", days_old=60)
     await create_asset(db_session, brand.id, "New Asset", "catalog", days_old=1)
 
-    after_date = (datetime.utcnow() - timedelta(days=10)).isoformat()
+    after_date = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     res = await client.get(
         f"/api/v1/search/faceted?brand_id={brand.id}&created_after={after_date}",
         headers=owner_headers

@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     WEBHOOK_LOG_RETENTION_DAYS: int = Field(default=30)
     WEBHOOK_LOG_PRUNE_BATCH_SIZE: int = Field(default=1000)
 
+    # Orchestrator throttling settings
+    ORCHESTRATOR_RATE_LIMIT: int = Field(default=10)
+
     # Stripe Price IDs
     STRIPE_PRICE_LITE_MONTHLY: str = Field(default="price_lite_monthly_mock")
     STRIPE_PRICE_LITE_YEARLY: str = Field(default="price_lite_yearly_mock")

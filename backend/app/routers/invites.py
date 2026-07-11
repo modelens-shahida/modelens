@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
@@ -57,7 +57,7 @@ async def accept_invitation(
             detail="Invitation has been revoked",
         )
 
-    if invitation.expires_at < datetime.utcnow():
+    if invitation.expires_at < datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invitation has expired",
@@ -77,7 +77,7 @@ async def accept_invitation(
     
     if brand and brand.owner_id == current_user.id:
         # User is owner, just mark accepted
-        invitation.accepted_at = datetime.utcnow()
+        invitation.accepted_at = datetime.now(UTC)
         await db.commit()
         return AcceptInvitationResponse(
             status="success",
@@ -95,7 +95,7 @@ async def accept_invitation(
     if existing_member:
         # Already a member, just update the role if it's different and mark invitation accepted
         existing_member.role = invitation.role
-        invitation.accepted_at = datetime.utcnow()
+        invitation.accepted_at = datetime.now(UTC)
         await db.commit()
         return AcceptInvitationResponse(
             status="success",
@@ -110,7 +110,7 @@ async def accept_invitation(
         role=invitation.role,
     )
     db.add(new_member)
-    invitation.accepted_at = datetime.utcnow()
+    invitation.accepted_at = datetime.now(UTC)
     await db.commit()
 
     return AcceptInvitationResponse(

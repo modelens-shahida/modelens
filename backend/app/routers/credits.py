@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app.models.db import get_db, CreditTransaction, User
 from datetime import timedelta
@@ -57,7 +57,7 @@ async def _trigger_low_credit_warning_if_needed(db, user: User):
         return
 
     from datetime import timedelta
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     should_warn = (
         user.last_low_credit_warning_at is None or
         (now - user.last_low_credit_warning_at) > timedelta(days=7)

@@ -1,7 +1,7 @@
 import json
 import os
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -360,7 +360,7 @@ async def test_worker_purge_deleted_assets(db_session: AsyncSession, test_data: 
         filename="old_deleted.png",
         storage_path="uploads/old_deleted.png",
         asset_type="image",
-        deleted_at=datetime.utcnow() - timedelta(days=31),
+        deleted_at=datetime.now(UTC) - timedelta(days=31),
         meta={"unique_filename": "old_deleted.png", "status": "active", "thumbnail_256": "thumb_256_old.png"}
     )
     asset_to_keep = Asset(
@@ -369,7 +369,7 @@ async def test_worker_purge_deleted_assets(db_session: AsyncSession, test_data: 
         filename="recent_deleted.png",
         storage_path="uploads/recent_deleted.png",
         asset_type="image",
-        deleted_at=datetime.utcnow() - timedelta(days=5),
+        deleted_at=datetime.now(UTC) - timedelta(days=5),
         meta={"unique_filename": "recent_deleted.png", "status": "active", "thumbnail_256": "thumb_256_recent.png"}
     )
     db_session.add(asset_to_purge)

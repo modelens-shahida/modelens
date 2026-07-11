@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.models.db import Brand
 
@@ -66,7 +66,7 @@ async def test_reset_brands_older_than_30_days(db_session: AsyncSession, test_da
     """Brands with tier_reset_at older than 30 days should be reset."""
     owner_user = test_data["users"]["owner"]
 
-    old_reset = datetime.utcnow() - timedelta(days=35)
+    old_reset = datetime.now(UTC) - timedelta(days=35)
     brand = await create_brand_with_reset(
         db_session, owner_user.id,
         "Old Reset Brand",
@@ -101,7 +101,7 @@ async def test_recent_brands_not_reset(db_session: AsyncSession, test_data: dict
     """Brands reset within last 30 days should NOT be reset again."""
     owner_user = test_data["users"]["owner"]
 
-    recent_reset = datetime.utcnow() - timedelta(days=5)
+    recent_reset = datetime.now(UTC) - timedelta(days=5)
     brand = await create_brand_with_reset(
         db_session, owner_user.id,
         "Recent Reset Brand",
@@ -154,7 +154,7 @@ async def test_reset_invalidates_redis_cache():
 @pytest.mark.asyncio
 async def test_reset_sets_tier_reset_at_to_now():
     """Reset should set tier_reset_at to current UTC time."""
-    before = datetime.utcnow()
+    before = datetime.now(UTC)
 
     with patch("app.worker.async_session_maker") as mock_session:
         mock_db = AsyncMock()
@@ -175,7 +175,7 @@ async def test_reset_sets_tier_reset_at_to_now():
         from app.worker import _reset_monthly_brand_credits_async
         await _reset_monthly_brand_credits_async()
 
-    after = datetime.utcnow()
+    after = datetime.now(UTC)
     assert mock_brand.tier_reset_at is not None
     assert before <= mock_brand.tier_reset_at <= after
 

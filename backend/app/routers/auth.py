@@ -2,7 +2,7 @@ from typing import Optional
 from app.config import settings
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, EmailStr
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -89,7 +89,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     access_token = jwt.encode(
         {
             "sub": new_user.email,
-            "exp": datetime.utcnow() + timedelta(minutes=60),
+            "exp": datetime.now(UTC) + timedelta(minutes=60),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,
@@ -131,7 +131,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     access_token = jwt.encode(
         {
             "sub": user.email,
-            "exp": datetime.utcnow() + timedelta(minutes=60),
+            "exp": datetime.now(UTC) + timedelta(minutes=60),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,
@@ -141,7 +141,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     refresh_token = jwt.encode(
         {
             "sub": user.email,
-            "exp": datetime.utcnow() + timedelta(days=30),
+            "exp": datetime.now(UTC) + timedelta(days=30),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,
@@ -187,7 +187,7 @@ async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)
     access_token = jwt.encode(
         {
             "sub": user.email,
-            "exp": datetime.utcnow() + timedelta(minutes=60),
+            "exp": datetime.now(UTC) + timedelta(minutes=60),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,
@@ -195,7 +195,7 @@ async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)
     refresh_token = jwt.encode(
         {
             "sub": user.email,
-            "exp": datetime.utcnow() + timedelta(days=30),
+            "exp": datetime.now(UTC) + timedelta(days=30),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,
@@ -254,7 +254,7 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
     access_token = jwt.encode(
         {
             "sub": email,
-            "exp": datetime.utcnow() + timedelta(minutes=60),
+            "exp": datetime.now(UTC) + timedelta(minutes=60),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,

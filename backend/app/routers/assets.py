@@ -686,8 +686,8 @@ async def delete_asset(
         )
 
     # 3. Soft delete — set deleted_at timestamp instead of hard deleting
-    from datetime import datetime
-    asset.deleted_at = datetime.utcnow()
+    from datetime import datetime, UTC
+    asset.deleted_at = datetime.now(UTC)
     await write_audit_log(
         db,
         action="asset_deleted",

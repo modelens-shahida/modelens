@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from app.models.db import get_db, Brand, BrandMember, User, Invitation
 from app.middleware.auth import get_current_user, require_brand_role, ROLE_HIERARCHY
 from app.models.db import AuditLog
@@ -523,16 +523,16 @@ async def create_brand_invitation(
         Invitation.email == payload.email,
         Invitation.accepted_at == None,
         Invitation.revoked_at == None,
-        Invitation.expires_at > datetime.utcnow(),
+        Invitation.expires_at > datetime.now(UTC),
     )
     old_invites_result = await db.execute(old_invites_query)
     old_invites = old_invites_result.scalars().all()
     for old_invite in old_invites:
-        old_invite.revoked_at = datetime.utcnow()
+        old_invite.revoked_at = datetime.now(UTC)
 
     # Create new invitation
     token = str(uuid.uuid4())
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = datetime.now(UTC) + timedelta(days=7)
     
     invitation = Invitation(
         email=payload.email,
@@ -567,7 +567,7 @@ async def list_pending_brand_invitations(
         Invitation.brand_id == brand_id,
         Invitation.accepted_at == None,
         Invitation.revoked_at == None,
-        Invitation.expires_at > datetime.utcnow(),
+        Invitation.expires_at > datetime.now(UTC),
     )
     result = await db.execute(query)
     invitations = result.scalars().all()
@@ -597,6 +597,6 @@ async def revoke_brand_invitation(
             detail="Invitation not found",
         )
 
-    invitation.revoked_at = datetime.utcnow()
+    invitation.revoked_at = datetime.now(UTC)
     await db.commit()
     return

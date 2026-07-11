@@ -4,7 +4,7 @@ from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.models.db import User, CreditTransaction
 
@@ -38,7 +38,7 @@ async def test_low_credit_7_day_cooldown_enforced(db_session: AsyncSession, test
     result = await db_session.execute(select(User).where(User.id == editor_user.id))
     user = result.scalars().first()
     user.credits = 10
-    user.last_low_credit_warning_at = datetime.utcnow() - timedelta(days=3)
+    user.last_low_credit_warning_at = datetime.now(UTC) - timedelta(days=3)
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -57,7 +57,7 @@ async def test_low_credit_warning_after_7_days(db_session: AsyncSession, test_da
     result = await db_session.execute(select(User).where(User.id == editor_user.id))
     user = result.scalars().first()
     user.credits = 10
-    user.last_low_credit_warning_at = datetime.utcnow() - timedelta(days=8)
+    user.last_low_credit_warning_at = datetime.now(UTC) - timedelta(days=8)
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -77,7 +77,7 @@ async def test_top_up_resets_warning_state(db_session: AsyncSession, test_data: 
     result = await db_session.execute(select(User).where(User.id == editor_user.id))
     user = result.scalars().first()
     user.credits = 50
-    user.last_low_credit_warning_at = datetime.utcnow() - timedelta(days=1)
+    user.last_low_credit_warning_at = datetime.now(UTC) - timedelta(days=1)
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -122,7 +122,7 @@ async def test_mock_purchase_triggers_reset(client: AsyncClient, db_session: Asy
     result = await db_session.execute(select(User).where(User.id == editor_user.id))
     user = result.scalars().first()
     user.credits = 5
-    user.last_low_credit_warning_at = datetime.utcnow() - timedelta(days=1)
+    user.last_low_credit_warning_at = datetime.now(UTC) - timedelta(days=1)
     await db_session.commit()
 
     with patch("app.routers.credits.send_low_credit_warning_email") as mock_task:

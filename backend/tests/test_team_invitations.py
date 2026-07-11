@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,7 +90,7 @@ async def test_create_invite_revokes_previous(client: AsyncClient, db_session: A
         role="viewer",
         brand_id=brand_id,
         token="token-1",
-        expires_at=datetime.utcnow() + timedelta(days=7)
+        expires_at=datetime.now(UTC) + timedelta(days=7)
     )
     db_session.add(inv1)
     await db_session.commit()
@@ -114,10 +114,10 @@ async def test_list_pending_invitations(client: AsyncClient, db_session: AsyncSe
     brand_id = test_data["brand"].id
 
     # Create various invitations
-    inv_pending = Invitation(email="pending@brand.com", role="viewer", brand_id=brand_id, token="t-pending", expires_at=datetime.utcnow() + timedelta(days=7))
-    inv_expired = Invitation(email="expired@brand.com", role="viewer", brand_id=brand_id, token="t-expired", expires_at=datetime.utcnow() - timedelta(days=1))
-    inv_revoked = Invitation(email="revoked@brand.com", role="viewer", brand_id=brand_id, token="t-revoked", expires_at=datetime.utcnow() + timedelta(days=7), revoked_at=datetime.utcnow())
-    inv_accepted = Invitation(email="accepted@brand.com", role="viewer", brand_id=brand_id, token="t-accepted", expires_at=datetime.utcnow() + timedelta(days=7), accepted_at=datetime.utcnow())
+    inv_pending = Invitation(email="pending@brand.com", role="viewer", brand_id=brand_id, token="t-pending", expires_at=datetime.now(UTC) + timedelta(days=7))
+    inv_expired = Invitation(email="expired@brand.com", role="viewer", brand_id=brand_id, token="t-expired", expires_at=datetime.now(UTC) - timedelta(days=1))
+    inv_revoked = Invitation(email="revoked@brand.com", role="viewer", brand_id=brand_id, token="t-revoked", expires_at=datetime.now(UTC) + timedelta(days=7), revoked_at=datetime.now(UTC))
+    inv_accepted = Invitation(email="accepted@brand.com", role="viewer", brand_id=brand_id, token="t-accepted", expires_at=datetime.now(UTC) + timedelta(days=7), accepted_at=datetime.now(UTC))
 
     db_session.add_all([inv_pending, inv_expired, inv_revoked, inv_accepted])
     await db_session.commit()
@@ -134,7 +134,7 @@ async def test_revoke_invitation_success(client: AsyncClient, db_session: AsyncS
     admin_headers = test_data["get_headers"]("admin")
     brand_id = test_data["brand"].id
 
-    inv = Invitation(email="revoke-me@brand.com", role="viewer", brand_id=brand_id, token="t-rev-me", expires_at=datetime.utcnow() + timedelta(days=7))
+    inv = Invitation(email="revoke-me@brand.com", role="viewer", brand_id=brand_id, token="t-rev-me", expires_at=datetime.now(UTC) + timedelta(days=7))
     db_session.add(inv)
     await db_session.commit()
 
@@ -159,7 +159,7 @@ async def test_accept_invitation_success(client: AsyncClient, db_session: AsyncS
     nonmember = test_data["users"]["nonmember"]
     brand_id = test_data["brand"].id
 
-    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-accept-success", expires_at=datetime.utcnow() + timedelta(days=7))
+    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-accept-success", expires_at=datetime.now(UTC) + timedelta(days=7))
     db_session.add(inv)
     await db_session.commit()
 
@@ -191,7 +191,7 @@ async def test_accept_invitation_invalid_token(client: AsyncClient, test_data: d
 @pytest.mark.asyncio
 async def test_accept_invitation_email_mismatch(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     brand_id = test_data["brand"].id
-    inv = Invitation(email="different@brand.com", role="editor", brand_id=brand_id, token="t-diff-email", expires_at=datetime.utcnow() + timedelta(days=7))
+    inv = Invitation(email="different@brand.com", role="editor", brand_id=brand_id, token="t-diff-email", expires_at=datetime.now(UTC) + timedelta(days=7))
     db_session.add(inv)
     await db_session.commit()
 
@@ -205,7 +205,7 @@ async def test_accept_invitation_email_mismatch(client: AsyncClient, db_session:
 async def test_accept_invitation_expired(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     nonmember = test_data["users"]["nonmember"]
     brand_id = test_data["brand"].id
-    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-exp", expires_at=datetime.utcnow() - timedelta(days=1))
+    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-exp", expires_at=datetime.now(UTC) - timedelta(days=1))
     db_session.add(inv)
     await db_session.commit()
 
@@ -219,7 +219,7 @@ async def test_accept_invitation_expired(client: AsyncClient, db_session: AsyncS
 async def test_accept_invitation_revoked(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     nonmember = test_data["users"]["nonmember"]
     brand_id = test_data["brand"].id
-    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-rev", expires_at=datetime.utcnow() + timedelta(days=7), revoked_at=datetime.utcnow())
+    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-rev", expires_at=datetime.now(UTC) + timedelta(days=7), revoked_at=datetime.now(UTC))
     db_session.add(inv)
     await db_session.commit()
 
@@ -233,7 +233,7 @@ async def test_accept_invitation_revoked(client: AsyncClient, db_session: AsyncS
 async def test_accept_invitation_already_accepted(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     nonmember = test_data["users"]["nonmember"]
     brand_id = test_data["brand"].id
-    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-already", expires_at=datetime.utcnow() + timedelta(days=7), accepted_at=datetime.utcnow())
+    inv = Invitation(email=nonmember.email, role="editor", brand_id=brand_id, token="t-already", expires_at=datetime.now(UTC) + timedelta(days=7), accepted_at=datetime.now(UTC))
     db_session.add(inv)
     await db_session.commit()
 
@@ -247,7 +247,7 @@ async def test_accept_invitation_already_accepted(client: AsyncClient, db_sessio
 async def test_accept_invitation_owner(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     owner = test_data["users"]["owner"]
     brand_id = test_data["brand"].id
-    inv = Invitation(email=owner.email, role="editor", brand_id=brand_id, token="t-owner-accept", expires_at=datetime.utcnow() + timedelta(days=7))
+    inv = Invitation(email=owner.email, role="editor", brand_id=brand_id, token="t-owner-accept", expires_at=datetime.now(UTC) + timedelta(days=7))
     db_session.add(inv)
     await db_session.commit()
 
@@ -261,7 +261,7 @@ async def test_accept_invitation_owner(client: AsyncClient, db_session: AsyncSes
 async def test_accept_invitation_existing_member(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     editor = test_data["users"]["editor"]
     brand_id = test_data["brand"].id
-    inv = Invitation(email=editor.email, role="admin", brand_id=brand_id, token="t-existing-accept", expires_at=datetime.utcnow() + timedelta(days=7))
+    inv = Invitation(email=editor.email, role="admin", brand_id=brand_id, token="t-existing-accept", expires_at=datetime.now(UTC) + timedelta(days=7))
     db_session.add(inv)
     await db_session.commit()
 
@@ -295,7 +295,7 @@ class MockSessionContext:
 @pytest.mark.asyncio
 async def test_celery_task_sends_email(db_session: AsyncSession, test_data: dict):
     brand_id = test_data["brand"].id
-    inv = Invitation(email="worker@brand.com", role="viewer", brand_id=brand_id, token="t-worker-email", expires_at=datetime.utcnow() + timedelta(days=7))
+    inv = Invitation(email="worker@brand.com", role="viewer", brand_id=brand_id, token="t-worker-email", expires_at=datetime.now(UTC) + timedelta(days=7))
     db_session.add(inv)
     await db_session.commit()
 
