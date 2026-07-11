@@ -48,7 +48,7 @@ async def _validate_assets_belong_to_brand(asset_ids: List[int], brand_id: int, 
         if not asset or asset.brand_id != brand_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Asset {asset_id} does not belong to this brand.")
 
-@router.post("/api/v1/campaigns/{campaign_id}/generate", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RateLimiter(requests_limit=settings.ORCHESTRATOR_RATE_LIMIT, window_seconds=60))])
+@router.post("/api/v1/campaigns/{campaign_id}/generate", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RateLimiter(requests_limit=settings.ORCHESTRATOR_RATE_LIMIT, window_seconds=60, ignore_tier=True))])
 async def generate_campaign(campaign_id: int, payload: CampaignGenerationRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     campaign_result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
     campaign = campaign_result.scalars().first()

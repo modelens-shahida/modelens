@@ -9,6 +9,7 @@ import SummaryStats from "@/components/dashboard/admin-stats/SummaryStats";
 import DailyJobsChart from "@/components/dashboard/admin-stats/DailyJobsChart";
 import UserGrowthChart from "@/components/dashboard/admin-stats/UserGrowthChart";
 import CreditUsageChart from "@/components/dashboard/admin-stats/CreditUsageChart";
+import OrchestratorSettings from "@/components/dashboard/admin-stats/OrchestratorSettings";
 
 export default function AdminStatsPage() {
   const [summary, setSummary] = useState(null);
@@ -89,6 +90,9 @@ export default function AdminStatsPage() {
 
       {/* Summary Statistics Cards */}
       {summary && <SummaryStats data={summary} />}
+
+      {/* System Settings & Orchestrator Metrics */}
+      <OrchestratorSettings />
 
       {/* Charts and Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

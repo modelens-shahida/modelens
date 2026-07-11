@@ -163,3 +163,63 @@ async def test_prometheus_metrics_endpoint(client: AsyncClient):
     res = await client.get("/metrics")
     assert res.status_code == status.HTTP_200_OK
     assert "campaigns_total" in res.text
+
+
+@pytest.mark.asyncio
+async def test_admin_settings_get_unauthorized(client: AsyncClient):
+    """Unauthorized requests to settings endpoint should be rejected."""
+    res = await client.get("/api/v1/admin/settings")
+    assert res.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_admin_settings_get_and_post(client: AsyncClient, test_data: dict, mock_redis_global):
+    """Admin/Owner should be able to get and post dynamic settings."""
+    owner_headers = test_data["get_headers"]("owner")
+    mock_redis, mock_pipe = mock_redis_global
+
+    # Mock Redis GET
+    mock_redis.get = AsyncMock(return_value="15")
+    mock_redis.set = AsyncMock(return_value=True)
+
+    # Get settings
+    res = await client.get("/api/v1/admin/settings", headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert data["orchestrator_rate_limit"] == 15
+    assert "metrics" in data
+
+    # Post settings
+    res_post = await client.post("/api/v1/admin/settings", json={"orchestrator_rate_limit": 25}, headers=owner_headers)
+    assert res_post.status_code == status.HTTP_200_OK
+    assert res_post.json()["orchestrator_rate_limit"] == 25
+    mock_redis.set.assert_called_once_with("settings:orchestrator_rate_limit", "25")
+
+
+@pytest.mark.asyncio
+async def test_dynamic_rate_limit_enforced(client: AsyncClient, db_session: AsyncSession, test_data: dict, mock_redis_global):
+    """Rate limiter should fetch settings:orchestrator_rate_limit dynamically from Redis."""
+    brand = test_data["brand"]
+    owner_headers = test_data["get_headers"]("owner")
+    campaign = await create_regression_campaign(db_session, brand.id)
+    char, version = await create_regression_character(db_session, brand.id)
+
+    mock_redis, mock_pipe = mock_redis_global
+    
+    # 1. Mock Redis to return limit = 5, and pipeline count = 6 (exceeding limit)
+    mock_redis.get = AsyncMock(return_value="5")
+    mock_pipe.execute = AsyncMock(return_value=[None, 6, None, None])
+
+    res = await client.post(
+        f"/api/v1/campaigns/{campaign.id}/generate",
+        json={
+            "character_id": char.id,
+            "character_version_id": version.id,
+            "number_of_outputs": 1,
+            "idempotency_key": "dynamic_throttle_key"
+        },
+        headers=owner_headers
+    )
+    assert res.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    mock_redis.get.assert_called_with("settings:orchestrator_rate_limit")
+

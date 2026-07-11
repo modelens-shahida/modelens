@@ -29,6 +29,7 @@ from app.routers.billing import router as billing_router
 from app.routers.stripe_webhooks import router as stripe_webhooks_router
 from app.routers.fix_requests import router as fix_requests_router
 from app.routers.admin_stats import router as admin_stats_router
+from app.routers.admin_settings import router as admin_settings_router
 from app.routers.analytics import router as analytics_router
 from app.routers.campaign_generation import router as campaign_generation_router
 from app.routers.health import router as health_router
@@ -181,6 +182,7 @@ app.include_router(billing_router)
 app.include_router(stripe_webhooks_router)
 app.include_router(fix_requests_router)
 app.include_router(admin_stats_router)
+app.include_router(admin_settings_router)
 app.include_router(analytics_router)
 app.include_router(campaign_generation_router)
 app.include_router(health_router)
