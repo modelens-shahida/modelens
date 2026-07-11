@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { 
   ArrowLeft, Users, Settings, Plus, X, Mail, Shield, 
   Loader2, Edit3, Check, Webhook, Activity, Trash2, 
-  Key, RefreshCw, Sliders, Eye, FileText
+  Key, RefreshCw, Sliders, Eye, FileText, Download
 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -62,6 +62,7 @@ export default function BrandDetailPage() {
   // Delivery Logs states
   const [deliveryLogs, setDeliveryLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [logsLimit] = useState(15);
   const [logsOffset, setLogsOffset] = useState(0);
   const [hasMoreLogs, setHasMoreLogs] = useState(true);
@@ -313,11 +314,43 @@ export default function BrandDetailPage() {
     }
   };
 
-  const toggleRevealSecret = (webhookId) => {
-    setRevealedSecrets(prev => ({
-      ...prev,
-      [webhookId]: !prev[webhookId]
-    }));
+  const handleExportAnalytics = async (format) => {
+    setIsExporting(true);
+    try {
+      const token = localStorage.getItem("modelens_token");
+      const headers = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(`/api/v1/analytics/export?brand_id=${id}&format=${format}`, {
+        method: "GET",
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Failed to export analytics");
+      }
+
+      // Download the blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `modelens_analytics_brand_${id}_${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Analytics exported as ${format.toUpperCase()} successfully!`);
+    } catch (error) {
+      console.error("Export failed:", error);
+      toast.error(error.message || "Failed to export analytics data");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Helper to resolve role color badge
@@ -723,6 +756,43 @@ export default function BrandDetailPage() {
                     Save Whitelist Settings
                   </button>
                 </div>
+              )}
+            </div>
+
+            {/* Analytics Export Panel */}
+            <div className="border-t border-zinc-850/60 pt-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-200">Analytics & Reporting Export</h3>
+                <p className="text-xs text-zinc-500">
+                  Export complete brand workspace usage details, including job success statistics, webhook deliverability telemetry, and quota histories.
+                </p>
+              </div>
+
+              {canManage ? (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    disabled={isExporting}
+                    onClick={() => handleExportAnalytics("json")}
+                    className="bg-zinc-800 hover:bg-zinc-750 disabled:bg-zinc-900 text-zinc-200 text-xs font-semibold px-5 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 border border-zinc-800 disabled:opacity-50"
+                  >
+                    <Download size={14} className={isExporting ? "animate-bounce" : ""} />
+                    Export as JSON
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isExporting}
+                    onClick={() => handleExportAnalytics("csv")}
+                    className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 text-white text-xs font-semibold px-5 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-purple-950/20 disabled:opacity-50"
+                  >
+                    <Download size={14} className={isExporting ? "animate-bounce" : ""} />
+                    Export as CSV
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-amber-500/80 flex items-center gap-1">
+                  Requires Admin or Owner credentials to export brand analytics data.
+                </p>
               )}
             </div>
 
