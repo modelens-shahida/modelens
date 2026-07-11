@@ -11,6 +11,7 @@ from app.models.db import (
     AIJob, Asset, Character, CharacterVersion,
 )
 from app.middleware.auth import get_current_user
+from app.worker import process_campaign_generation
 
 router = APIRouter(tags=["Campaign Generation"])
 
