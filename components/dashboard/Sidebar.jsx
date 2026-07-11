@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LayoutDashboard, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Webhook, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -16,6 +16,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Brands", path: "/dashboard/brands", icon: FolderKanban },
     { name: "Assets", path: "/dashboard/assets", icon: ImageIcon },
     { name: "Fix Requests", path: "/dashboard/fix-requests", icon: Wrench },
+    { name: "Webhooks", path: "/dashboard/webhooks", icon: Webhook },
     { name: "Campaigns", path: "/dashboard/campaigns", icon: Megaphone },
     { name: "AI Generator", path: "/dashboard/jobs", icon: Sparkles },
     { name: "AI Characters", path: "/dashboard/characters", icon: User },
