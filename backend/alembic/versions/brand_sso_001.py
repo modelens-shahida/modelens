@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'brand_sso_001'
-down_revision = 'invitations_001'
+down_revision = 'add_invitations_table'
 branch_labels = None
 depends_on = None
 
