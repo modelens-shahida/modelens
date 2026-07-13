@@ -56,6 +56,15 @@ export default function AssetsPage() {
   // Details Modal and Trash states
   const [isTrashView, setIsTrashView] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
+
+  // Advanced filter states
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filterAssetType, setFilterAssetType] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterSortBy, setFilterSortBy] = useState("created_at");
+  const [filterSortOrder, setFilterSortOrder] = useState("desc");
+  const [filterCreatedAfter, setFilterCreatedAfter] = useState("");
+  const [filterCreatedBefore, setFilterCreatedBefore] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -175,16 +184,31 @@ export default function AssetsPage() {
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      let endpoint = isTrashView 
-        ? `/api/v1/assets/trash?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`
-        : `/api/v1/assets?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`;
-      
-      if (selectedBrand) endpoint += `brand_id=${selectedBrand}&`;
-      if (!isTrashView && selectedTag) endpoint += `tag=${selectedTag}&`;
-      if (!isTrashView && debouncedSearch) endpoint += `search=${encodeURIComponent(debouncedSearch)}&`;
 
-      const data = await api.get(endpoint);
-      setAssets(data);
+      // Use faceted search when filters or search are active
+      const hasFilters = debouncedSearch || filterAssetType || filterStatus || filterCreatedAfter || filterCreatedBefore;
+
+      if (!isTrashView && selectedBrand && hasFilters) {
+        let endpoint = `/api/v1/search/faceted?brand_id=${selectedBrand}&limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}`;
+        if (debouncedSearch) endpoint += `&q=${encodeURIComponent(debouncedSearch)}`;
+        if (filterAssetType) endpoint += `&asset_type=${encodeURIComponent(filterAssetType)}`;
+        if (filterStatus) endpoint += `&status=${encodeURIComponent(filterStatus)}`;
+        if (filterCreatedAfter) endpoint += `&created_after=${encodeURIComponent(filterCreatedAfter)}`;
+        if (filterCreatedBefore) endpoint += `&created_before=${encodeURIComponent(filterCreatedBefore)}`;
+        if (selectedTag) endpoint += `&tags=${encodeURIComponent(selectedTag)}`;
+        endpoint += `&sort_by=${filterSortBy}&sort_order=${filterSortOrder}`;
+        const data = await api.get(endpoint);
+        setAssets(data.results || []);
+      } else {
+        let endpoint = isTrashView
+          ? `/api/v1/assets/trash?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`
+          : `/api/v1/assets?limit=${itemsPerPage}&offset=${(currentPage - 1) * itemsPerPage}&`;
+        if (selectedBrand) endpoint += `brand_id=${selectedBrand}&`;
+        if (!isTrashView && selectedTag) endpoint += `tag=${selectedTag}&`;
+        if (!isTrashView && debouncedSearch) endpoint += `search=${encodeURIComponent(debouncedSearch)}&`;
+        const data = await api.get(endpoint);
+        setAssets(data);
+      }
     } catch (error) {
       toast.error(error.message || "Failed to load assets");
     } finally {
@@ -195,11 +219,11 @@ export default function AssetsPage() {
   // Reset page when search, filters, or view changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedBrand, selectedTag, debouncedSearch, isTrashView]);
+  }, [selectedBrand, selectedTag, debouncedSearch, isTrashView, filterAssetType, filterStatus, filterCreatedAfter, filterCreatedBefore, filterSortBy, filterSortOrder]);
 
   useEffect(() => {
     fetchAssets();
-  }, [selectedBrand, selectedTag, debouncedSearch, currentPage, isTrashView]);
+  }, [selectedBrand, selectedTag, debouncedSearch, currentPage, isTrashView, filterAssetType, filterStatus, filterCreatedAfter, filterCreatedBefore, filterSortBy, filterSortOrder]);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -299,6 +323,145 @@ export default function AssetsPage() {
         </div>
       </div>
 
+
+
+      {/* Advanced Filters Panel */}
+      {showAdvancedFilters && (
+        <div className="bg-zinc-900/20 border border-zinc-800 rounded-2xl p-4 space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Asset Type */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Asset Type</label>
+              <select
+                value={filterAssetType}
+                onChange={(e) => setFilterAssetType(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+              >
+                <option value="">All Types</option>
+                <option value="catalog">Catalog</option>
+                <option value="generated">Generated</option>
+                <option value="training">Training</option>
+              </select>
+            </div>
+
+            {/* Status */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+              >
+                <option value="">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="processing">Processing</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+
+            {/* Sort By */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Sort By</label>
+              <select
+                value={filterSortBy}
+                onChange={(e) => setFilterSortBy(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+              >
+                <option value="created_at">Date Created</option>
+                <option value="name">Name</option>
+                <option value="relevance">Relevance</option>
+              </select>
+            </div>
+
+            {/* Sort Order */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Sort Order</label>
+              <select
+                value={filterSortOrder}
+                onChange={(e) => setFilterSortOrder(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+              >
+                <option value="desc">Newest First</option>
+                <option value="asc">Oldest First</option>
+              </select>
+            </div>
+
+            {/* Created After */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Created After</label>
+              <input
+                type="date"
+                value={filterCreatedAfter}
+                onChange={(e) => setFilterCreatedAfter(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+              />
+            </div>
+
+            {/* Created Before */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Created Before</label>
+              <input
+                type="date"
+                value={filterCreatedBefore}
+                onChange={(e) => setFilterCreatedBefore(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+              />
+            </div>
+
+            {/* Clear Filters */}
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setFilterAssetType("");
+                  setFilterStatus("");
+                  setFilterSortBy("created_at");
+                  setFilterSortOrder("desc");
+                  setFilterCreatedAfter("");
+                  setFilterCreatedBefore("");
+                }}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-300 transition"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          </div>
+
+          {/* Active Filter Badges */}
+          <div className="flex flex-wrap gap-2">
+            {filterAssetType && (
+              <span className="flex items-center gap-1 bg-purple-900/50 border border-purple-700 text-purple-300 text-xs px-2 py-1 rounded-full">
+                Type: {filterAssetType}
+                <button onClick={() => setFilterAssetType("")} className="ml-1 hover:text-white">×</button>
+              </span>
+            )}
+            {filterStatus && (
+              <span className="flex items-center gap-1 bg-purple-900/50 border border-purple-700 text-purple-300 text-xs px-2 py-1 rounded-full">
+                Status: {filterStatus}
+                <button onClick={() => setFilterStatus("")} className="ml-1 hover:text-white">×</button>
+              </span>
+            )}
+            {filterCreatedAfter && (
+              <span className="flex items-center gap-1 bg-purple-900/50 border border-purple-700 text-purple-300 text-xs px-2 py-1 rounded-full">
+                After: {filterCreatedAfter}
+                <button onClick={() => setFilterCreatedAfter("")} className="ml-1 hover:text-white">×</button>
+              </span>
+            )}
+            {filterCreatedBefore && (
+              <span className="flex items-center gap-1 bg-purple-900/50 border border-purple-700 text-purple-300 text-xs px-2 py-1 rounded-full">
+                Before: {filterCreatedBefore}
+                <button onClick={() => setFilterCreatedBefore("")} className="ml-1 hover:text-white">×</button>
+              </span>
+            )}
+            {filterSortBy !== "created_at" && (
+              <span className="flex items-center gap-1 bg-blue-900/50 border border-blue-700 text-blue-300 text-xs px-2 py-1 rounded-full">
+                Sort: {filterSortBy}
+                <button onClick={() => setFilterSortBy("created_at")} className="ml-1 hover:text-white">×</button>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Control panel & Filter bar */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-zinc-900/10 border border-zinc-900 p-4 rounded-2xl">
         {/* Search Input */}
@@ -313,6 +476,22 @@ export default function AssetsPage() {
             placeholder="Search assets by file name..."
             className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl pl-9 pr-4 py-2 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
           />
+        </div>
+
+        {/* Advanced Filters Toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+              showAdvancedFilters
+                ? "bg-purple-600 border-purple-500 text-white"
+                : "bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-purple-500"
+            }`}
+          >
+            <SlidersHorizontal size={14} />
+            Filters {[filterAssetType, filterStatus, filterCreatedAfter, filterCreatedBefore].filter(Boolean).length > 0 &&
+              `(${[filterAssetType, filterStatus, filterCreatedAfter, filterCreatedBefore].filter(Boolean).length})`}
+          </button>
         </div>
 
         {/* Brand Dropdown filter */}
