@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Image as ImageIcon, Search, Plus, Filter, X, Upload, Loader2, Sparkles, Folder, ChevronDown, ChevronUp, Sun, Camera, User, Users, Shirt, Tag, Megaphone, MapPin, Check, Trash2, RefreshCw } from "lucide-react";
+import { Image as ImageIcon, Search, Plus, Filter, X, Upload, Loader2, Sparkles, Folder, ChevronDown, ChevronUp, Sun, Camera, User, Users, Shirt, Tag, Megaphone, MapPin, Check, Trash2, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 

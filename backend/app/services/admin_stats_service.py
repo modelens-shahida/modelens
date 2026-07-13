@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone, UTC
 from typing import List, Dict, Any
 
 from app.models.db import User, Asset, AIJob, CreditTransaction
@@ -48,7 +48,7 @@ async def get_summary_stats(db: AsyncSession) -> Dict[str, Any]:
 
 async def get_daily_jobs(db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
     """Get jobs created per day for the last N days."""
-    since = datetime.now(UTC) - timedelta(days=days)
+    since = datetime.utcnow() - timedelta(days=days)
 
     result = await db.execute(
         select(
@@ -65,7 +65,7 @@ async def get_daily_jobs(db: AsyncSession, days: int = 30) -> List[Dict[str, Any
 
 async def get_user_growth(db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
     """Get new user registrations per day for the last N days."""
-    since = datetime.now(UTC) - timedelta(days=days)
+    since = datetime.utcnow() - timedelta(days=days)
 
     result = await db.execute(
         select(
@@ -82,7 +82,7 @@ async def get_user_growth(db: AsyncSession, days: int = 30) -> List[Dict[str, An
 
 async def get_credit_usage(db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
     """Get credit consumption per day for the last N days."""
-    since = datetime.now(UTC) - timedelta(days=days)
+    since = datetime.utcnow() - timedelta(days=days)
 
     result = await db.execute(
         select(
