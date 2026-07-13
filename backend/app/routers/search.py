@@ -119,12 +119,12 @@ async def faceted_search(
     before = None
     if created_after:
         try:
-            after = datetime.fromisoformat(created_after)
+            after = datetime.fromisoformat(created_after.replace(" ", "+"))
         except ValueError:
             raise HTTPException(status_code=fastapi_status.HTTP_400_BAD_REQUEST, detail="Invalid created_after date format.")
     if created_before:
         try:
-            before = datetime.fromisoformat(created_before)
+            before = datetime.fromisoformat(created_before.replace(" ", "+"))
         except ValueError:
             raise HTTPException(status_code=fastapi_status.HTTP_400_BAD_REQUEST, detail="Invalid created_before date format.")
 
