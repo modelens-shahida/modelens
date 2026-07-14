@@ -408,6 +408,27 @@ export default function BrandDetailPage() {
   // Check RBAC permission for settings and invite
   const canManage = userRole === "owner" || userRole === "admin";
 
+
+  const handleRemoveMember = async (memberId) => {
+    try {
+      await api.delete(`/api/v1/brands/${id}/members/${memberId}`);
+      toast.success("Member removed");
+      fetchData();
+    } catch (e) {
+      toast.error("Failed to remove member");
+    }
+  };
+
+  const handleUpdateRole = async (memberId, newRole) => {
+    try {
+      await api.patch(`/api/v1/brands/${id}/members/${memberId}`, { role: newRole });
+      toast.success("Role updated");
+      fetchData();
+    } catch (e) {
+      toast.error("Failed to update role");
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Back link & Header */}
@@ -534,11 +555,36 @@ export default function BrandDetailPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(member.role)}`}>
-                        {member.role}
-                      </span>
+                      {canManage && member.user_id !== brandData?.owner_id && member.user_id !== user?.id ? (
+                        <select
+                          value={member.role}
+                          onChange={(e) => handleUpdateRole(member.user_id, e.target.value)}
+                          className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none cursor-pointer"
+                        >
+                          <option value="viewer">Viewer</option>
+                          <option value="editor">Editor</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      ) : (
+                        <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(member.role)}`}>
+                          {member.role}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 text-zinc-400">Active</td>
+                    <td className="px-6 py-4 text-zinc-400">
+                      <div className="flex items-center justify-between">
+                        <span>Active</span>
+                        {canManage && member.user_id !== brandData?.owner_id && member.user_id !== user?.id && (
+                          <button
+                            onClick={() => handleRemoveMember(member.user_id)}
+                            className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-950/20"
+                            title="Remove Member"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
 

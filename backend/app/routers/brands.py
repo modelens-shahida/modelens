@@ -600,3 +600,63 @@ async def revoke_brand_invitation(
     invitation.revoked_at = datetime.now(UTC)
     await db.commit()
     return
+
+
+# ========================== Update Member Role Endpoint ==========
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: str = Field(..., pattern="^(viewer|editor|admin)$")
+
+
+@router.patch("/{brand_id}/members/{user_id}", status_code=status.HTTP_200_OK)
+async def update_member_role(
+    brand_id: int,
+    user_id: int,
+    payload: UpdateMemberRoleRequest,
+    request: Request,
+    _caller: User = Depends(require_brand_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update a brand member's role.
+    Requires Admin or Owner role.
+    Cannot change the brand owner's role.
+    Users cannot change their own role.
+    """
+    # Get brand to check owner
+    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
+    brand = brand_result.scalars().first()
+    if not brand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found.")
+
+    # Cannot change owner's role
+    if user_id == brand.owner_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot change the brand owner's role.")
+
+    # Cannot change own role
+    if user_id == _caller.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot change your own role.")
+
+    # Find member
+    member_result = await db.execute(
+        select(BrandMember).where(BrandMember.brand_id == brand_id, BrandMember.user_id == user_id)
+    )
+    member = member_result.scalars().first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+
+    old_role = member.role
+    member.role = payload.role
+    await db.commit()
+
+    # Audit log
+    await write_audit_log(
+        db,
+        action="brand_member_role_updated",
+        user_id=_caller.id,
+        brand_id=brand_id,
+        details={"target_user_id": user_id, "old_role": old_role, "new_role": payload.role},
+        request=request,
+    )
+
+    return {"user_id": user_id, "brand_id": brand_id, "role": payload.role}
