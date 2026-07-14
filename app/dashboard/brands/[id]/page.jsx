@@ -21,7 +21,11 @@ export default function BrandDetailPage() {
   const [brand, setBrand] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("members"); // "members" | "settings" | "webhooks"
+  const [activeTab, setActiveTab] = useState("members"); // "members" | "settings" | "webhooks" | "audit-logs"
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLogsOffset, setAuditLogsOffset] = useState(0);
+  const [auditLogsLoading, setAuditLogsLoading] = useState(false);
+  const [auditLogsHasMore, setAuditLogsHasMore] = useState(true);
 
   // Settings states
   const [newBrandName, setNewBrandName] = useState("");
@@ -138,6 +142,30 @@ export default function BrandDetailPage() {
       fetchWebhooks();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "audit-logs" && id) {
+      fetchAuditLogs(0);
+    }
+  }, [activeTab, id]);
+
+  const fetchAuditLogs = async (offset = 0) => {
+    setAuditLogsLoading(true);
+    try {
+      const data = await api.get(`/api/v1/brands/${id}/audit-logs?limit=20&offset=${offset}`);
+      if (offset === 0) {
+        setAuditLogs(data);
+      } else {
+        setAuditLogs(prev => [...prev, ...data]);
+      }
+      setAuditLogsHasMore(data.length === 20);
+      setAuditLogsOffset(offset + data.length);
+    } catch (e) {
+      toast.error("Failed to load audit logs");
+    } finally {
+      setAuditLogsLoading(false);
+    }
+  };
 
   const handleUpdateWhitelist = async (e) => {
     e?.preventDefault();
@@ -446,6 +474,16 @@ export default function BrandDetailPage() {
         <button
           onClick={() => setActiveTab("settings")}
           className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            activeTab === "audit-logs"
+              ? "bg-purple-600 text-white"
+              : "text-zinc-400 hover:text-white"
+          }`}
+          onClick={() => setActiveTab("audit-logs")}
+        >
+          Audit Logs
+        </button>
+        <button
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
             activeTab === "settings"
               ? "border-purple-500 text-purple-400"
               : "border-transparent text-zinc-400 hover:text-zinc-200"
@@ -634,7 +672,62 @@ export default function BrandDetailPage() {
           </div>
         )}
 
-        {activeTab === "settings" && (
+  
+      {/* Audit Logs Tab */}
+      {activeTab === "audit-logs" && canManage && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white">Activity Timeline</h3>
+          {auditLogsLoading && auditLogs.length === 0 && (
+            <div className="text-zinc-400 text-sm">Loading audit logs...</div>
+          )}
+          <div className="relative border-l-2 border-zinc-800 ml-4 space-y-6">
+            {auditLogs.map((log) => {
+              const actionLabel = log.action
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, c => c.toUpperCase());
+              return (
+                <div key={log.id} className="ml-6 relative">
+                  <div className="absolute -left-10 w-6 h-6 rounded-full bg-purple-700 flex items-center justify-center">
+                    <span className="text-white text-xs">✦</span>
+                  </div>
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-white">{actionLabel}</span>
+                      <span className="text-xs text-zinc-500">{new Date(log.created_at).toLocaleString()}</span>
+                    </div>
+                    {log.details && Object.keys(log.details).length > 0 && (
+                      <div className="text-xs text-zinc-400 space-y-1">
+                        {Object.entries(log.details).map(([key, val]) => (
+                          <div key={key} className="flex gap-2">
+                            <span className="text-zinc-500">{key.replace(/_/g, " ")}:</span>
+                            <span className="text-zinc-300">{String(val)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {log.client_ip && (
+                      <div className="text-xs text-zinc-600 mt-2">IP: {log.client_ip}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {auditLogsHasMore && !auditLogsLoading && auditLogs.length > 0 && (
+            <button
+              onClick={() => fetchAuditLogs(auditLogsOffset)}
+              className="w-full py-2 border border-zinc-700 rounded-xl text-sm text-zinc-400 hover:text-white transition"
+            >
+              Load More
+            </button>
+          )}
+          {auditLogs.length === 0 && !auditLogsLoading && (
+            <div className="text-zinc-500 text-sm text-center py-8">No audit logs found.</div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "settings" && (
           <div className="bg-zinc-900/20 border border-zinc-900 rounded-2xl p-6 space-y-8">
             {/* Change Name Setting */}
             <div className="space-y-4">
