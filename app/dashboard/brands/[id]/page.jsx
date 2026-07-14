@@ -555,7 +555,7 @@ export default function BrandDetailPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {canManage && member.user_id !== brandData?.owner_id && member.user_id !== user?.id ? (
+                      {canManage && member.user_id !== brand?.owner_id && member.user_id !== user?.id ? (
                         <select
                           value={member.role}
                           onChange={(e) => handleUpdateRole(member.user_id, e.target.value)}
@@ -574,7 +574,7 @@ export default function BrandDetailPage() {
                     <td className="px-6 py-4 text-zinc-400">
                       <div className="flex items-center justify-between">
                         <span>Active</span>
-                        {canManage && member.user_id !== brandData?.owner_id && member.user_id !== user?.id && (
+                        {canManage && member.user_id !== brand?.owner_id && member.user_id !== user?.id && (
                           <button
                             onClick={() => handleRemoveMember(member.user_id)}
                             className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-950/20"
