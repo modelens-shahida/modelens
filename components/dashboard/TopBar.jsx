@@ -10,6 +10,24 @@ import { useWebSocket } from "@/lib/useWebSocket";
 export default function TopBar({ toggleSidebar }) {
   const pathname = usePathname();
   const { user, logout, token } = useAuth();
+  const [lowCredits, setLowCredits] = useState(false);
+  const [creditBalance, setCreditBalance] = useState(null);
+
+  // Fetch credit balance
+  useEffect(() => {
+    if (!token) return;
+    const checkCredits = async () => {
+      try {
+        const { api } = await import("@/lib/api");
+        const data = await api.get("/api/v1/credits/balance");
+        setLowCredits(data?.low_credits || false);
+        setCreditBalance(data?.balance);
+      } catch {}
+    };
+    checkCredits();
+    const interval = setInterval(checkCredits, 60000);
+    return () => clearInterval(interval);
+  }, [token]);
 
   // Real-time WebSocket for notifications
   useWebSocket({

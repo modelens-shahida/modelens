@@ -15,6 +15,14 @@ export default function DashboardOverview() {
   const [recentJobs, setRecentJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [ssoWelcome, setSsoWelcome] = useState(null);
+  const [creditInfo, setCreditInfo] = useState(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    api.get("/api/v1/credits/balance").then((data) => {
+      setCreditInfo(data);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("sso_welcome");
@@ -98,6 +106,29 @@ export default function DashboardOverview() {
 
   return (
     <div className="space-y-8 max-w-6xl">
+      {/* Low Credit Warning Banner */}
+      {creditInfo?.low_credits && !bannerDismissed && (
+        <div className="mx-6 mt-4 flex items-center justify-between gap-4 bg-amber-950/40 border border-amber-700/50 backdrop-blur-sm rounded-2xl px-5 py-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-300">Low Credit Balance</p>
+              <p className="text-xs text-amber-400/80">
+                You have <span className="font-bold text-amber-300">{creditInfo.balance}</span> credits remaining (threshold: {creditInfo.low_credit_threshold}). Top up to continue generating content.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <Link href="/dashboard/billing" className="text-xs bg-amber-500 hover:bg-amber-400 text-black font-semibold px-4 py-1.5 rounded-full transition">
+              Top Up
+            </Link>
+            <button onClick={() => setBannerDismissed(true)} className="text-amber-500 hover:text-amber-300 transition text-lg font-bold">
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* SSO Welcome Alert Banner */}
       {ssoWelcome && (
         <motion.div
