@@ -232,10 +232,14 @@ export default function TopBar({ toggleSidebar }) {
               setShowProfile(!showProfile);
               setShowNotifications(false);
             }}
-            className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-zinc-900/40 transition-colors cursor-pointer text-left focus:outline-none"
+            className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-zinc-900/40 transition-colors cursor-pointer text-left focus:outline-none relative"
+            title={lowCredits && creditBalance !== null ? `Low Credits: ${creditBalance} remaining` : undefined}
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-xs font-semibold text-white uppercase shadow-inner shadow-black/20">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-xs font-semibold text-white uppercase shadow-inner shadow-black/20 relative">
               {user?.full_name ? user.full_name.charAt(0) : <UserIcon size={14} />}
+              {lowCredits && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 border-2 border-zinc-950 rounded-full animate-pulse" />
+              )}
             </div>
             <span className="hidden sm:inline-block text-xs font-medium text-zinc-300">
               {user?.full_name || "Profile"}
@@ -261,8 +265,8 @@ export default function TopBar({ toggleSidebar }) {
                     <CreditCard size={14} className="text-zinc-500" />
                     Billing & Credits
                   </span>
-                  <span className="text-[10px] bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded-full">
-                    {user?.credits !== undefined ? `${user.credits} CR` : "100 CR"}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${lowCredits ? "bg-amber-950/40 text-amber-400 border border-amber-800/30 font-semibold" : "bg-zinc-900 text-zinc-400"}`}>
+                    {creditBalance !== null ? `${creditBalance} CR` : (user?.credits !== undefined ? `${user.credits} CR` : "100 CR")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-900/50 rounded-xl transition-colors text-xs text-zinc-300 cursor-pointer">

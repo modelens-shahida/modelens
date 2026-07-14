@@ -1403,7 +1403,7 @@ async def _check_and_send_low_credit_warning(db, user_id: int, current_balance: 
     if not user:
         return
 
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     should_warn = (
         user.last_low_credit_warning_at is None or
         (now - user.last_low_credit_warning_at) > timedelta(days=7)

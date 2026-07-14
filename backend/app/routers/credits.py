@@ -57,7 +57,7 @@ async def _trigger_low_credit_warning_if_needed(db, user: User):
         return
 
     from datetime import timedelta
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     should_warn = (
         user.last_low_credit_warning_at is None or
         (now - user.last_low_credit_warning_at) > timedelta(days=7)
