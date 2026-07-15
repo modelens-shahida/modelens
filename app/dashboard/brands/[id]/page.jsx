@@ -23,6 +23,9 @@ export default function BrandDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("members"); // "members" | "settings" | "webhooks" | "audit-logs"
   const [auditLogs, setAuditLogs] = useState([]);
+  const [memoryData, setMemoryData] = useState(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState("all");
   const [auditLogsOffset, setAuditLogsOffset] = useState(0);
   const [auditLogsLoading, setAuditLogsLoading] = useState(false);
   const [auditLogsHasMore, setAuditLogsHasMore] = useState(true);
@@ -148,6 +151,24 @@ export default function BrandDetailPage() {
       fetchAuditLogs(0);
     }
   }, [activeTab, id]);
+
+  useEffect(() => {
+    if (activeTab === "memory" && id) {
+      fetchMemory();
+    }
+  }, [activeTab, id]);
+
+  const fetchMemory = async () => {
+    setMemoryLoading(true);
+    try {
+      const data = await api.get(`/api/v1/brands/${id}/memory`);
+      setMemoryData(data);
+    } catch (e) {
+      toast.error("Failed to load brand memory");
+    } finally {
+      setMemoryLoading(false);
+    }
+  };
 
   const fetchAuditLogs = async (offset = 0) => {
     setAuditLogsLoading(true);
@@ -514,6 +535,16 @@ export default function BrandDetailPage() {
             <Activity size={14} /> Audit Logs
           </button>
         )}
+        <button
+          onClick={() => setActiveTab("memory")}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            activeTab === "memory"
+              ? "border-purple-500 text-purple-400"
+              : "border-transparent text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          🧠 Brand Memory
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -721,6 +752,96 @@ export default function BrandDetailPage() {
         )}
 
   
+
+      {/* Brand Memory Tab */}
+      {activeTab === "memory" && (
+        <div className="space-y-6">
+          {memoryLoading && (
+            <div className="text-zinc-400 text-sm text-center py-8">Loading brand memory...</div>
+          )}
+
+          {memoryData && !memoryLoading && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Tag Cloud */}
+              <div className="lg:col-span-2 bg-zinc-900/20 border border-zinc-800 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-white">Tag Cloud</h3>
+                  <span className="text-xs text-zinc-500">{memoryData.total_assets} assets analyzed</span>
+                </div>
+
+                {/* Category Filters */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {["all", ...new Set(
+                    Object.keys(memoryData.tag_frequency || {})
+                      .filter(k => k.includes(":"))
+                      .map(k => k.split(":")[0])
+                  )].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategoryFilter(cat)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
+                        activeCategoryFilter === cat
+                          ? "bg-purple-600 border-purple-500 text-white"
+                          : "border-zinc-700 text-zinc-400 hover:border-purple-500"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tag Pills */}
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(memoryData.tag_frequency || {})
+                    .filter(([tag]) => activeCategoryFilter === "all" || tag.startsWith(activeCategoryFilter + ":"))
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([tag, count]) => {
+                      const maxCount = Math.max(...Object.values(memoryData.tag_frequency));
+                      const ratio = count / maxCount;
+                      const size = ratio > 0.7 ? "text-lg px-4 py-2" : ratio > 0.4 ? "text-sm px-3 py-1.5" : "text-xs px-2 py-1";
+                      const label = tag.includes(":") ? tag.split(":")[1] : tag;
+                      return (
+                        <span
+                          key={tag}
+                          className={`${size} rounded-full font-medium bg-gradient-to-r from-purple-900/60 to-indigo-900/60 border border-purple-700/40 text-purple-200`}
+                          title={`${tag}: ${count} occurrences`}
+                        >
+                          {label} <span className="text-purple-400 text-xs">{count}</span>
+                        </span>
+                      );
+                    })}
+                </div>
+
+                {Object.keys(memoryData.tag_frequency || {}).length === 0 && (
+                  <div className="text-zinc-500 text-sm text-center py-8">No tags recorded yet. Upload and process assets to build brand memory.</div>
+                )}
+              </div>
+
+              {/* Side Panel */}
+              <div className="bg-gradient-to-br from-purple-950/30 to-indigo-950/30 border border-purple-800/30 rounded-2xl p-6">
+                <h3 className="text-sm font-semibold text-purple-300 mb-3">🧠 How Brand Memory Works</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+                  Brand Memory is a semantic profile built from your catalog assets. The AI orchestrator analyzes uploaded images and extracts visual attributes like lighting, mood, color palette, style, and composition.
+                </p>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+                  These tag frequencies are used to maintain consistency across AI-generated model catalog creatives, ensuring generated outputs align with your brand's visual identity.
+                </p>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Total Assets</span>
+                    <span className="text-white font-semibold">{memoryData.total_assets}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Unique Tags</span>
+                    <span className="text-white font-semibold">{Object.keys(memoryData.tag_frequency || {}).length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Audit Logs Tab */}
       {activeTab === "audit-logs" && canManage && (
         <div className="space-y-4">
