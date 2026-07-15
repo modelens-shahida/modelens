@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Bell, User as UserIcon, LogOut, Settings, CreditCard, Shield } from "lucide-react";
@@ -273,10 +274,10 @@ export default function TopBar({ toggleSidebar }) {
                   <Shield size={14} className="text-zinc-500" />
                   Role: <span className="capitalize text-zinc-400">{user?.role || "user"}</span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-900/50 rounded-xl transition-colors text-xs text-zinc-300 cursor-pointer">
+                <Link href="/dashboard/settings" className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-900/50 rounded-xl transition-colors text-xs text-zinc-300 cursor-pointer">
                   <Settings size={14} className="text-zinc-500" />
                   Account Settings
-                </div>
+                </Link>
                 <div className="h-px bg-zinc-900 my-1" />
                 <button
                   onClick={logout}
