@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { 
   ArrowLeft, Users, Settings, Plus, X, Mail, Shield, 
-  Loader2, Edit3, Check, Webhook, Activity, Trash2, 
+  Loader2, Edit3, Check, Webhook, Activity, Trash2, Brain,
   Key, RefreshCw, Sliders, Eye, FileText, Download
 } from "lucide-react";
 import Link from "next/link";
@@ -543,7 +543,7 @@ export default function BrandDetailPage() {
               : "border-transparent text-zinc-400 hover:text-zinc-200"
           }`}
         >
-          🧠 Brand Memory
+          <Brain size={14} /> Brand Memory
         </button>
       </div>
 
