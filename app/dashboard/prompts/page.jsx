@@ -81,22 +81,6 @@ export default function PromptsPage() {
     }
   };
 
-  const handleDeletePrompt = async () => {
-    if (!selectedPrompt) return;
-    if (!window.confirm(`Are you sure you want to delete "${selectedPrompt.name}"? This cannot be undone.`)) return;
-    try {
-      await api.delete(`/api/v1/prompts/${selectedPrompt.id}`);
-      toast.success("Prompt template deleted");
-      setPrompts((prev) => prev.filter((p) => p.id !== selectedPrompt.id));
-      setSelectedPrompt(null);
-      setPromptName("");
-      setPromptText("");
-      setIsEditing(false);
-    } catch (e) {
-      toast.error("Failed to delete prompt template");
-    }
-  };
-
   const handleSavePrompt = async (e) => {
     e.preventDefault();
     if (!promptName.trim()) {
