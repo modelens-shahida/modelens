@@ -57,6 +57,13 @@ export default function AssetsPage() {
   const [isTrashView, setIsTrashView] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
 
+  // Bulk action states
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState(new Set());
+  const [showBulkTagInput, setShowBulkTagInput] = useState(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
   // Advanced filter states
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filterAssetType, setFilterAssetType] = useState("");
@@ -287,6 +294,51 @@ export default function AssetsPage() {
     }
   };
 
+
+  const toggleAssetSelection = (assetId) => {
+    setSelectedAssetIds(prev => {
+      const next = new Set(prev);
+      next.has(assetId) ? next.delete(assetId) : next.add(assetId);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`Delete ${selectedAssetIds.size} selected assets? This cannot be undone.`)) return;
+    setBulkProcessing(true);
+    let success = 0, failed = 0;
+    for (const assetId of selectedAssetIds) {
+      try {
+        await api.delete(`/api/v1/assets/${assetId}`);
+        success++;
+      } catch { failed++; }
+    }
+    setBulkProcessing(false);
+    setSelectedAssetIds(new Set());
+    setSelectionMode(false);
+    toast.success(`Deleted ${success} assets${failed > 0 ? `, ${failed} failed` : ""}`);
+    fetchAssets();
+  };
+
+  const handleBulkAddTag = async () => {
+    if (!bulkTagInput.trim()) return;
+    setBulkProcessing(true);
+    let success = 0, failed = 0;
+    for (const assetId of selectedAssetIds) {
+      try {
+        await api.post(`/api/v1/assets/${assetId}/tags?tag=${encodeURIComponent(bulkTagInput.trim())}`);
+        success++;
+      } catch { failed++; }
+    }
+    setBulkProcessing(false);
+    setBulkTagInput("");
+    setShowBulkTagInput(false);
+    setSelectedAssetIds(new Set());
+    setSelectionMode(false);
+    toast.success(`Tag added to ${success} assets${failed > 0 ? `, ${failed} failed` : ""}`);
+    fetchAssets();
+  };
+
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Page Header */}
@@ -480,6 +532,19 @@ export default function AssetsPage() {
 
         {/* Advanced Filters Toggle */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setSelectionMode(!selectionMode);
+              setSelectedAssetIds(new Set());
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+              selectionMode
+                ? "bg-purple-600 border-purple-500 text-white"
+                : "bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-purple-500"
+            }`}
+          >
+            {selectionMode ? `✓ ${selectedAssetIds.size} Selected` : "Select"}
+          </button>
           <button
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
@@ -688,7 +753,13 @@ export default function AssetsPage() {
                   <motion.div
                     key={asset.id}
                     whileHover={{ y: -3 }}
-                    onClick={() => !isTrashView && setSelectedAsset(asset)}
+                    onClick={() => {
+                      if (selectionMode) {
+                        toggleAssetSelection(asset.id);
+                      } else if (!isTrashView) {
+                        setSelectedAsset(asset);
+                      }
+                    }}
                     className={`bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg ${!isTrashView ? "cursor-pointer" : ""}`}
                   >
                     {/* Thumbnail container */}
@@ -1077,6 +1148,61 @@ export default function AssetsPage() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+    
+      {/* Bulk Actions Floating Toolbar */}
+      {selectionMode && selectedAssetIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-md border border-zinc-700 rounded-2xl px-5 py-3 shadow-2xl">
+          <span className="text-xs text-zinc-300 font-medium">{selectedAssetIds.size} selected</span>
+          <div className="w-px h-4 bg-zinc-700" />
+
+          {/* Bulk Add Tag */}
+          {showBulkTagInput ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={bulkTagInput}
+                onChange={(e) => setBulkTagInput(e.target.value)}
+                placeholder="Enter tag..."
+                className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 text-xs text-white outline-none w-32"
+                onKeyDown={(e) => e.key === "Enter" && handleBulkAddTag()}
+                autoFocus
+              />
+              <button
+                onClick={handleBulkAddTag}
+                disabled={bulkProcessing}
+                className="text-xs bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg transition disabled:opacity-50"
+              >
+                {bulkProcessing ? "Adding..." : "Add"}
+              </button>
+              <button onClick={() => setShowBulkTagInput(false)} className="text-zinc-400 hover:text-white text-xs">✕</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowBulkTagInput(true)}
+              className="flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white border border-zinc-600 hover:border-purple-500 px-3 py-1.5 rounded-lg transition"
+            >
+              🏷 Add Tag
+            </button>
+          )}
+
+          {/* Bulk Delete */}
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkProcessing}
+            className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+          >
+            🗑 Delete All
+          </button>
+
+          {/* Deselect */}
+          <button
+            onClick={() => { setSelectedAssetIds(new Set()); setSelectionMode(false); }}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+          >
+            ✕ Cancel
+          </button>
+        </div>
+      )}
+</div>
   );
 }
