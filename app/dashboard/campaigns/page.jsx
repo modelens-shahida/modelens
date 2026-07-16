@@ -71,6 +71,16 @@ export default function CampaignsPage() {
   // New Theme Creation Form States
   const [isCreateThemeOpen, setIsCreateThemeOpen] = useState(false);
   const [newThemeName, setNewThemeName] = useState("");
+
+  // Generation states
+  const [generations, setGenerations] = useState([]);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [characters, setCharacters] = useState([]);
+  const [selectedCharacterId, setSelectedCharacterId] = useState("");
+  const [characterVersions, setCharacterVersions] = useState([]);
+  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const [numOutputs, setNumOutputs] = useState(1);
+  const [generating, setGenerating] = useState(false);
   const [newThemeDesc, setNewThemeDesc] = useState("");
   const [newThemeLighting, setNewThemeLighting] = useState("");
   const [newThemeLocation, setNewThemeLocation] = useState("");
@@ -267,9 +277,64 @@ export default function CampaignsPage() {
     }
   }, [selectedBrandId, currentPage]);
 
+  const fetchGenerations = async (campaignId) => {
+    try {
+      const data = await api.get(`/api/v1/campaigns/${campaignId}/generations`);
+      setGenerations(data || []);
+    } catch {}
+  };
+
+  const fetchCharacters = async (brandId) => {
+    try {
+      const data = await api.get(`/api/v1/characters?brand_id=${brandId}`);
+      setCharacters(data || []);
+    } catch {}
+  };
+
+  const fetchCharacterVersions = async (characterId) => {
+    try {
+      const data = await api.get(`/api/v1/characters/${characterId}/versions`);
+      setCharacterVersions(data || []);
+      if (data?.length > 0) setSelectedVersionId(data[0].id);
+    } catch {}
+  };
+
+  const handleCancelGeneration = async (jobId) => {
+    try {
+      await api.post(`/api/v1/generations/${jobId}/cancel`, {});
+      toast.success("Generation cancelled");
+      fetchGenerations(activeCampaign.id);
+    } catch {
+      toast.error("Failed to cancel generation");
+    }
+  };
+
+  const handleSubmitGeneration = async () => {
+    if (!selectedCharacterId || !selectedVersionId) {
+      toast.error("Please select a character and version");
+      return;
+    }
+    setGenerating(true);
+    try {
+      await api.post(`/api/v1/campaigns/${activeCampaign.id}/generate`, {
+        character_id: parseInt(selectedCharacterId),
+        character_version_id: parseInt(selectedVersionId),
+        number_of_outputs: numOutputs,
+      });
+      toast.success("Generation started!");
+      setShowGenerateModal(false);
+      fetchGenerations(activeCampaign.id);
+    } catch (e) {
+      toast.error(e.message || "Failed to start generation");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   // Load campaign details (assets and workflows)
   const loadCampaignDetails = async (campaign) => {
     setActiveCampaign(campaign);
+    fetchGenerations(campaign.id);
     setLoadingDetails(true);
     try {
       const assets = await api.get(`/api/v1/campaigns/${campaign.id}/assets`);
@@ -756,6 +821,153 @@ export default function CampaignsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+
+
+                      {/* Generations Section */}
+                      <div className="mt-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-white">AI Generations ({generations.length})</h3>
+                          <button
+                            onClick={() => {
+                              setShowGenerateModal(true);
+                              fetchCharacters(activeCampaign.brand_id);
+                            }}
+                            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                          >
+                            ✨ Generate Creatives
+                          </button>
+                        </div>
+
+                        {generations.length === 0 ? (
+                          <div className="text-zinc-500 text-xs text-center py-6 border border-zinc-800 rounded-xl">
+                            No generations yet. Click "Generate Creatives" to start.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {generations.map((gen) => {
+                              const statusColors = {
+                                queued: "bg-yellow-900/40 text-yellow-400 border-yellow-700",
+                                processing: "bg-blue-900/40 text-blue-400 border-blue-700",
+                                completed: "bg-green-900/40 text-green-400 border-green-700",
+                                failed: "bg-red-900/40 text-red-400 border-red-700",
+                                cancelled: "bg-zinc-800 text-zinc-400 border-zinc-700",
+                              };
+                              return (
+                                <div key={gen.job_id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs px-2 py-0.5 rounded-full border ${statusColors[gen.status] || statusColors.queued}`}>
+                                        {gen.status?.toUpperCase()}
+                                      </span>
+                                      <span className="text-xs text-zinc-500">Job #{gen.job_id}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-zinc-500">{new Date(gen.created_at).toLocaleString()}</span>
+                                      {(gen.status === "queued" || gen.status === "processing") && (
+                                        <button
+                                          onClick={() => handleCancelGeneration(gen.job_id)}
+                                          className="text-xs text-red-400 hover:text-red-300 border border-red-800 px-2 py-0.5 rounded-lg transition"
+                                        >
+                                          Cancel
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-zinc-400">
+                                    Outputs: {gen.inputs?.number_of_outputs || 1}
+                                  </div>
+                                  {gen.status === "processing" && (
+                                    <div className="mt-2 w-full bg-zinc-800 rounded-full h-1.5">
+                                      <div className="bg-purple-500 h-1.5 rounded-full animate-pulse" style={{width: "60%"}} />
+                                    </div>
+                                  )}
+                                  {gen.status === "completed" && gen.outputs?.generated_asset_ids?.length > 0 && (
+                                    <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                                      {gen.outputs.generated_asset_ids.map((assetId) => (
+                                        <div key={assetId} className="shrink-0 w-16 h-16 bg-zinc-800 rounded-lg flex items-center justify-center text-xs text-zinc-500">
+                                          #{assetId}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Generate Modal */}
+                      {showGenerateModal && (
+                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+                          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md mx-4">
+                            <h2 className="text-lg font-semibold text-white mb-4">Generate Creatives</h2>
+
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-xs text-zinc-400 mb-1 block">Select Character</label>
+                                <select
+                                  value={selectedCharacterId}
+                                  onChange={(e) => {
+                                    setSelectedCharacterId(e.target.value);
+                                    if (e.target.value) fetchCharacterVersions(e.target.value);
+                                  }}
+                                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none"
+                                >
+                                  <option value="">Select a character...</option>
+                                  {characters.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {selectedCharacterId && (
+                                <div>
+                                  <label className="text-xs text-zinc-400 mb-1 block">Select Version</label>
+                                  <select
+                                    value={selectedVersionId}
+                                    onChange={(e) => setSelectedVersionId(e.target.value)}
+                                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none"
+                                  >
+                                    <option value="">Select a version...</option>
+                                    {characterVersions.map(v => (
+                                      <option key={v.id} value={v.id}>Version {v.version_number}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              <div>
+                                <label className="text-xs text-zinc-400 mb-1 block">Number of Outputs: {numOutputs}</label>
+                                <input
+                                  type="range" min="1" max="10" value={numOutputs}
+                                  onChange={(e) => setNumOutputs(parseInt(e.target.value))}
+                                  className="w-full accent-purple-500"
+                                />
+                                <div className="flex justify-between text-xs text-zinc-500 mt-1">
+                                  <span>1</span><span>10</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-6">
+                              <button
+                                onClick={handleSubmitGeneration}
+                                disabled={generating}
+                                className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-2 rounded-xl text-sm font-medium transition"
+                              >
+                                {generating ? "Starting..." : "Start Generation"}
+                              </button>
+                              <button
+                                onClick={() => setShowGenerateModal(false)}
+                                className="flex-1 border border-zinc-700 py-2 rounded-xl text-sm font-medium text-zinc-300 hover:text-white transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     {linkedWorkflows.map((wf) => (
                       <div
                         key={wf.id}
