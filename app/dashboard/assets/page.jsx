@@ -760,10 +760,25 @@ export default function AssetsPage() {
                         setSelectedAsset(asset);
                       }
                     }}
-                    className={`bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg ${!isTrashView ? "cursor-pointer" : ""}`}
+                    className={`bg-zinc-900/20 border rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg transition-all duration-200 ${
+                      selectedAssetIds.has(asset.id)
+                        ? "border-purple-500 bg-purple-950/5 shadow-purple-950/10"
+                        : "border-zinc-900 hover:border-zinc-800"
+                    } ${!isTrashView ? "cursor-pointer" : ""}`}
                   >
                     {/* Thumbnail container */}
                     <div className="h-44 bg-zinc-950 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-zinc-900">
+                      {/* Bulk actions check box indicator */}
+                      {selectionMode && (
+                        <div className={`absolute top-3 right-3 z-10 w-5 h-5 rounded-lg border flex items-center justify-center transition-all duration-150 ${
+                          selectedAssetIds.has(asset.id)
+                            ? "bg-purple-600 border-purple-500 text-white"
+                            : "bg-black/60 backdrop-blur-md border-zinc-700 text-transparent"
+                        }`}>
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+
                       <img
                         src={asset.storage_path}
                         alt={asset.name}
