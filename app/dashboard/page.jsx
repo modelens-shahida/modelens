@@ -18,6 +18,17 @@ export default function DashboardOverview() {
   const [creditInfo, setCreditInfo] = useState(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  // Quick Gen Widget states
+  const [qgBrandId, setQgBrandId] = useState("");
+  const [qgCharacters, setQgCharacters] = useState([]);
+  const [qgCharacterId, setQgCharacterId] = useState("");
+  const [qgVersions, setQgVersions] = useState([]);
+  const [qgVersionId, setQgVersionId] = useState("");
+  const [qgCampaigns, setQgCampaigns] = useState([]);
+  const [qgCampaignId, setQgCampaignId] = useState("");
+  const [qgOutputs, setQgOutputs] = useState(1);
+  const [qgGenerating, setQgGenerating] = useState(false);
+
   useEffect(() => {
     api.get("/api/v1/credits/balance").then((data) => {
       setCreditInfo(data);
@@ -104,6 +115,59 @@ export default function DashboardOverview() {
   const totalBrands = brands.length;
   const totalAssets = assets.length;
 
+
+  const handleQgBrandChange = async (brandId) => {
+    setQgBrandId(brandId);
+    setQgCharacters([]);
+    setQgCharacterId("");
+    setQgVersions([]);
+    setQgVersionId("");
+    setQgCampaigns([]);
+    setQgCampaignId("");
+    if (!brandId) return;
+    try {
+      const [chars, camps] = await Promise.all([
+        api.get(`/api/v1/characters?brand_id=${brandId}`),
+        api.get(`/api/v1/campaigns?brand_id=${brandId}`),
+      ]);
+      setQgCharacters(chars || []);
+      setQgCampaigns(camps || []);
+      if (camps?.length > 0) setQgCampaignId(camps[0].id);
+    } catch {}
+  };
+
+  const handleQgCharacterChange = async (charId) => {
+    setQgCharacterId(charId);
+    setQgVersions([]);
+    setQgVersionId("");
+    if (!charId) return;
+    try {
+      const versions = await api.get(`/api/v1/characters/${charId}/versions`);
+      setQgVersions(versions || []);
+      if (versions?.length > 0) setQgVersionId(versions[0].id);
+    } catch {}
+  };
+
+  const handleQuickGenerate = async () => {
+    if (!qgCampaignId || !qgCharacterId || !qgVersionId) {
+      toast.error("Please select a brand, campaign, character, and version");
+      return;
+    }
+    setQgGenerating(true);
+    try {
+      const result = await api.post(`/api/v1/campaigns/${qgCampaignId}/generate`, {
+        character_id: parseInt(qgCharacterId),
+        character_version_id: parseInt(qgVersionId),
+        number_of_outputs: qgOutputs,
+      });
+      toast.success(`Generation queued! Job #${result.job_id} started.`);
+    } catch (e) {
+      toast.error(e.message || "Failed to start generation");
+    } finally {
+      setQgGenerating(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-6xl">
       {/* Low Credit Warning Banner */}
@@ -128,6 +192,92 @@ export default function DashboardOverview() {
           </div>
         </div>
       )}
+
+
+          {/* Quick Gen Widget */}
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-purple-400">✨</span>
+              <h2 className="text-sm font-semibold text-white">Quick Creative Generation</h2>
+            </div>
+            <div className="space-y-3">
+              {/* Brand */}
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Brand Workspace</label>
+                <select
+                  value={qgBrandId}
+                  onChange={(e) => handleQgBrandChange(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                >
+                  <option value="">Select brand...</option>
+                  {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+
+              {/* Campaign */}
+              {qgCampaigns.length > 0 && (
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">Campaign</label>
+                  <select
+                    value={qgCampaignId}
+                    onChange={(e) => setQgCampaignId(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                  >
+                    {qgCampaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Character */}
+              {qgCharacters.length > 0 && (
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">Character</label>
+                  <select
+                    value={qgCharacterId}
+                    onChange={(e) => handleQgCharacterChange(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                  >
+                    <option value="">Select character...</option>
+                    {qgCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Version */}
+              {qgVersions.length > 0 && (
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">Character Version</label>
+                  <select
+                    value={qgVersionId}
+                    onChange={(e) => setQgVersionId(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                  >
+                    {qgVersions.map(v => <option key={v.id} value={v.id}>Version {v.version_number}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Outputs */}
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Outputs: {qgOutputs}</label>
+                <input
+                  type="range" min="1" max="4" value={qgOutputs}
+                  onChange={(e) => setQgOutputs(parseInt(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+                <div className="flex justify-between text-xs text-zinc-600 mt-0.5"><span>1</span><span>4</span></div>
+              </div>
+
+              <button
+                onClick={handleQuickGenerate}
+                disabled={qgGenerating || !qgBrandId || !qgCharacterId || !qgVersionId}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 py-2.5 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2"
+              >
+                {qgGenerating ? "Queueing..." : "✨ Generate Creatives"}
+              </button>
+            </div>
+          </div>
+
 
       {/* SSO Welcome Alert Banner */}
       {ssoWelcome && (
