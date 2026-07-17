@@ -6,13 +6,41 @@ import { User, Bell, Sparkles, Brain, Check, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function AccountSettingsPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [preferences, setPreferences] = useState({
     notify_on_job_complete: true,
     notify_on_training_complete: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+
+
+  const handleEditProfile = () => {
+    setEditName(user?.full_name || user?.name || "");
+    setEditEmail(user?.email || "");
+    setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const { api } = await import("@/lib/api");
+      await api.patch("/api/v1/auth/profile", {
+        full_name: editName,
+        email: editEmail,
+      });
+      if (refreshUser) await refreshUser();
+      toast.success("Profile updated successfully!");
+      setIsEditingProfile(false);
+    } catch (e) {
+      toast.error("Failed to update profile");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     notificationsApi.getPreferences().then((data) => {
@@ -44,22 +72,66 @@ export default function AccountSettingsPage() {
 
       {/* Profile Card */}
       <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <User className="w-5 h-5 text-purple-400" />
-          <h2 className="text-sm font-semibold text-white">Profile Information</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <User className="w-5 h-5 text-purple-400" />
+            <h2 className="text-sm font-semibold text-white">Profile Information</h2>
+          </div>
+          {!isEditingProfile ? (
+            <button
+              onClick={handleEditProfile}
+              className="text-xs text-purple-400 hover:text-purple-300 border border-purple-800 hover:border-purple-600 px-3 py-1.5 rounded-lg transition"
+            >
+              Edit Profile
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveProfile}
+                disabled={saving}
+                className="text-xs bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={() => setIsEditingProfile(false)}
+                className="text-xs border border-zinc-600 text-zinc-400 hover:text-white px-3 py-1.5 rounded-lg transition"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
         <div className="space-y-4">
           <div>
             <label className="text-xs text-zinc-500 block mb-1">Full Name</label>
-            <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200">
-              {user?.full_name || user?.name || "—"}
-            </div>
+            {isEditingProfile ? (
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full bg-zinc-900 border border-purple-600 rounded-xl px-4 py-2.5 text-sm text-zinc-200 outline-none"
+              />
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200">
+                {user?.full_name || user?.name || "—"}
+              </div>
+            )}
           </div>
           <div>
             <label className="text-xs text-zinc-500 block mb-1">Email Address</label>
-            <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200">
-              {user?.email || "—"}
-            </div>
+            {isEditingProfile ? (
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                className="w-full bg-zinc-900 border border-purple-600 rounded-xl px-4 py-2.5 text-sm text-zinc-200 outline-none"
+              />
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200">
+                {user?.email || "—"}
+              </div>
+            )}
           </div>
           <div>
             <label className="text-xs text-zinc-500 block mb-1">Role</label>
