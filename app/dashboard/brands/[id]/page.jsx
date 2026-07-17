@@ -31,8 +31,6 @@ export default function BrandDetailPage() {
   const [auditLogsHasMore, setAuditLogsHasMore] = useState(true);
 
   // Brand management states
-  const [renameBrandName, setRenameBrandName] = useState("");
-  const [renaming, setRenaming] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -131,24 +129,6 @@ export default function BrandDetailPage() {
       fetchData();
     }
   }, [id]);
-
-
-  const handleRenameBrand = async () => {
-    if (!renameBrandName.trim()) {
-      toast.error("Brand name cannot be empty");
-      return;
-    }
-    setRenaming(true);
-    try {
-      await api.patch(`/api/v1/brands/${id}`, { name: renameBrandName.trim() });
-      toast.success("Brand name updated!");
-      setBrand(prev => ({ ...prev, name: renameBrandName.trim() }));
-    } catch (e) {
-      toast.error("Failed to update brand name");
-    } finally {
-      setRenaming(false);
-    }
-  };
 
   const handleDeleteBrand = async () => {
     if (deleteConfirmText !== brand?.name) {
