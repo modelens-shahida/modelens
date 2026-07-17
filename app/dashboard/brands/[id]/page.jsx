@@ -30,6 +30,13 @@ export default function BrandDetailPage() {
   const [auditLogsLoading, setAuditLogsLoading] = useState(false);
   const [auditLogsHasMore, setAuditLogsHasMore] = useState(true);
 
+  // Brand management states
+  const [renameBrandName, setRenameBrandName] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
   // Settings states
   const [newBrandName, setNewBrandName] = useState("");
   const [isUpdatingName, setIsUpdatingName] = useState(false);
@@ -124,6 +131,42 @@ export default function BrandDetailPage() {
       fetchData();
     }
   }, [id]);
+
+
+  const handleRenameBrand = async () => {
+    if (!renameBrandName.trim()) {
+      toast.error("Brand name cannot be empty");
+      return;
+    }
+    setRenaming(true);
+    try {
+      await api.patch(`/api/v1/brands/${id}`, { name: renameBrandName.trim() });
+      toast.success("Brand name updated!");
+      setBrand(prev => ({ ...prev, name: renameBrandName.trim() }));
+    } catch (e) {
+      toast.error("Failed to update brand name");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleDeleteBrand = async () => {
+    if (deleteConfirmText !== brand?.name) {
+      toast.error("Brand name does not match");
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/api/v1/brands/${id}`);
+      toast.success("Brand workspace deleted");
+      router.push("/dashboard/brands");
+    } catch (e) {
+      toast.error("Failed to delete brand");
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   const fetchAuthSettings = async () => {
     try {
@@ -748,11 +791,60 @@ export default function BrandDetailPage() {
                 ))}
               </div>
             )}
+
+            {/* Danger Zone - Owner Only */}
+            {userRole === "owner" && (
+              <div className="border-t border-red-900/30 pt-6">
+                <h3 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h3>
+                <p className="text-xs text-zinc-500 mb-4">Permanently delete this brand workspace. This cannot be undone.</p>
+                <button
+                  onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(""); }}
+                  className="text-xs text-red-400 border border-red-800 hover:bg-red-950/30 px-4 py-2 rounded-xl transition"
+                >
+                  Delete Workspace
+                </button>
+              </div>
+            )}
           </div>
         )}
 
   
 
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 border border-red-900/50 rounded-2xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-red-400 mb-2">Delete Workspace</h2>
+            <p className="text-xs text-zinc-400 mb-4">
+              This will permanently delete <strong className="text-white">{brand?.name}</strong> and all its data.
+            </p>
+            <p className="text-xs text-zinc-400 mb-2">Type <strong className="text-white">{brand?.name}</strong> to confirm:</p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={brand?.name}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteBrand}
+                disabled={deleteConfirmText !== brand?.name || deleting}
+                className="flex-1 bg-red-700 hover:bg-red-600 disabled:opacity-40 py-2 rounded-xl text-sm font-medium transition"
+              >
+                {deleting ? "Deleting..." : "Delete Workspace"}
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 border border-zinc-700 py-2 rounded-xl text-sm text-zinc-300 hover:text-white transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Brand Memory Tab */}
       {activeTab === "memory" && (
         <div className="space-y-6">
