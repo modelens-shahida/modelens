@@ -538,6 +538,35 @@ class Invitation(Base):
     brand = relationship("Brand")
 
 
+
+class CampaignTemplate(Base):
+    __tablename__ = "campaign_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    default_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EditorialAsset(Base):
+    __tablename__ = "editorial_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    shot_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    camera_body: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    lens_spec: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    lighting_setup: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    composition_grid: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    style_mood: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    asset = relationship("Asset")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
