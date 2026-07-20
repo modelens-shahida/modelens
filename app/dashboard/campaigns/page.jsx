@@ -72,6 +72,14 @@ export default function CampaignsPage() {
   const [isCreateThemeOpen, setIsCreateThemeOpen] = useState(false);
   const [newThemeName, setNewThemeName] = useState("");
 
+  // Campaign Templates states
+  const [templates, setTemplates] = useState([]);
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({ name: "", description: "", default_config: {} });
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
   // Generation states
   const [generations, setGenerations] = useState([]);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -276,6 +284,58 @@ export default function CampaignsPage() {
       fetchCampaigns();
     }
   }, [selectedBrandId, currentPage]);
+
+
+  const fetchTemplates = async () => {
+    try {
+      const data = await api.get("/api/v1/campaign-templates");
+      setTemplates(data || []);
+    } catch {}
+  };
+
+  const handleUseTemplate = (template) => {
+    setCreateName(template.name);
+    setCreateDesc(template.description || "");
+    setShowTemplatesModal(false);
+    setIsCreateOpen(true);
+    toast.success(`Template "${template.name}" applied!`);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateForm.name.trim()) {
+      toast.error("Template name is required");
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      if (editingTemplate) {
+        await api.patch(`/api/v1/campaign-templates/${editingTemplate.id}`, templateForm);
+        toast.success("Template updated!");
+      } else {
+        await api.post("/api/v1/campaign-templates", templateForm);
+        toast.success("Template created!");
+      }
+      await fetchTemplates();
+      setShowCreateTemplateModal(false);
+      setEditingTemplate(null);
+      setTemplateForm({ name: "", description: "", default_config: {} });
+    } catch (e) {
+      toast.error(e.message || "Failed to save template");
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!window.confirm("Delete this template?")) return;
+    try {
+      await api.delete(`/api/v1/campaign-templates/${templateId}`);
+      toast.success("Template deleted");
+      fetchTemplates();
+    } catch {
+      toast.error("Failed to delete template");
+    }
+  };
 
   const fetchGenerations = async (campaignId) => {
     try {
@@ -1296,6 +1356,111 @@ export default function CampaignsPage() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+    
+      {/* Templates Modal */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Preset Templates</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", description: "", default_config: {} }); setShowCreateTemplateModal(true); }}
+                  className="text-xs bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg transition"
+                >
+                  + New Template
+                </button>
+                <button onClick={() => setShowTemplatesModal(false)} className="text-zinc-400 hover:text-white text-lg">✕</button>
+              </div>
+            </div>
+
+            {templates.length === 0 ? (
+              <div className="text-zinc-500 text-sm text-center py-8">No templates yet. Create one to get started!</div>
+            ) : (
+              <div className="space-y-3">
+                {templates.map(template => (
+                  <div key={template.id} className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">{template.name}</h3>
+                        {template.description && <p className="text-xs text-zinc-400 mt-0.5">{template.description}</p>}
+                      </div>
+                      <div className="flex gap-2 shrink-0 ml-2">
+                        <button
+                          onClick={() => { setEditingTemplate(template); setTemplateForm({ name: template.name, description: template.description || "", default_config: template.default_config || {} }); setShowCreateTemplateModal(true); }}
+                          className="text-xs text-zinc-400 hover:text-white border border-zinc-600 px-2 py-1 rounded-lg transition"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTemplate(template.id)}
+                          className="text-xs text-red-400 hover:text-red-300 border border-red-800 px-2 py-1 rounded-lg transition"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUseTemplate(template)}
+                      className="w-full mt-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-700/50 text-purple-300 text-xs py-1.5 rounded-lg transition"
+                    >
+                      Use Template
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Template Modal */}
+      {showCreateTemplateModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-white mb-4">
+              {editingTemplate ? "Edit Template" : "Create Template"}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Template Name *</label>
+                <input
+                  type="text"
+                  value={templateForm.name}
+                  onChange={(e) => setTemplateForm(p => ({...p, name: e.target.value}))}
+                  placeholder="e.g. Editorial Campaign"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500 transition"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Description</label>
+                <textarea
+                  value={templateForm.description}
+                  onChange={(e) => setTemplateForm(p => ({...p, description: e.target.value}))}
+                  placeholder="Describe this campaign template..."
+                  rows={3}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500 transition resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSaveTemplate}
+                disabled={savingTemplate}
+                className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-2 rounded-xl text-sm font-medium transition"
+              >
+                {savingTemplate ? "Saving..." : editingTemplate ? "Update Template" : "Create Template"}
+              </button>
+              <button
+                onClick={() => { setShowCreateTemplateModal(false); setEditingTemplate(null); }}
+                className="flex-1 border border-zinc-700 py-2 rounded-xl text-sm text-zinc-300 hover:text-white transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }
