@@ -1174,6 +1174,53 @@ export default function AssetsPage() {
                       </button>
                     </form>
                   </div>
+
+                  {/* Editorial Specifications */}
+                  <div className="space-y-3 border-t border-zinc-850 pt-4">
+                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>📸 Editorial Specs</span>
+                    </h4>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-0.5 uppercase tracking-wider font-semibold">Shot Type</label>
+                        <select
+                          value={editorialForm.shot_type}
+                          onChange={(e) => setEditorialForm(p => ({ ...p, shot_type: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-[10px] text-zinc-200 outline-none transition-all"
+                        >
+                          <option value="">Select Shot Type...</option>
+                          {["Hero Shot", "Beauty Shot", "Lookbook Image", "Editorial", "Lifestyle", "Product Detail"].map((o) => (
+                            <option key={o} value={o}>{o}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {[
+                        { key: "camera_body", label: "Camera Body", placeholder: "e.g. Hasselblad H6D" },
+                        { key: "lens_spec", label: "Lens Spec", placeholder: "e.g. 80mm f/2.8" },
+                        { key: "lighting_setup", label: "Lighting Setup", placeholder: "e.g. Softbox Fill" },
+                        { key: "composition_grid", label: "Composition Grid", placeholder: "e.g. Rule of Thirds" },
+                        { key: "style_mood", label: "Style / Mood", placeholder: "e.g. Quiet Luxury" },
+                      ].map(({ key, label, placeholder }) => (
+                        <div key={key}>
+                          <label className="text-[9px] text-zinc-500 block mb-0.5 uppercase tracking-wider font-semibold">{label}</label>
+                          <input
+                            type="text"
+                            value={editorialForm[key]}
+                            onChange={(e) => setEditorialForm(p => ({ ...p, [key]: e.target.value }))}
+                            placeholder={placeholder}
+                            className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-[10px] text-zinc-200 placeholder-zinc-650 outline-none transition-all"
+                          />
+                        </div>
+                      ))}
+                      <button
+                        onClick={handleSaveEditorial}
+                        disabled={savingEditorial}
+                        className="w-full mt-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-[10px] font-semibold py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md shadow-purple-950/20"
+                      >
+                        {savingEditorial ? <Loader2 size={10} className="animate-spin" /> : "Save Editorial Specs"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
@@ -1198,42 +1245,6 @@ export default function AssetsPage() {
           </div>
         )}
       </AnimatePresence>
-    
-
-      {/* Editorial Specs Section - in Asset Modal */}
-      {selectedAsset && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center pointer-events-none">
-          <div className="pointer-events-auto w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-t-2xl p-5 shadow-2xl">
-            <h3 className="text-xs font-semibold text-zinc-300 mb-3">📸 Editorial Specs</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {[
-                { key: "shot_type", label: "Shot Type", isSelect: true },
-                { key: "camera_body", label: "Camera Body", placeholder: "e.g. Sony A7R IV" },
-                { key: "lens_spec", label: "Lens Spec", placeholder: "e.g. 85mm f/1.4" },
-                { key: "lighting_setup", label: "Lighting Setup", placeholder: "e.g. Softbox + Rim Light" },
-                { key: "composition_grid", label: "Composition Grid", placeholder: "e.g. Rule of Thirds" },
-                { key: "style_mood", label: "Style / Mood", placeholder: "e.g. Dark Luxury" },
-              ].map(({ key, label, placeholder, isSelect }) => (
-                <div key={key}>
-                  <label className="text-xs text-zinc-500 block mb-0.5">{label}</label>
-                  {isSelect ? (
-                    <select value={editorialForm[key]} onChange={(e) => setEditorialForm(p => ({...p, [key]: e.target.value}))} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 outline-none">
-                      <option value="">Select...</option>
-                      {["Hero Shot","Beauty Shot","Lookbook Image","Editorial","Lifestyle","Product Detail"].map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" value={editorialForm[key]} onChange={(e) => setEditorialForm(p => ({...p, [key]: e.target.value}))} placeholder={placeholder} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 outline-none" />
-                  )}
-                </div>
-              ))}
-            </div>
-            <button onClick={handleSaveEditorial} disabled={savingEditorial} className="w-full mt-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-2 rounded-xl text-xs font-semibold transition">
-              {savingEditorial ? "Saving..." : "Save Editorial Specs"}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Bulk Actions Floating Toolbar */}
       {selectionMode && selectedAssetIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-md border border-zinc-700 rounded-2xl px-5 py-3 shadow-2xl">
