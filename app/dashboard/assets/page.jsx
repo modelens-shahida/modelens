@@ -56,6 +56,12 @@ export default function AssetsPage() {
   // Details Modal and Trash states
   const [isTrashView, setIsTrashView] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [editorialData, setEditorialData] = useState(null);
+  const [editorialForm, setEditorialForm] = useState({
+    shot_type: "", camera_body: "", lens_spec: "",
+    lighting_setup: "", composition_grid: "", style_mood: ""
+  });
+  const [savingEditorial, setSavingEditorial] = useState(false);
 
   // Bulk action states
   const [selectionMode, setSelectionMode] = useState(false);
@@ -121,6 +127,20 @@ export default function AssetsPage() {
   useEffect(() => {
     if (selectedAsset) {
       fetchModalTags(selectedAsset.id);
+      api.get(`/api/v1/assets/${selectedAsset.id}/editorial`).then(data => {
+        setEditorialData(data);
+        setEditorialForm({
+          shot_type: data.shot_type || "",
+          camera_body: data.camera_body || "",
+          lens_spec: data.lens_spec || "",
+          lighting_setup: data.lighting_setup || "",
+          composition_grid: data.composition_grid || "",
+          style_mood: data.style_mood || "",
+        });
+      }).catch(() => {
+        setEditorialData(null);
+        setEditorialForm({ shot_type: "", camera_body: "", lens_spec: "", lighting_setup: "", composition_grid: "", style_mood: "" });
+      });
     } else {
       setModalTags([]);
     }
@@ -337,6 +357,21 @@ export default function AssetsPage() {
     setSelectionMode(false);
     toast.success(`Tag added to ${success} assets${failed > 0 ? `, ${failed} failed` : ""}`);
     fetchAssets();
+  };
+
+
+  const handleSaveEditorial = async () => {
+    if (!selectedAsset) return;
+    setSavingEditorial(true);
+    try {
+      const data = await api.patch(`/api/v1/assets/${selectedAsset.id}/editorial`, editorialForm);
+      setEditorialData(data);
+      toast.success("Editorial specs saved!");
+    } catch (e) {
+      toast.error("Failed to save editorial specs");
+    } finally {
+      setSavingEditorial(false);
+    }
   };
 
   return (
@@ -1164,6 +1199,41 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
     
+
+      {/* Editorial Specs Section - in Asset Modal */}
+      {selectedAsset && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-t-2xl p-5 shadow-2xl">
+            <h3 className="text-xs font-semibold text-zinc-300 mb-3">📸 Editorial Specs</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {[
+                { key: "shot_type", label: "Shot Type", isSelect: true },
+                { key: "camera_body", label: "Camera Body", placeholder: "e.g. Sony A7R IV" },
+                { key: "lens_spec", label: "Lens Spec", placeholder: "e.g. 85mm f/1.4" },
+                { key: "lighting_setup", label: "Lighting Setup", placeholder: "e.g. Softbox + Rim Light" },
+                { key: "composition_grid", label: "Composition Grid", placeholder: "e.g. Rule of Thirds" },
+                { key: "style_mood", label: "Style / Mood", placeholder: "e.g. Dark Luxury" },
+              ].map(({ key, label, placeholder, isSelect }) => (
+                <div key={key}>
+                  <label className="text-xs text-zinc-500 block mb-0.5">{label}</label>
+                  {isSelect ? (
+                    <select value={editorialForm[key]} onChange={(e) => setEditorialForm(p => ({...p, [key]: e.target.value}))} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 outline-none">
+                      <option value="">Select...</option>
+                      {["Hero Shot","Beauty Shot","Lookbook Image","Editorial","Lifestyle","Product Detail"].map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input type="text" value={editorialForm[key]} onChange={(e) => setEditorialForm(p => ({...p, [key]: e.target.value}))} placeholder={placeholder} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 outline-none" />
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={handleSaveEditorial} disabled={savingEditorial} className="w-full mt-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-2 rounded-xl text-xs font-semibold transition">
+              {savingEditorial ? "Saving..." : "Save Editorial Specs"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Actions Floating Toolbar */}
       {selectionMode && selectedAssetIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-md border border-zinc-700 rounded-2xl px-5 py-3 shadow-2xl">
