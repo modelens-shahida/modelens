@@ -114,7 +114,18 @@ async def test_worker_uses_comfyui_when_workflow_template_set(db_session: AsyncS
     })
     mock_comfyui.download_output = AsyncMock(return_value=b"fake_image_bytes")
 
-    with patch("app.services.comfyui_service.get_comfyui_service", return_value=mock_comfyui):
+    class MockSessionContext:
+        def __init__(self, session):
+            self.session = session
+        async def __aenter__(self):
+            return self.session
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.services.comfyui_service.get_comfyui_service", return_value=mock_comfyui), \
+         patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.dispatch_webhook.delay"):
         with patch("app.worker.storage_service") as mock_storage:
             mock_storage.save_file_bytes = MagicMock(return_value="/uploads/output.png")
             from app.worker import _process_generation_job_async
