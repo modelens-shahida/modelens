@@ -374,8 +374,59 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
 
             final_prompt = f"{prompt}.{workflow_style}".strip()
 
-            # Generate the image (real API or mock fallback)
-            image_bytes = await _generate_image(final_prompt)
+            # Check if ComfyUI pipeline should be used
+            use_comfyui = (
+                job.workflow_template_id is not None or
+                getattr(settings, "COMFYUI_MOCK_MODE", True)
+            )
+
+            if use_comfyui:
+                from app.services.comfyui_service import get_comfyui_service
+                import uuid
+
+                comfyui = get_comfyui_service()
+                client_id = str(uuid.uuid4())
+
+                # Base workflow template
+                workflow = {
+                    "14": {
+                        "class_type": "CLIPTextEncode",
+                        "_meta": {"title": "positive"},
+                        "inputs": {"text": final_prompt, "clip": ["4", 1]}
+                    },
+                    "22": {
+                        "class_type": "LoadImage",
+                        "_meta": {"title": "pose image"},
+                        "inputs": {"image": "pose_reference.png", "upload": "image"}
+                    },
+                }
+
+                # Inject dynamic inputs
+                scene_description = inputs.get("scene_description", final_prompt)
+                pose_filename = inputs.get("pose_filename", "")
+
+                workflow = comfyui.inject_node_input(workflow, "14", "text", scene_description)
+                if pose_filename:
+                    workflow = comfyui.inject_node_input(workflow, "22", "image", pose_filename)
+
+                # Submit workflow
+                prompt_id = await comfyui.submit_workflow(workflow, client_id=client_id)
+
+                # Track via WebSocket
+                await comfyui.listen_websocket_completion(prompt_id, client_id=client_id)
+
+                # Download output
+                result_data = await comfyui.poll_until_complete(prompt_id)
+                outputs = result_data.get("outputs", [])
+                if outputs:
+                    image_bytes = await comfyui.download_output(outputs[0].get("filename", "output.png"))
+                else:
+                    image_bytes = await comfyui.download_output("output.png")
+
+                print(f"[Worker] ComfyUI generation complete for job {job_id}, prompt_id: {prompt_id}")
+            else:
+                # Fallback to DALL-E / mock
+                image_bytes = await _generate_image(final_prompt)
 
             # Save to storage (local or S3 depending on STORAGE_BACKEND)
             output_filename = f"generated_{job_id}.png"
