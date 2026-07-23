@@ -16,10 +16,40 @@ export default function BillingPage() {
   const [loadingPortal, setLoadingPortal] = useState(false);
   const [loadingTopUp, setLoadingTopUp] = useState(null);
 
+  // Subscription plan states
+  const [billingCycle, setBillingCycle] = useState("monthly");
+  const [loadingCheckout, setLoadingCheckout] = useState(null);
+  const [brands, setBrands] = useState([]);
+
   // Pagination states
   const [page, setPage] = useState(1);
   const limit = 10;
   const offset = (page - 1) * limit;
+
+  useEffect(() => {
+    api.get("/api/v1/brands").then(data => setBrands(data || [])).catch(() => {});
+  }, []);
+
+  const currentTier = brands[0]?.tier || "free";
+
+  const handleCheckout = async (pkg, frequency) => {
+    setLoadingCheckout(`${pkg}_${frequency}`);
+    try {
+      const response = await api.post("/api/v1/billing/checkout-session", {
+        package: pkg,
+        frequency: frequency,
+      });
+      if (response.session_url) {
+        window.location.href = response.session_url;
+      } else {
+        toast.error("Failed to create checkout session");
+      }
+    } catch (e) {
+      toast.error(e.message || "Checkout failed");
+    } finally {
+      setLoadingCheckout(null);
+    }
+  };
 
   // Fetch balance info
   const fetchBalance = async () => {
@@ -149,6 +179,45 @@ export default function BillingPage() {
 
       {/* Top Section Cards */}
       <div className="grid md:grid-cols-2 gap-6">
+        {/* Subscription Plans */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-white">Subscription Plans</h2>
+              <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-700 rounded-xl p-1">
+                <button onClick={() => setBillingCycle("monthly")} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition ${billingCycle === "monthly" ? "bg-purple-600 text-white" : "text-zinc-400 hover:text-white"}`}>Monthly</button>
+                <button onClick={() => setBillingCycle("annual")} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition ${billingCycle === "annual" ? "bg-purple-600 text-white" : "text-zinc-400 hover:text-white"}`}>Annual <span className="text-green-400 ml-1">Save 17%</span></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { pkg: "lite", name: "Lite", monthly: { price: "$9/mo", credits: "50 credits/mo" }, annual: { price: "$90/yr", credits: "600 credits/yr" }, features: ["50 AI generations/mo", "1 Brand workspace", "Basic support"], color: "border-zinc-700" },
+                { pkg: "plus", name: "Plus", monthly: { price: "$29/mo", credits: "250 credits/mo" }, annual: { price: "$290/yr", credits: "3000 credits/yr" }, features: ["250 AI generations/mo", "5 Brand workspaces", "Priority support", "Advanced analytics"], color: "border-purple-600", popular: true },
+                { pkg: "pro", name: "Pro", monthly: { price: "$99/mo", credits: "1000 credits/mo" }, annual: { price: "$990/yr", credits: "12000 credits/yr" }, features: ["1000 AI generations/mo", "Unlimited workspaces", "Dedicated support", "Custom workflows", "MLflow integration"], color: "border-indigo-500" },
+              ].map(plan => {
+                const isActive = currentTier === plan.pkg;
+                const isLoading = loadingCheckout === `${plan.pkg}_${billingCycle}`;
+                const pricing = billingCycle === "monthly" ? plan.monthly : plan.annual;
+                return (
+                  <div key={plan.pkg} className={`relative bg-zinc-900/40 border-2 ${plan.color} rounded-2xl p-6 flex flex-col`}>
+                    {plan.popular && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-1 rounded-full font-medium">Most Popular</span>}
+                    <h3 className="text-lg font-bold text-white mb-1">{plan.name}</h3>
+                    <p className="text-2xl font-bold text-white mb-1">{pricing.price}</p>
+                    <p className="text-xs text-zinc-400 mb-4">{pricing.credits}</p>
+                    <ul className="space-y-2 mb-6 flex-1">{plan.features.map(f => <li key={f} className="text-xs text-zinc-300 flex items-center gap-2"><span className="text-purple-400">✓</span> {f}</li>)}</ul>
+                    {isActive ? (
+                      <div className="w-full py-2.5 rounded-xl text-sm font-medium text-center bg-zinc-800 text-zinc-400 border border-zinc-700">Active Plan</div>
+                    ) : (
+                      <button onClick={() => handleCheckout(plan.pkg, billingCycle)} disabled={isLoading} className={`w-full py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${plan.popular ? "bg-purple-600 hover:bg-purple-700 text-white" : "border border-zinc-600 hover:border-purple-500 text-zinc-300 hover:text-white"} disabled:opacity-50`}>
+                        {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {isLoading ? "Processing..." : "Subscribe"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
         {/* Credits Balance Card */}
         <div className="bg-zinc-950 border border-zinc-850 p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-10">
