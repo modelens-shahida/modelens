@@ -4,7 +4,11 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LayoutDashboard, Webhook, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3, Layers, PenTool } from "lucide-react";
+<<<<<<< HEAD
+import { LayoutDashboard, Webhook, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3, Layers, PenTool, Shirt } from "lucide-react";
+=======
+import { LayoutDashboard, Webhook, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3, Layers, PenTool, Shirt } from "lucide-react";
+>>>>>>> origin/catalog-studio-ui
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -20,6 +24,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Analytics", path: "/dashboard/analytics", icon: BarChart3 },
     { name: "Ghost Studio", path: "/dashboard/ghost", icon: Layers },
     { name: "Sketch Studio", path: "/dashboard/sketch", icon: PenTool },
+    { name: "Catalog Studio", path: "/dashboard/catalog", icon: Shirt },
     { name: "Campaigns", path: "/dashboard/campaigns", icon: Megaphone },
     { name: "AI Generator", path: "/dashboard/jobs", icon: Sparkles },
     { name: "AI Characters", path: "/dashboard/characters", icon: User },
