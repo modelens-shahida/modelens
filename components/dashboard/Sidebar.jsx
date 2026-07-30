@@ -18,6 +18,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Fix Requests", path: "/dashboard/fix-requests", icon: Wrench },
     { name: "Webhooks", path: "/dashboard/webhooks", icon: Webhook },
     { name: "Analytics", path: "/dashboard/analytics", icon: BarChart3 },
+    { name: "Ghost Studio", path: "/dashboard/ghost", icon: Layers },
     { name: "Campaigns", path: "/dashboard/campaigns", icon: Megaphone },
     { name: "AI Generator", path: "/dashboard/jobs", icon: Sparkles },
     { name: "AI Characters", path: "/dashboard/characters", icon: User },
