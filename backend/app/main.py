@@ -33,6 +33,7 @@ from app.routers.admin_settings import router as admin_settings_router
 from app.routers.analytics import router as analytics_router
 from app.routers.campaign_generation import router as campaign_generation_router
 from app.routers.campaign_templates import router as campaign_templates_router
+from app.routers.ghost_jobs import router as ghost_jobs_router
 from app.routers.editorial_assets import router as editorial_assets_router
 from app.routers.health import router as health_router
 from app.routers.notifications import router as notifications_router
@@ -188,6 +189,7 @@ app.include_router(admin_settings_router)
 app.include_router(analytics_router)
 app.include_router(campaign_generation_router)
 app.include_router(campaign_templates_router)
+app.include_router(ghost_jobs_router)
 app.include_router(editorial_assets_router)
 app.include_router(health_router)
 app.include_router(notifications_router)
