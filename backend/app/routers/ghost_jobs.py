@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput, CreditTransaction
 from app.middleware.auth import get_current_user
+from app.worker import process_ghost_job
 
 router = APIRouter(prefix="/api/v1/ghost-jobs", tags=["Ghost Studio"])
 
@@ -75,7 +76,6 @@ async def create_ghost_job(
 
     # Dispatch Celery task
     try:
-        from app.worker import process_ghost_job
         process_ghost_job.delay(job.id)
     except Exception as e:
         print(f"[GhostJob] Celery dispatch failed: {e}")
@@ -131,7 +131,6 @@ async def retry_ghost_job(
     await db.commit()
 
     try:
-        from app.worker import process_ghost_job
         process_ghost_job.delay(job.id)
     except Exception as e:
         print(f"[GhostJob] Retry dispatch failed: {e}")

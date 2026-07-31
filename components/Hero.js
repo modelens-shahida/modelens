@@ -13,7 +13,7 @@ const Hero = () => {
   const [scale, setScale] = useState(1);
   const [rounded, setRounded] = useState(false);
 
-  // Auto Image slider
+  // Auto Image sliderdr
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrent((prev) => (prev + 1) % Images.length);
