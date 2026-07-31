@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, User, VideoProject, VideoClip, VideoRender
 from app.middleware.auth import get_current_user
+from app.worker import process_video_generation, process_video_render
 
 router = APIRouter(prefix="/api/v1/video-projects", tags=["Move Studio"])
 
@@ -216,7 +217,6 @@ async def generate_video(
 
     # Dispatch Celery task
     try:
-        from app.worker import process_video_generation
         process_video_generation.delay(project_id, payload.provider or "AUTO")
     except Exception as e:
         print(f"[VideoProject] Celery dispatch failed: {e}")
@@ -256,7 +256,6 @@ async def render_video(
     await db.refresh(render)
 
     try:
-        from app.worker import process_video_render
         process_video_render.delay(render.id)
     except Exception as e:
         print(f"[VideoRender] Celery dispatch failed: {e}")
