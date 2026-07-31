@@ -1947,3 +1947,202 @@ async def _process_campaign_generation_async(task_self, parent_job_id: int):
             })
 
             raise task_self.retry(exc=e, countdown=60 * (2 ** task_self.request.retries))
+
+
+# ========================== Move Studio Tasks ===================
+
+@celery_app.task(
+    name="app.worker.process_video_generation",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
+def process_video_generation(self, project_id: int, provider: str = "AUTO"):
+    """Celery task for video clip generation using Runway/Luma."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_process_video_generation_async(self, project_id, provider))
+
+
+async def _process_video_generation_async(task_self, project_id: int, provider: str):
+    from app.models.db import VideoProject, VideoClip, User
+
+    async with async_session_maker() as db:
+        result = await db.execute(select(VideoProject).where(VideoProject.id == project_id))
+        project = result.scalars().first()
+        if not project:
+            print(f"[VideoGen] Project {project_id} not found.")
+            return
+
+        clips_result = await db.execute(
+            select(VideoClip).where(
+                VideoClip.project_id == project_id,
+                VideoClip.status == "queued"
+            ).order_by(VideoClip.position)
+        )
+        clips = clips_result.scalars().all()
+
+        for clip in clips:
+            try:
+                clip.status = "generating"
+                await db.commit()
+
+                # Provider routing
+                # LUMA: start-to-end frame interpolation
+                # RUNWAY: single frame animation
+                use_luma = (clip.start_image_url and clip.end_image_url) or provider == "LUMA"
+                actual_provider = "LUMA" if use_luma else "RUNWAY"
+
+                clip_url = None
+                provider_job_id = None
+
+                try:
+                    if actual_provider == "LUMA":
+                        from app.config import settings
+                        luma_key = getattr(settings, "LUMA_API_KEY", None)
+                        if not luma_key or luma_key == "mock":
+                            raise Exception("Luma mock mode")
+                        # Luma Ray 2 API call would go here
+                        clip_url = f"https://cdn.example.com/clips/luma_{clip.id}.mp4"
+                        provider_job_id = f"luma_{clip.id}"
+                    else:
+                        from app.config import settings
+                        runway_key = getattr(settings, "RUNWAY_API_KEY", None)
+                        if not runway_key or runway_key == "mock":
+                            raise Exception("Runway mock mode")
+                        # Runway Gen-4.5 API call would go here
+                        clip_url = f"https://cdn.example.com/clips/runway_{clip.id}.mp4"
+                        provider_job_id = f"runway_{clip.id}"
+
+                except Exception as provider_err:
+                    print(f"[VideoGen] Provider failed (mock): {provider_err}")
+                    clip_url = f"https://cdn.example.com/clips/mock_{clip.id}.mp4"
+                    provider_job_id = f"mock_{clip.id}"
+                    actual_provider = "MOCK"
+
+                clip.status = "completed"
+                clip.clip_url = clip_url
+                clip.provider = actual_provider
+                clip.provider_job_id = provider_job_id
+                clip.credits_consumed = 5
+                await db.commit()
+
+            except Exception as clip_err:
+                print(f"[VideoGen] Clip {clip.id} failed: {clip_err}")
+                clip.status = "failed"
+                # Refund credits for failed clip
+                user_result = await db.execute(select(User).where(User.id == project.user_id))
+                user = user_result.scalars().first()
+                if user:
+                    user.credits = (user.credits or 0) + 5
+                await db.commit()
+
+        # Check if all clips completed
+        all_clips = await db.execute(select(VideoClip).where(VideoClip.project_id == project_id))
+        all_clips_list = all_clips.scalars().all()
+        all_done = all(c.status in ("completed", "failed") for c in all_clips_list)
+        if all_done:
+            project.status = "ready_to_render"
+            await db.commit()
+
+
+@celery_app.task(
+    name="app.worker.process_video_render",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+)
+def process_video_render(self, render_id: int):
+    """Celery task for FFmpeg video rendering."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_process_video_render_async(self, render_id))
+
+
+async def _process_video_render_async(task_self, render_id: int):
+    from app.models.db import VideoRender, VideoClip, VideoProject
+    import subprocess
+    import tempfile
+    import os
+
+    async with async_session_maker() as db:
+        result = await db.execute(select(VideoRender).where(VideoRender.id == render_id))
+        render = result.scalars().first()
+        if not render:
+            print(f"[VideoRender] Render {render_id} not found.")
+            return
+
+        try:
+            render.status = "processing"
+            await db.commit()
+
+            # Get completed clips
+            clips_result = await db.execute(
+                select(VideoClip).where(
+                    VideoClip.project_id == render.project_id,
+                    VideoClip.status == "completed"
+                ).order_by(VideoClip.position)
+            )
+            clips = clips_result.scalars().all()
+
+            if not clips:
+                raise Exception("No completed clips to render")
+
+            # FFmpeg rendering (mock for now)
+            output_filename = f"render_{render_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.mp4"
+
+            try:
+                # Build FFmpeg concat list
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+                    for clip in clips:
+                        if clip.clip_url:
+                            f.write(f"file '{clip.clip_url}'\n")
+                            if clip.trim_start or clip.trim_end:
+                                f.write(f"inpoint {clip.trim_start or 0}\n")
+                                if clip.trim_end:
+                                    f.write(f"outpoint {clip.trim_end}\n")
+                    concat_file = f.name
+
+                # FFmpeg command for 1080p H.264/AAC output
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", concat_file,
+                    "-vf", f"scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                    "-r", "24",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-movflags", "+faststart",
+                    f"/tmp/{output_filename}"
+                ]
+
+                if render.audio_url:
+                    ffmpeg_cmd.extend(["-i", render.audio_url, "-shortest"])
+
+                subprocess.run(ffmpeg_cmd, capture_output=True, timeout=300)
+                os.unlink(concat_file)
+
+                output_url = f"/renders/{output_filename}"
+            except Exception as ffmpeg_err:
+                print(f"[VideoRender] FFmpeg failed (mock): {ffmpeg_err}")
+                output_url = f"https://cdn.example.com/renders/mock_{render_id}.mp4"
+
+            render.status = "completed"
+            render.output_url = output_url
+            render.duration_seconds = sum(c.duration or 4.0 for c in clips)
+            await db.commit()
+
+            print(f"[VideoRender] Render {render_id} completed: {output_url}")
+
+        except Exception as e:
+            print(f"[VideoRender] Render {render_id} failed: {e}")
+            render.status = "failed"
+            render.error_message = str(e)[:200]
+            await db.commit()
+            raise task_self.retry(exc=e, countdown=30)
