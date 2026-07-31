@@ -281,7 +281,7 @@ async def test_job_failures_refund_and_log(db_session: AsyncSession, test_data: 
     user = user_result.scalars().first()
     starting_credits = user.credits
     
-    gen_job = AIJob(user_id=editor_id, brand_id=brand_id, workflow_template_id=wf_id, status="pending", job_type="generation", inputs={}, outputs={})
+    gen_job = AIJob(user_id=editor_id, brand_id=brand_id, workflow_template_id=None, status="pending", job_type="generation", inputs={}, outputs={})
     wf_job = AIJob(user_id=editor_id, brand_id=brand_id, workflow_template_id=None, status="pending", job_type="workflow", inputs={}, outputs={})
     
     char = Character(brand_id=brand_id, name="Test Char", description="female model", image_path="/uploads/test_char.png")
@@ -310,6 +310,7 @@ async def test_job_failures_refund_and_log(db_session: AsyncSession, test_data: 
             
     # Mock generation failure
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker.settings.COMFYUI_MOCK_MODE", False), \
          patch("app.worker._generate_image", side_effect=Exception("API Error")):
         await _process_generation_job_async(gen_id, retries=3, max_retries=3)
         

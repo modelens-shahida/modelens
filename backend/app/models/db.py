@@ -568,6 +568,61 @@ class EditorialAsset(Base):
 
 
 
+class GhostJob(Base):
+    __tablename__ = "ghost_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    product_hint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    garment_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    view: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    resolution: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    preserve_print: Mapped[bool] = mapped_column(default=True)
+    preserve_seams: Mapped[bool] = mapped_column(default=True)
+    generation_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    credits_reserved: Mapped[int] = mapped_column(default=0)
+    credits_consumed: Mapped[int] = mapped_column(default=0)
+    progress: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    assets = relationship("GhostJobAsset", back_populates="job", cascade="all, delete-orphan")
+    outputs = relationship("GhostOutput", back_populates="job", cascade="all, delete-orphan")
+
+
+class GhostJobAsset(Base):
+    __tablename__ = "ghost_job_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("ghost_jobs.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mask_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    crop_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("GhostJob", back_populates="assets")
+
+
+class GhostOutput(Base):
+    __tablename__ = "ghost_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("ghost_jobs.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    fidelity_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    api_interaction_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("GhostJob", back_populates="outputs")
+
+
 class VideoProject(Base):
     __tablename__ = "video_projects"
 

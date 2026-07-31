@@ -256,7 +256,7 @@ async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSe
     job = AIJob(
         user_id=editor_user.id,
         brand_id=brand.id,
-        workflow_template_id=workflow.id,
+        workflow_template_id=None,
         status="pending",
         job_type="generation",
         inputs={"prompt": "This will fail"},
@@ -270,6 +270,7 @@ async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSe
 
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
          patch("app.worker._generate_image", new=AsyncMock(side_effect=RuntimeError("Image generation failed"))), \
+         patch("app.worker.settings.COMFYUI_MOCK_MODE", False), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
@@ -325,7 +326,7 @@ async def test_generation_job_retries_on_transient_error(db_session: AsyncSessio
     job = AIJob(
         user_id=editor_user.id,
         brand_id=brand.id,
-        workflow_template_id=workflow.id,
+        workflow_template_id=None,
         status="pending",
         job_type="generation",
         inputs={"prompt": "Retry test prompt"},
@@ -344,6 +345,7 @@ async def test_generation_job_retries_on_transient_error(db_session: AsyncSessio
 
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
          patch("app.worker._generate_image", new=flaky_generate), \
+         patch("app.worker.settings.COMFYUI_MOCK_MODE", False), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
          patch("app.worker.dispatch_webhook.delay"):
 
