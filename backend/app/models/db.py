@@ -734,6 +734,52 @@ class SketchOutput(Base):
     job = relationship("SketchJob", back_populates="outputs")
 
 
+
+class CatalogJob(Base):
+    __tablename__ = "catalog_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    engine_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="product_to_model")
+    generation_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="studio_quality")
+    model_identity: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pose: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    background: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="4:5")
+    resolution: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="2K")
+    total_items: Mapped[int] = mapped_column(default=0)
+    completed_items: Mapped[int] = mapped_column(default=0)
+    failed_items: Mapped[int] = mapped_column(default=0)
+    credits_reserved: Mapped[int] = mapped_column(default=0)
+    credits_consumed: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    items = relationship("CatalogJobItem", back_populates="job", cascade="all, delete-orphan")
+
+
+class CatalogJobItem(Base):
+    __tablename__ = "catalog_job_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("catalog_jobs.id", ondelete="CASCADE"), index=True)
+    sku_tag: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    product_image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mask_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    fidelity_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    provider_job_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("CatalogJob", back_populates="items")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
