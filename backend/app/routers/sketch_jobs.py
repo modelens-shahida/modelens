@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, User, SketchJob, SketchJobReference, SketchOutput
 from app.middleware.auth import get_current_user
+from app.worker import process_sketch_job
 
 router = APIRouter(prefix="/api/v1/sketch-jobs", tags=["Sketch Studio"])
 
@@ -85,7 +86,6 @@ async def create_sketch_job(
 
     # Dispatch Celery task
     try:
-        from app.worker import process_sketch_job
         process_sketch_job.delay(job.id)
     except Exception as e:
         print(f"[SketchJob] Celery dispatch failed: {e}")
@@ -178,7 +178,6 @@ async def retry_sketch_job(
     await db.commit()
 
     try:
-        from app.worker import process_sketch_job
         process_sketch_job.delay(job.id)
     except Exception as e:
         print(f"[SketchJob] Retry dispatch failed: {e}")
