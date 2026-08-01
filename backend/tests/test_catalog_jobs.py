@@ -212,7 +212,14 @@ async def test_retry_catalog_job(client: AsyncClient, test_data: dict, db_sessio
     assert res.status_code == status.HTTP_200_OK
 
 
-# ========================== Worker Tests ========================
+class MockSessionContext:
+    def __init__(self, session):
+        self.session = session
+    async def __aenter__(self):
+        return self.session
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 @pytest.mark.asyncio
 async def test_catalog_worker_mock_mode(client: AsyncClient, test_data: dict, db_session: AsyncSession):
@@ -247,7 +254,8 @@ async def test_catalog_worker_mock_mode(client: AsyncClient, test_data: dict, db
         request = MagicMock()
         request.retries = 0
 
-    await _process_catalog_job_async(MockTask(), job.id)
+    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)):
+        await _process_catalog_job_async(MockTask(), job.id)
 
     result = await db_session.execute(select(CatalogJob).where(CatalogJob.id == job.id))
     updated_job = result.scalars().first()

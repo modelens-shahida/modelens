@@ -157,6 +157,45 @@ async def cancel_catalog_job(
     return {"job_id": job.id, "status": "cancelled", "credits_refunded": refund}
 
 
+@router.post("/{job_id}/retry")
+async def retry_catalog_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retry a failed catalog job."""
+    result = await db.execute(
+        select(CatalogJob).where(CatalogJob.id == job_id, CatalogJob.user_id == current_user.id)
+    )
+    job = result.scalars().first()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog job not found.")
+    if job.status != "failed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot retry job with status: {job.status}")
+
+    # Re-queue the failed items and the job
+    job.status = "queued"
+    job.progress = 0
+    job.error_message = None
+
+    items_result = await db.execute(
+        select(CatalogJobItem).where(CatalogJobItem.job_id == job_id, CatalogJobItem.status == "failed")
+    )
+    failed_items = items_result.scalars().all()
+    for item in failed_items:
+        item.status = "queued"
+        item.error_message = None
+
+    await db.commit()
+
+    try:
+        process_catalog_job.delay(job.id)
+    except Exception as e:
+        print(f"[CatalogJob] Retry dispatch failed: {e}")
+
+    return {"job_id": job.id, "status": "queued"}
+
+
 @router.post("/{job_id}/items/{item_id}/retry")
 async def retry_catalog_item(
     job_id: int,
