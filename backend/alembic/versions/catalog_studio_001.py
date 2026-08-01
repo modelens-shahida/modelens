@@ -55,6 +55,20 @@ def upgrade() -> None:
     )
 
 
+    op.create_table(
+        'catalog_outputs',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('job_id', sa.Integer(), sa.ForeignKey('catalog_jobs.id', ondelete='CASCADE'), nullable=False, index=True),
+        sa.Column('job_item_id', sa.Integer(), sa.ForeignKey('catalog_job_items.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('asset_id', sa.Integer(), sa.ForeignKey('assets.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('output_url', sa.String(500), nullable=True),
+        sa.Column('quality_score', sa.Float(), nullable=True),
+        sa.Column('api_interaction_id', sa.String(200), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+    )
+
+
 def downgrade() -> None:
+    op.drop_table('catalog_outputs')
     op.drop_table('catalog_job_items')
     op.drop_table('catalog_jobs')

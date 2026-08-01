@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem
 from app.middleware.auth import get_current_user
+from app.worker import process_catalog_job, process_catalog_item
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Studio"])
 
@@ -77,7 +78,6 @@ async def create_catalog_job(
     await db.refresh(job)
 
     try:
-        from app.worker import process_catalog_job
         process_catalog_job.delay(job.id)
     except Exception as e:
         print(f"[CatalogJob] Celery dispatch failed: {e}")
@@ -179,7 +179,6 @@ async def retry_catalog_item(
     await db.commit()
 
     try:
-        from app.worker import process_catalog_item
         process_catalog_item.delay(item_id)
     except Exception as e:
         print(f"[CatalogItem] Retry dispatch failed: {e}")

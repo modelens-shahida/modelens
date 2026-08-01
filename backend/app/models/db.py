@@ -780,6 +780,20 @@ class CatalogJobItem(Base):
     job = relationship("CatalogJob", back_populates="items")
 
 
+
+class CatalogOutput(Base):
+    __tablename__ = "catalog_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("catalog_jobs.id", ondelete="CASCADE"), index=True)
+    job_item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("catalog_job_items.id", ondelete="SET NULL"), nullable=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    api_interaction_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
