@@ -387,3 +387,102 @@ async def test_angle_shot_worker_extraction(client: AsyncClient, db_session: Asy
     latest_version = v_res.scalars().first()
     assert latest_version is not None
     assert latest_version.change_note == "Custom pose extracted from reference image"
+
+
+# ========================== Schema & Seeding Tests ========================
+
+@pytest.mark.asyncio
+async def test_validate_pose_preset_schema(client: AsyncClient, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    # 1. Test valid payload
+    valid_payload = {
+        "preset_id": "ML-POSE-CAT-999",
+        "version": "1.0.0",
+        "family": "CATALOG_STANDING",
+        "display_name": "Valid Test Pose",
+        "body_yaw_deg": 45,
+        "framing": "FULL_BODY",
+        "qa_rule_codes": ["RULE_A", "RULE_B"],
+        "status": "ACTIVE",
+        "tier": "CORE",
+        "risk_level": "LOW"
+    }
+    res = await client.post("/api/v1/angle-shots/validate", json=valid_payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["valid"] is True
+
+    # 2. Test invalid payload (missing display_name, body_yaw_deg out of range)
+    invalid_payload = {
+        "preset_id": "ML-POSE-CAT-999",
+        "version": "1.0.0",
+        "family": "CATALOG_STANDING",
+        "body_yaw_deg": 250,
+        "framing": "FULL_BODY",
+        "qa_rule_codes": ["RULE_A"],
+        "status": "ACTIVE"
+    }
+    res = await client.post("/api/v1/angle-shots/validate", json=invalid_payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_400_BAD_REQUEST
+    assert "JSON schema validation failed" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_preset_with_schema_validation(client: AsyncClient, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    # 1. Valid ML-POSE creation
+    payload = {
+        "name": "Front Angle Test",
+        "code": "ML-POSE-CAT-101",
+        "category": "CATALOG_STANDING",
+        "framing": "FULL_BODY",
+        "pose": "standing",
+        "quality_rules": {
+            "version": "1.0.0",
+            "body_yaw_deg": "0",
+            "qa_rule_codes": "RULE_A;RULE_B",
+            "tier": "CORE",
+            "risk_level": "LOW"
+        }
+    }
+    res = await client.post("/api/v1/angle-shots", json=payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_201_CREATED
+
+    # 2. Invalid ML-POSE creation (missing framing)
+    invalid_payload = {
+        "name": "Invalid Test",
+        "code": "ML-POSE-CAT-102",
+        "category": "CATALOG_STANDING",
+        "quality_rules": {
+            "version": "1.0.0",
+            "body_yaw_deg": "0",
+            "qa_rule_codes": "RULE_A",
+            "tier": "CORE"
+        }
+    }
+    res = await client.post("/api/v1/angle-shots", json=invalid_payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_seed_angle_shot_presets_integration(db_session: AsyncSession):
+    # Run the seed function directly with current active session
+    from seed_angle_shot_presets import seed as run_seed
+    with patch("seed_angle_shot_presets.async_sessionmaker") as mock_maker:
+        # Patch session context to return db_session
+        mock_context = MagicMock()
+        mock_context.__aenter__.return_value = db_session
+        mock_maker.return_value = lambda: mock_context
+        
+        await run_seed()
+
+    # Query loaded presets
+    res = await db_session.execute(select(AngleShot).where(AngleShot.code == "ML-POSE-CAT-001"))
+    shot = res.scalars().first()
+    assert shot is not None
+    assert shot.name == "Front Neutral"
+    assert shot.is_premium is False
+    assert shot.quality_rules["version"] == "1.0.0"
+    assert "EVEN" in shot.quality_rules["weight_distribution"]
+

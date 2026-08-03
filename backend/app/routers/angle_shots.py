@@ -4,12 +4,36 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from datetime import datetime
+import json
+import os
+from jsonschema import validate, ValidationError
 
 from app.models.db import get_db, User, AngleShot, AngleShotCompatibility, AngleShotVersion
 from app.middleware.auth import get_current_user
 from app.services.compatibility import validate_compatibility
 
 router = APIRouter(prefix="/api/v1/angle-shots", tags=["Angle Shots"])
+
+SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "schemas", "pose_preset.json")
+try:
+    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+        POSE_PRESET_SCHEMA = json.load(f)
+except Exception as e:
+    POSE_PRESET_SCHEMA = None
+    print(f"Error loading Pose Preset Schema: {e}")
+
+
+def validate_pose_preset_schema(payload_dict: dict):
+    if not POSE_PRESET_SCHEMA:
+        return
+    try:
+        validate(instance=payload_dict, schema=POSE_PRESET_SCHEMA)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"JSON schema validation failed: {e.message}"
+        )
+
 
 
 # ========================== Schemas ==============================
@@ -191,6 +215,42 @@ async def create_angle_shot(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new angle shot preset."""
+    if payload.code and payload.code.startswith("ML-POSE-"):
+        # Map fields to match JSON schema format for validation
+        body_yaw = 0
+        qa_rule_codes = []
+        tier = "CORE"
+        risk_level = "LOW"
+        version_str = "1.0.0"
+        
+        if payload.quality_rules:
+            body_yaw = int(payload.quality_rules.get("body_yaw_deg", 0))
+            raw_qa = payload.quality_rules.get("qa_rule_codes", "")
+            if isinstance(raw_qa, list):
+                qa_rule_codes = raw_qa
+            elif isinstance(raw_qa, str) and raw_qa:
+                qa_rule_codes = [x.strip() for x in raw_qa.split(";") if x.strip()]
+            tier = payload.quality_rules.get("tier", "CORE")
+            risk_level = payload.quality_rules.get("risk_level", "LOW")
+            version_str = payload.quality_rules.get("version", "1.0.0")
+
+        validation_dict = {
+            "preset_id": payload.code,
+            "version": version_str,
+            "family": payload.category,
+            "display_name": payload.name,
+            "body_yaw_deg": body_yaw,
+            "framing": payload.framing,
+            "qa_rule_codes": qa_rule_codes,
+            "status": "ACTIVE",
+            "tier": tier,
+            "risk_level": risk_level
+        }
+        
+        # Remove None values so required check works
+        validation_dict = {k: v for k, v in validation_dict.items() if v is not None}
+        validate_pose_preset_schema(validation_dict)
+
     shot = AngleShot(
         name=payload.name,
         code=payload.code,
@@ -413,3 +473,14 @@ async def check_compatibility(
         "warnings": compat.warnings,
         "blocking_reasons": compat.blocking_reasons,
     }
+
+
+@router.post("/validate", status_code=status.HTTP_200_OK)
+async def validate_preset_payload(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Validate a raw pose preset payload against the JSON Schema."""
+    validate_pose_preset_schema(payload)
+    return {"valid": True, "message": "Preset configuration conforms to the JSON Schema."}
+
