@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput, CreditTransaction
+from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput, CreditTransaction, Brand, BrandMember
 from app.middleware.auth import get_current_user
 from app.worker import process_ghost_job
 
@@ -22,7 +22,7 @@ RESOLUTION_CREDITS = {
 # ========================== Schemas ==============================
 
 class GhostJobCreate(BaseModel):
-    brand_id: int
+    brand_id: Optional[int] = None
     product_hint: Optional[str] = None
     garment_type: Optional[str] = "dress"
     view: Optional[str] = "front"
@@ -37,13 +37,68 @@ class GhostJobCreate(BaseModel):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_ghost_job(
-    payload: GhostJobCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new ghost mannequin generation job."""
+    """Create a new ghost mannequin generation job supporting both JSON and FormData."""
+    import os
+    import uuid
+    from app.services.storage import storage_service
+
+    content_type = request.headers.get("content-type", "")
+    image_path = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        brand_id_val = form.get("brand_id")
+        brand_id = int(brand_id_val) if brand_id_val else None
+        product_hint = form.get("product_hint")
+        garment_type = form.get("garment_type", "dress")
+        view = form.get("view", "front")
+        aspect_ratio = form.get("aspect_ratio", "3:4")
+        resolution = form.get("resolution", "2K")
+        preserve_print = form.get("preserve_print") != "false"
+        preserve_seams = form.get("preserve_seams") != "false"
+        generation_mode = form.get("generation_mode", "studio")
+
+        file = form.get("image")
+        if file:
+            filename = file.filename or "file.png"
+            file_ext = os.path.splitext(filename)[1]
+            unique_filename = f"{uuid.uuid4()}{file_ext}"
+            file_bytes = await file.read()
+            image_path = storage_service.save_file_bytes(unique_filename, file_bytes)
+    else:
+        json_data = await request.json()
+        payload = GhostJobCreate(**json_data)
+        brand_id = payload.brand_id
+        product_hint = payload.product_hint
+        garment_type = payload.garment_type
+        view = payload.view
+        aspect_ratio = payload.aspect_ratio
+        resolution = payload.resolution
+        preserve_print = payload.preserve_print
+        preserve_seams = payload.preserve_seams
+        generation_mode = payload.generation_mode
+
+    # Fallback to user's first brand if brand_id is missing or None
+    if not brand_id:
+        brand_query = select(Brand.id).where(Brand.owner_id == current_user.id).limit(1)
+        brand_res = await db.execute(brand_query)
+        brand_id = brand_res.scalar()
+        if not brand_id:
+            member_query = select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id).limit(1)
+            member_res = await db.execute(member_query)
+            brand_id = member_res.scalar()
+        if not brand_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active brand found for the user. Please create a brand first."
+            )
+
     # Check credits
-    credits_needed = RESOLUTION_CREDITS.get(payload.resolution, 4)
+    credits_needed = RESOLUTION_CREDITS.get(resolution, 4)
     if (current_user.credits or 0) < credits_needed:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -56,21 +111,31 @@ async def create_ghost_job(
     # Create job
     job = GhostJob(
         user_id=current_user.id,
-        brand_id=payload.brand_id,
+        brand_id=brand_id,
         status="queued",
-        product_hint=payload.product_hint,
-        garment_type=payload.garment_type,
-        view=payload.view,
-        aspect_ratio=payload.aspect_ratio,
-        resolution=payload.resolution,
-        preserve_print=payload.preserve_print,
-        preserve_seams=payload.preserve_seams,
-        generation_mode=payload.generation_mode,
+        product_hint=product_hint,
+        garment_type=garment_type,
+        view=view,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        preserve_print=preserve_print,
+        preserve_seams=preserve_seams,
+        generation_mode=generation_mode,
         credits_reserved=credits_needed,
         credits_consumed=0,
         progress=0,
     )
     db.add(job)
+    await db.flush()
+
+    if image_path:
+        # Create GhostJobAsset record for the uploaded image
+        job_asset = GhostJobAsset(
+            job_id=job.id,
+            image_path=image_path,
+        )
+        db.add(job_asset)
+
     await db.commit()
     await db.refresh(job)
 
@@ -84,7 +149,7 @@ async def create_ghost_job(
         "job_id": job.id,
         "status": job.status,
         "credits_reserved": credits_needed,
-        "estimated_time": "~45 sec" if payload.generation_mode == "studio" else "~15 sec",
+        "estimated_time": "~45 sec" if generation_mode == "studio" else "~15 sec",
     }
 
 

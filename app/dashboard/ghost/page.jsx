@@ -65,7 +65,7 @@ export default function GhostStudioPage() {
     timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
     pollRef.current = setInterval(async () => {
       try {
-        const status = await api.get(`/v1/ghost-jobs/${jobId}`);
+        const status = await api.get(`/api/v1/ghost-jobs/${jobId}`);
         setJobStatus(status);
         if (status.status === "completed" || status.status === "failed") {
           clearInterval(pollRef.current);
@@ -98,7 +98,7 @@ export default function GhostStudioPage() {
       formData.append("preserve_print", preservePrint);
       formData.append("preserve_seams", preserveSeams);
 
-      const result = await api.post("/v1/ghost-jobs", formData);
+      const result = await api.post("/api/v1/ghost-jobs", formData);
       setActiveJob(result);
       setJobStatus({ status: "queued", ...result });
       startPolling(result.id || result.job_id);

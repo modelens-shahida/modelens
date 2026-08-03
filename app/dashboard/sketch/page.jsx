@@ -84,7 +84,7 @@ export default function SketchStudioPage() {
     timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
     pollRef.current = setInterval(async () => {
       try {
-        const status = await api.get(`/v1/sketch-jobs/${jobId}`);
+        const status = await api.get(`/api/v1/sketch-jobs/${jobId}`);
         setJobStatus(status);
         if (status.status === "completed" || status.status === "failed") {
           clearInterval(pollRef.current);
@@ -116,7 +116,7 @@ export default function SketchStudioPage() {
       formData.append("model_brief", modelBrief);
       formData.append("background_brief", backgroundBrief);
 
-      const result = await api.post("/v1/sketch-jobs", formData);
+      const result = await api.post("/api/v1/sketch-jobs", formData);
       setJobStatus({ status: "queued", ...result });
       startPolling(result.id || result.job_id);
       toast.success(`Sketch job queued! ID: #${result.id || result.job_id}`);

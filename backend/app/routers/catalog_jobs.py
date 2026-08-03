@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.db import get_db, User, CatalogJob, CatalogJobItem
+from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Brand, BrandMember
 from app.middleware.auth import get_current_user
 from app.worker import process_catalog_job, process_catalog_item
+from app.services.storage import storage_service
+import os
+import uuid
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Studio"])
 
@@ -29,16 +32,70 @@ class CatalogJobCreate(BaseModel):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_catalog_job(
-    payload: CatalogJobCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new catalog batch job."""
-    if not payload.products:
+    """Create a new catalog batch job supporting both JSON and FormData."""
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        brand_id_val = form.get("brand_id")
+        brand_id = int(brand_id_val) if brand_id_val else None
+        engine_mode = form.get("fashn_mode") or form.get("engine_mode") or "product_to_model"
+        generation_mode = form.get("generation_mode") or "studio_quality"
+        model_identity = form.get("model_identity") or "Maya"
+        pose = form.get("pose") or "Catalog Standing"
+        background = form.get("background") or "Soft Front Studio"
+        aspect_ratio = form.get("aspect_ratio") or "4:5"
+        resolution = form.get("resolution") or "2K"
+        
+        products = []
+        uploaded_files = form.getlist("products")
+        for i, file in enumerate(uploaded_files):
+            sku_tag = form.get(f"sku_{i}") or f"SKU-{i+1}"
+            filename = file.filename or "file.png"
+            file_ext = os.path.splitext(filename)[1]
+            unique_filename = f"{uuid.uuid4()}{file_ext}"
+            file_bytes = await file.read()
+            storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
+            products.append({
+                "sku_tag": sku_tag,
+                "image_path": storage_path
+            })
+    else:
+        json_data = await request.json()
+        payload = CatalogJobCreate(**json_data)
+        brand_id = payload.brand_id
+        engine_mode = payload.engine_mode
+        generation_mode = payload.generation_mode
+        model_identity = payload.model_identity
+        pose = payload.pose
+        background = payload.background
+        aspect_ratio = payload.aspect_ratio
+        resolution = payload.resolution
+        products = payload.products
+
+    # Fallback to user's first brand if brand_id is missing or None
+    if not brand_id:
+        brand_query = select(Brand.id).where(Brand.owner_id == current_user.id).limit(1)
+        brand_res = await db.execute(brand_query)
+        brand_id = brand_res.scalar()
+        if not brand_id:
+            member_query = select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id).limit(1)
+            member_res = await db.execute(member_query)
+            brand_id = member_res.scalar()
+        if not brand_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active brand found for the user. Please create a brand first."
+            )
+
+    if not products:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one product is required.")
 
-    credits_per_sku = CREDITS_PER_SKU.get(payload.generation_mode, 5)
-    credits_needed = len(payload.products) * credits_per_sku
+    credits_per_sku = CREDITS_PER_SKU.get(generation_mode, 5)
+    credits_needed = len(products) * credits_per_sku
 
     if (current_user.credits or 0) < credits_needed:
         raise HTTPException(
@@ -50,22 +107,22 @@ async def create_catalog_job(
 
     job = CatalogJob(
         user_id=current_user.id,
-        brand_id=payload.brand_id,
+        brand_id=brand_id,
         status="queued",
-        engine_mode=payload.engine_mode,
-        generation_mode=payload.generation_mode,
-        model_identity=payload.model_identity,
-        pose=payload.pose,
-        background=payload.background,
-        aspect_ratio=payload.aspect_ratio,
-        resolution=payload.resolution,
-        total_items=len(payload.products),
+        engine_mode=engine_mode,
+        generation_mode=generation_mode,
+        model_identity=model_identity,
+        pose=pose,
+        background=background,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        total_items=len(products),
         credits_reserved=credits_needed,
     )
     db.add(job)
     await db.flush()
 
-    for product in payload.products:
+    for product in products:
         item = CatalogJobItem(
             job_id=job.id,
             sku_tag=product.get("sku_tag", f"SKU-{job.id}"),

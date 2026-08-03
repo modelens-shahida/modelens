@@ -65,7 +65,7 @@ export default function CatalogStudioPage() {
     timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
     pollRef.current = setInterval(async () => {
       try {
-        const status = await api.get(`/v1/catalog-jobs/${jobId}`);
+        const status = await api.get(`/api/v1/catalog-jobs/${jobId}`);
         setJobStatus(status);
         if (status.sku_statuses) setSkuStatuses(status.sku_statuses);
         if (status.output_images) setOutputImages(status.output_images);
@@ -97,7 +97,7 @@ export default function CatalogStudioPage() {
       formData.append("background", background);
       formData.append("fashn_mode", fashnMode);
 
-      const result = await api.post("/v1/catalog-jobs", formData);
+      const result = await api.post("/api/v1/catalog-jobs", formData);
       setJobStatus({ status: "queued", ...result });
       const initStatuses = {};
       productFiles.forEach((_, i) => initStatuses[i] = "queued");
