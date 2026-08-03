@@ -36,6 +36,7 @@ from app.routers.campaign_templates import router as campaign_templates_router
 from app.routers.ghost_jobs import router as ghost_jobs_router
 from app.routers.sketch_jobs import router as sketch_jobs_router
 from app.routers.catalog_jobs import router as catalog_jobs_router
+from app.routers.angle_shots import router as angle_shots_router
 from app.routers.video_projects import router as video_projects_router, gen_router as generation_jobs_router
 from app.routers.editorial_assets import router as editorial_assets_router
 from app.routers.health import router as health_router
@@ -195,6 +196,7 @@ app.include_router(campaign_templates_router)
 app.include_router(ghost_jobs_router)
 app.include_router(sketch_jobs_router)
 app.include_router(catalog_jobs_router)
+app.include_router(angle_shots_router)
 app.include_router(video_projects_router)
 app.include_router(generation_jobs_router)
 app.include_router(editorial_assets_router)

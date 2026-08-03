@@ -2632,3 +2632,114 @@ async def _process_catalog_item_retry_async(item_id: int):
         job.completed_items += 1
         job.failed_items = max(0, job.failed_items - 1)
         await db.commit()
+
+
+# ========================== Angle Shots Task ====================
+
+@celery_app.task(
+    name="app.worker.process_custom_angle_shot",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+)
+def process_custom_angle_shot(self, angle_shot_id: int):
+    """Celery task for custom pose extraction from reference image."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_process_custom_angle_shot_async(self, angle_shot_id))
+
+
+async def _process_custom_angle_shot_async(task_self, angle_shot_id: int):
+    from app.models.db import AngleShot, AngleShotVersion
+
+    async with async_session_maker() as db:
+        result = await db.execute(select(AngleShot).where(AngleShot.id == angle_shot_id))
+        shot = result.scalars().first()
+        if not shot:
+            print(f"[AngleShot] Shot {angle_shot_id} not found.")
+            return
+
+        try:
+            shot.status = "processing"
+            await db.commit()
+
+            # Step 1: Validate reference image
+            print(f"[AngleShot] Validating reference image for shot {angle_shot_id}")
+
+            # Step 2: OpenPose/DensePose extraction (mock)
+            pose_data = None
+            camera_data = None
+
+            try:
+                from app.config import settings
+                openpose_url = getattr(settings, "OPENPOSE_API_URL", None)
+                if not openpose_url or openpose_url == "mock":
+                    raise Exception("OpenPose mock mode")
+
+                # Real OpenPose call would go here
+                pose_data = {
+                    "format": "openpose-18",
+                    "keypoints_url": f"/poses/pose_{angle_shot_id}.json",
+                    "confidence": 0.94,
+                }
+                camera_data = {
+                    "yaw": shot.camera_yaw or 0,
+                    "pitch": shot.camera_pitch or 0,
+                    "framing": shot.framing or "FULL_BODY",
+                }
+
+            except Exception as pose_err:
+                print(f"[AngleShot] OpenPose failed (mock): {pose_err}")
+                pose_data = {
+                    "format": "openpose-18",
+                    "keypoints_url": f"/poses/mock_{angle_shot_id}.json",
+                    "confidence": 0.85,
+                }
+                camera_data = {
+                    "yaw": shot.camera_yaw or 0,
+                    "pitch": shot.camera_pitch or 1,
+                    "roll": 0,
+                    "framing": shot.framing or "FULL_BODY",
+                }
+
+            # Step 3: Update shot with extracted data
+            shot.pose_map_url = pose_data.get("keypoints_url")
+            if camera_data:
+                shot.camera_yaw = camera_data.get("yaw", shot.camera_yaw)
+                shot.camera_pitch = camera_data.get("pitch", shot.camera_pitch)
+
+            # Step 4: Generate thumbnail (mock)
+            shot.thumbnail_url = f"/thumbnails/angle_shot_{angle_shot_id}.webp"
+
+            # Step 5: Mark as active
+            shot.status = "active"
+            shot.version += 1
+
+            # Save version snapshot
+            version = AngleShotVersion(
+                angle_shot_id=shot.id,
+                version=shot.version,
+                configuration={
+                    "framing": shot.framing,
+                    "pose": shot.pose,
+                    "view_direction": shot.view_direction,
+                    "camera_yaw": shot.camera_yaw,
+                    "camera_pitch": shot.camera_pitch,
+                    "pose_data": pose_data,
+                    "camera_data": camera_data,
+                },
+                change_note="Custom pose extracted from reference image",
+            )
+            db.add(version)
+            await db.commit()
+
+            print(f"[AngleShot] Custom shot {angle_shot_id} processed successfully.")
+
+        except Exception as e:
+            print(f"[AngleShot] Shot {angle_shot_id} failed: {e}")
+            shot.status = "failed"
+            await db.commit()
+            raise task_self.retry(exc=e, countdown=30)

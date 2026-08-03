@@ -794,6 +794,78 @@ class CatalogOutput(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+
+class AngleShot(Base):
+    __tablename__ = "angle_shots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    framing: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pose: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    view_direction: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    reference_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    pose_map_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    camera_yaw: Mapped[Optional[float]] = mapped_column(nullable=True)
+    camera_pitch: Mapped[Optional[float]] = mapped_column(nullable=True)
+    focal_length_mm: Mapped[Optional[float]] = mapped_column(nullable=True)
+    is_custom: Mapped[bool] = mapped_column(default=False)
+    is_premium: Mapped[bool] = mapped_column(default=False)
+    is_visible: Mapped[bool] = mapped_column(default=True)
+    status: Mapped[str] = mapped_column(String(50), default="active", index=True)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    version: Mapped[int] = mapped_column(default=1)
+    prompt_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    quality_rules: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    compatibilities = relationship("AngleShotCompatibility", back_populates="angle_shot", cascade="all, delete-orphan")
+    versions = relationship("AngleShotVersion", back_populates="angle_shot", cascade="all, delete-orphan")
+
+
+class AngleShotCompatibility(Base):
+    __tablename__ = "angle_shot_compatibilities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    angle_shot_id: Mapped[int] = mapped_column(ForeignKey("angle_shots.id", ondelete="CASCADE"), index=True)
+    product_type: Mapped[str] = mapped_column(String(100))
+    compatible: Mapped[bool] = mapped_column(default=True)
+    warning_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    angle_shot = relationship("AngleShot", back_populates="compatibilities")
+
+
+class AngleShotVersion(Base):
+    __tablename__ = "angle_shot_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    angle_shot_id: Mapped[int] = mapped_column(ForeignKey("angle_shots.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(default=1)
+    configuration: Mapped[dict] = mapped_column(JSONB, default=dict)
+    change_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    angle_shot = relationship("AngleShot", back_populates="versions")
+
+
+class ShootAngleShot(Base):
+    __tablename__ = "shoot_angle_shots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shoot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True, index=True)
+    angle_shot_id: Mapped[int] = mapped_column(ForeignKey("angle_shots.id", ondelete="CASCADE"), index=True)
+    angle_shot_version: Mapped[int] = mapped_column(default=1)
+    configuration: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    position: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String(50), default="selected")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
