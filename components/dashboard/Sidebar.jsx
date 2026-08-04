@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LayoutDashboard, Webhook, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3, Layers, PenTool, Shirt } from "lucide-react";
+import { LayoutDashboard, Webhook, FolderKanban, Image as ImageIcon, LogOut, Menu, X, Megaphone, Sparkles, User, Terminal, Key, CreditCard, Wrench, BarChart3, Layers, PenTool, Shirt, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -18,6 +18,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Ghost Studio", path: "/dashboard/ghost", icon: Layers },
     { name: "Sketch Studio", path: "/dashboard/sketch", icon: PenTool },
     { name: "Catalog Studio", path: "/dashboard/catalog", icon: Shirt },
+    { name: "Angle Shots", path: "/dashboard/angle-shots", icon: Camera },
     { name: "Fix Requests", path: "/dashboard/fix-requests", icon: Wrench },
     { name: "Webhooks", path: "/dashboard/webhooks", icon: Webhook },
     { name: "Analytics", path: "/dashboard/analytics", icon: BarChart3 },
