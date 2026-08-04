@@ -56,9 +56,11 @@ export default function AngleShotsPage() {
   const [validating, setValidating] = useState(false);
 
   // Fetch presets
-  const fetchPresets = async () => {
+  const fetchPresets = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const data = await api.get("/api/v1/angle-shots");
       setPresets(data);
     } catch (err) {
@@ -69,8 +71,11 @@ export default function AngleShotsPage() {
   };
 
   useEffect(() => {
-    fetchPresets();
+    const timer = setTimeout(() => {
+      fetchPresets(false);
+    }, 0);
     return () => {
+      clearTimeout(timer);
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
@@ -78,7 +83,10 @@ export default function AngleShotsPage() {
   // Fetch selected preset history
   useEffect(() => {
     if (selectedPreset) {
-      setLoadingHistory(true);
+      const timer = setTimeout(() => {
+        setLoadingHistory(true);
+      }, 0);
+
       api.get(`/api/v1/angle-shots/${selectedPreset.id}/history`)
         .then((data) => {
           setPresetHistory(data);
@@ -89,8 +97,13 @@ export default function AngleShotsPage() {
         .finally(() => {
           setLoadingHistory(false);
         });
+
+      return () => clearTimeout(timer);
     } else {
-      setPresetHistory([]);
+      const timer = setTimeout(() => {
+        setPresetHistory([]);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [selectedPreset]);
 
@@ -713,7 +726,7 @@ export default function AngleShotsPage() {
                               )}
                             </div>
                             <p className="text-[10px] text-zinc-400 italic">
-                              "{ver.change_note || "No edit comments provided."}"
+                              &quot;{ver.change_note || "No edit comments provided."}&quot;
                             </p>
                             <div className="text-[9px] text-zinc-600 text-right">
                               Logged on: {new Date(ver.created_at).toLocaleDateString()}
