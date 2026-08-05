@@ -33,6 +33,8 @@ export default function GhostStudioPage() {
   const [resolution, setResolution] = useState("2K");
   const [preservePrint, setPreservePrint] = useState(true);
   const [preserveSeams, setPreserveSeams] = useState(true);
+  const [angleShots, setAngleShots] = useState([]);
+  const [selectedAngleShot, setSelectedAngleShot] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
@@ -80,6 +82,12 @@ export default function GhostStudioPage() {
       clearInterval(pollRef.current);
       clearInterval(timerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    api.get("/api/v1/angle-shots?limit=100").then(data => {
+      setAngleShots(data?.items || []);
+    }).catch(() => {});
   }, []);
 
   const handleSubmit = async () => {

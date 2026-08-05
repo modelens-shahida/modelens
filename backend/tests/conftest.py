@@ -104,6 +104,12 @@ app.worker.redis_client = global_mock_redis
 
 
 
+
+@pytest.fixture(autouse=True)
+def clear_mock_redis():
+    global_mock_redis.store.clear()
+    yield
+
 # 1. Custom compile rule for pgvector's Vector type on SQLite
 @compiles(Vector, "sqlite")
 def compile_vector_sqlite(type_, compiler, **kw):

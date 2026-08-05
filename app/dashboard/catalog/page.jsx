@@ -83,7 +83,7 @@ export default function CatalogStudioPage() {
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
 
   useEffect(() => {
-    api.get("/api/v1/angle-shots?category=Adult&limit=100").then(data => {
+    api.get("/api/v1/angle-shots?limit=100").then(data => {
       setAngleShots(data?.items || []);
     }).catch(() => {});
   }, []);

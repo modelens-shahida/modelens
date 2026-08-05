@@ -74,6 +74,8 @@ export default function SketchStudioPage() {
   const [modelBrief, setModelBrief] = useState("");
   const [backgroundBrief, setBackgroundBrief] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [angleShots, setAngleShots] = useState([]);
+  const [selectedAngleShot, setSelectedAngleShot] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const pollRef = useRef(null);
@@ -97,7 +99,7 @@ export default function SketchStudioPage() {
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
 
   useEffect(() => {
-    api.get("/api/v1/angle-shots?category=Adult&limit=100").then(data => {
+    api.get("/api/v1/angle-shots?limit=100").then(data => {
       setAngleShots(data?.items || []);
     }).catch(() => {});
   }, []);
