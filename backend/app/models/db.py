@@ -866,6 +866,69 @@ class ShootAngleShot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class BrandModel(Base):
+    __tablename__ = "brand_models"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    gender: Mapped[str] = mapped_column(String(50), default="Female")
+    full_body_reference_asset_id: Mapped[str] = mapped_column(String(100))
+    portrait_reference_asset_id: Mapped[str] = mapped_column(String(100))
+    appearance_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rights_confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_brand_model_workspace_name"),
+    )
+
+
+class FluidSession(Base):
+    __tablename__ = "fluid_sessions"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    model_id: Mapped[str] = mapped_column(String(100), default="model_01")
+    model_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scene_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pose_reference_asset_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    background_asset_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    product_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    aspect_ratio: Mapped[str] = mapped_column(String(20), default="4:5")
+    resolution: Mapped[str] = mapped_column(String(20), default="2K")
+    generation_mode: Mapped[str] = mapped_column(String(50), default="QUALITY")
+    active_layer_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    layers = relationship("FluidLayer", back_populates="session", cascade="all, delete-orphan")
+
+
+class FluidLayer(Base):
+    __tablename__ = "fluid_layers"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("fluid_sessions.id", ondelete="CASCADE"), index=True)
+    parent_layer_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    operation: Mapped[str] = mapped_column(String(100))
+    provider: Mapped[str] = mapped_column(String(100))
+    provider_model: Mapped[str] = mapped_column(String(100))
+    provider_job_id: Mapped[str] = mapped_column(String(100))
+    image_url: Mapped[str] = mapped_column(String(1000))
+    mask_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    aspect_ratio: Mapped[str] = mapped_column(String(20))
+    quality_score: Mapped[float] = mapped_column(default=1.0)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    session = relationship("FluidSession", back_populates="layers")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(

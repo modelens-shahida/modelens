@@ -5,8 +5,9 @@ from datetime import datetime
 import logging
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from app.models.db import get_db, User
+from app.models.db import get_db, User, BrandModel
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limit import RateLimiter
 from app.services.fluid_service import fluid_service
@@ -66,6 +67,7 @@ class UpscaleRequest(BaseModel):
 
 class BrandModelCreateRequest(BaseModel):
     name: str = Field(..., description="Model name")
+    workspace_id: Optional[str] = Field("workspace_demo", description="Workspace ID")
     gender: str = Field("Female", description="Gender selection")
     full_body_reference_asset_id: str = Field(..., description="Full-body frontal photograph asset ID")
     portrait_reference_asset_id: str = Field(..., description="Closer portrait photograph asset ID")
@@ -73,28 +75,17 @@ class BrandModelCreateRequest(BaseModel):
     rights_confirmed: bool = Field(True, description="Image rights & consent confirmation")
 
 
-# --- In-Memory Custom Models Store ---
-_BRAND_MODELS_STORE: List[Dict[str, Any]] = [
-    {
-        "model_id": "brand_model_01",
-        "name": "Sophia (Private Brand Model)",
-        "gender": "Female",
-        "full_body_url": "https://cdn.modelens.ai/models/sophia_full.jpg",
-        "portrait_url": "https://cdn.modelens.ai/models/sophia_portrait.jpg",
-        "created_at": datetime.utcnow().isoformat()
-    }
-]
-
-
 # --- Endpoints ---
 
 @router.post("/editorial-sessions", status_code=status.HTTP_201_CREATED)
 async def create_editorial_session(
     payload: CreateSessionRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Creates a new interactive Fluid Studio Session with non-destructive layer history."""
-    session = fluid_service.create_session(
+    session = await fluid_service.create_session(
+        db=db,
         user_id=current_user.id,
         name=payload.name,
         workspace_id=payload.workspace_id,
@@ -114,10 +105,11 @@ async def create_editorial_session(
 @router.get("/editorial-sessions/{session_id}")
 async def get_editorial_session(
     session_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Retrieves Fluid Session and its non-destructive layer graph."""
-    session = fluid_service.get_session(session_id)
+    session = await fluid_service.get_session(db, session_id)
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -129,10 +121,11 @@ async def get_editorial_session(
 @router.delete("/editorial-sessions/{session_id}")
 async def delete_editorial_session(
     session_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Deletes a Fluid Session."""
-    success = fluid_service.delete_session(session_id)
+    success = await fluid_service.delete_session(db, session_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -145,11 +138,13 @@ async def delete_editorial_session(
 async def generate_base_layer(
     session_id: str,
     payload: BaseGenerateRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Triggers initial base editorial generation for the session."""
     try:
-        layer = fluid_service.generate_base_layer(
+        layer = await fluid_service.generate_base_layer(
+            db=db,
             session_id=session_id,
             use_premium_creative_model=payload.use_premium_creative_model,
         )
@@ -163,11 +158,13 @@ async def apply_product_layer(
     session_id: str,
     layer_id: str,
     payload: ApplyProductRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Applies a product onto an existing layer while preserving model identity, pose, and background."""
     try:
-        layer = fluid_service.apply_product_layer(
+        layer = await fluid_service.apply_product_layer(
+            db=db,
             session_id=session_id,
             parent_layer_id=layer_id,
             product_id=payload.product_id,
@@ -183,11 +180,13 @@ async def edit_layer(
     session_id: str,
     layer_id: str,
     payload: MaskedEditRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Performs a region-masked inpainting or prompt edit on a layer."""
     try:
-        layer = fluid_service.edit_layer(
+        layer = await fluid_service.edit_layer(
+            db=db,
             session_id=session_id,
             parent_layer_id=layer_id,
             prompt=payload.prompt,
@@ -204,11 +203,13 @@ async def model_swap_layer(
     session_id: str,
     layer_id: str,
     payload: ModelSwapRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Swaps model identity while preserving clothing, pose, and composition."""
     try:
-        layer = fluid_service.model_swap_layer(
+        layer = await fluid_service.model_swap_layer(
+            db=db,
             session_id=session_id,
             parent_layer_id=layer_id,
             target_model_id=payload.target_model_id,
@@ -225,11 +226,13 @@ async def reframe_layer(
     session_id: str,
     layer_id: str,
     payload: ReframeRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Re-frames and outpaints layer to a new aspect ratio."""
     try:
-        layer = fluid_service.reframe_layer(
+        layer = await fluid_service.reframe_layer(
+            db=db,
             session_id=session_id,
             parent_layer_id=layer_id,
             target_aspect_ratio=payload.aspect_ratio,
@@ -244,11 +247,13 @@ async def upscale_layer(
     session_id: str,
     layer_id: str,
     payload: UpscaleRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Upscales layer to 4K, 8K, or 14K resolution using SeedVR2 / Real-ESRGAN adapter."""
     try:
-        layer = fluid_service.upscale_layer(
+        layer = await fluid_service.upscale_layer(
+            db=db,
             session_id=session_id,
             parent_layer_id=layer_id,
             target_resolution=payload.resolution,
@@ -264,26 +269,60 @@ async def upscale_layer(
 @router.post("/brand-models", status_code=status.HTTP_201_CREATED)
 async def create_brand_model(
     payload: BrandModelCreateRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Creates a custom private brand model identity from full-body and portrait photographs."""
     model_id = f"brand_model_{uuid.uuid4().hex[:6]}"
-    new_model = {
-        "model_id": model_id,
-        "name": payload.name,
-        "gender": payload.gender,
-        "full_body_url": f"https://cdn.modelens.ai/assets/{payload.full_body_reference_asset_id}.jpg",
-        "portrait_url": f"https://cdn.modelens.ai/assets/{payload.portrait_reference_asset_id}.jpg",
-        "appearance_prompt": payload.appearance_prompt,
-        "rights_confirmed": payload.rights_confirmed,
-        "created_at": datetime.utcnow().isoformat()
+    
+    brand_model_obj = BrandModel(
+        id=model_id,
+        workspace_id=payload.workspace_id or "workspace_demo",
+        name=payload.name,
+        gender=payload.gender,
+        full_body_reference_asset_id=payload.full_body_reference_asset_id,
+        portrait_reference_asset_id=payload.portrait_reference_asset_id,
+        appearance_prompt=payload.appearance_prompt,
+        rights_confirmed=payload.rights_confirmed,
+    )
+
+    db.add(brand_model_obj)
+    await db.commit()
+    await db.refresh(brand_model_obj)
+
+    logger.info(f"Registered custom brand model {model_id} ('{payload.name}') for user {current_user.id} in DB")
+    return {
+        "model_id": brand_model_obj.id,
+        "name": brand_model_obj.name,
+        "gender": brand_model_obj.gender,
+        "full_body_url": f"https://cdn.modelens.ai/assets/{brand_model_obj.full_body_reference_asset_id}.jpg",
+        "portrait_url": f"https://cdn.modelens.ai/assets/{brand_model_obj.portrait_reference_asset_id}.jpg",
+        "appearance_prompt": brand_model_obj.appearance_prompt,
+        "rights_confirmed": brand_model_obj.rights_confirmed,
+        "created_at": brand_model_obj.created_at.isoformat() if brand_model_obj.created_at else None
     }
-    _BRAND_MODELS_STORE.append(new_model)
-    logger.info(f"Registered custom brand model {model_id} ('{payload.name}') for user {current_user.id}")
-    return new_model
 
 
 @router.get("/brand-models")
-async def list_brand_models(current_user: User = Depends(get_current_user)):
+async def list_brand_models(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Lists private custom brand models available in workspace."""
-    return _BRAND_MODELS_STORE
+    stmt = select(BrandModel)
+    result = await db.execute(stmt)
+    models = result.scalars().all()
+    
+    return [
+        {
+            "model_id": m.id,
+            "name": m.name,
+            "gender": m.gender,
+            "full_body_url": f"https://cdn.modelens.ai/assets/{m.full_body_reference_asset_id}.jpg",
+            "portrait_url": f"https://cdn.modelens.ai/assets/{m.portrait_reference_asset_id}.jpg",
+            "appearance_prompt": m.appearance_prompt,
+            "rights_confirmed": m.rights_confirmed,
+            "created_at": m.created_at.isoformat() if m.created_at else None
+        }
+        for m in models
+    ]
