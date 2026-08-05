@@ -96,6 +96,12 @@ export default function SketchStudioPage() {
 
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
 
+  useEffect(() => {
+    api.get("/api/v1/angle-shots?category=Adult&limit=100").then(data => {
+      setAngleShots(data?.items || []);
+    }).catch(() => {});
+  }, []);
+
   const handleSubmit = async () => {
     if (sketchFiles.length === 0) { toast.error("Please upload at least one sketch"); return; }
     if (!productDesc.trim()) { toast.error("Please enter a product description"); return; }
@@ -115,6 +121,10 @@ export default function SketchStudioPage() {
       formData.append("material_description", materialDesc);
       formData.append("model_brief", modelBrief);
       formData.append("background_brief", backgroundBrief);
+      if (selectedAngleShot) {
+        formData.append("angle_shot_code", selectedAngleShot.code || "");
+        formData.append("angle_shot_version", selectedAngleShot.version || 1);
+      }
 
       const result = await api.post("/api/v1/sketch-jobs", formData);
       setJobStatus({ status: "queued", ...result });
@@ -193,6 +203,15 @@ export default function SketchStudioPage() {
             </div>
 
             {/* Text Briefs */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Pose Preset</label>
+              {angleShots.length > 0 ? (
+                <select value={selectedAngleShot?.id || ""} onChange={(e) => { const shot = angleShots.find(s => s.id.toString() === e.target.value); setSelectedAngleShot(shot || null); }} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none mb-2">
+                  <option value="">Select pose preset...</option>
+                  {angleShots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              ) : null}
+            </div>
             {[
               { label: "Product Description *", value: productDesc, setter: setProductDesc, placeholder: "e.g. navy blue wool blazer with double buttons" },
               { label: "Material Description", value: materialDesc, setter: setMaterialDesc, placeholder: "e.g. 100% merino wool, matte finish" },

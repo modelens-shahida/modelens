@@ -97,6 +97,10 @@ export default function GhostStudioPage() {
       formData.append("resolution", resolution);
       formData.append("preserve_print", preservePrint);
       formData.append("preserve_seams", preserveSeams);
+      if (selectedAngleShot) {
+        formData.append("angle_shot_code", selectedAngleShot.code || "");
+        formData.append("angle_shot_version", selectedAngleShot.version || 1);
+      }
 
       const result = await api.post("/api/v1/ghost-jobs", formData);
       setActiveJob(result);
@@ -183,10 +187,25 @@ export default function GhostStudioPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500 mb-1 block">View</label>
-                  <select value={view} onChange={(e) => setView(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none capitalize">
-                    {VIEWS.map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
+                  <label className="text-xs text-zinc-500 mb-1 block">Pose Preset</label>
+                  {angleShots.length > 0 ? (
+                    <select
+                      value={selectedAngleShot?.id || ""}
+                      onChange={(e) => {
+                        const shot = angleShots.find(s => s.id.toString() === e.target.value);
+                        setSelectedAngleShot(shot || null);
+                        if (shot?.view_direction) setView(shot.view_direction.toLowerCase());
+                      }}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                    >
+                      <option value="">Select preset...</option>
+                      {angleShots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  ) : (
+                    <select value={view} onChange={(e) => setView(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none capitalize">
+                      {VIEWS.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-zinc-500 mb-1 block">Aspect Ratio</label>

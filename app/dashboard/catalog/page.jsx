@@ -28,6 +28,8 @@ export default function CatalogStudioPage() {
   const [customModelFile, setCustomModelFile] = useState(null);
   const [customModelPreview, setCustomModelPreview] = useState(null);
   const [pose, setPose] = useState("Catalog Standing");
+  const [angleShots, setAngleShots] = useState([]);
+  const [selectedAngleShot, setSelectedAngleShot] = useState(null);
   const [background, setBackground] = useState("Soft Front Studio");
   const [fashnMode, setFashnMode] = useState("product_to_model");
   const [submitting, setSubmitting] = useState(false);
@@ -80,6 +82,12 @@ export default function CatalogStudioPage() {
 
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
 
+  useEffect(() => {
+    api.get("/api/v1/angle-shots?category=Adult&limit=100").then(data => {
+      setAngleShots(data?.items || []);
+    }).catch(() => {});
+  }, []);
+
   const handleSubmit = async () => {
     if (productFiles.length === 0) { toast.error("Please upload at least one product image"); return; }
     setSubmitting(true);
@@ -94,6 +102,10 @@ export default function CatalogStudioPage() {
       formData.append("model_identity", modelIdentity);
       if (customModelFile) formData.append("custom_model", customModelFile);
       formData.append("pose", pose);
+      if (selectedAngleShot) {
+        formData.append("angle_shot_code", selectedAngleShot.code || "");
+        formData.append("angle_shot_version", selectedAngleShot.version || 1);
+      }
       formData.append("background", background);
       formData.append("fashn_mode", fashnMode);
 
@@ -213,9 +225,24 @@ export default function CatalogStudioPage() {
             {/* Pose & Background */}
             <div>
               <label className="text-xs text-zinc-400 mb-1 block">Pose & Framing</label>
-              <select value={pose} onChange={(e) => setPose(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none mb-3">
-                {POSES.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              {angleShots.length > 0 ? (
+                <select
+                  value={selectedAngleShot?.id || ""}
+                  onChange={(e) => {
+                    const shot = angleShots.find(s => s.id.toString() === e.target.value);
+                    setSelectedAngleShot(shot || null);
+                    setPose(shot?.name || "Catalog Standing");
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none mb-3"
+                >
+                  <option value="">Select pose preset...</option>
+                  {angleShots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              ) : (
+                <select value={pose} onChange={(e) => setPose(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none mb-3">
+                  {POSES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              )}
               <label className="text-xs text-zinc-400 mb-1 block">Background & Lighting</label>
               <select value={background} onChange={(e) => setBackground(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none">
                 {BACKGROUNDS.map(b => <option key={b} value={b}>{b}</option>)}
