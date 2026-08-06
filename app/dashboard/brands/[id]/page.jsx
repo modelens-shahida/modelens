@@ -126,7 +126,9 @@ export default function BrandDetailPage() {
 
   useEffect(() => {
     if (id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       fetchData();
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [id]);
 
@@ -157,30 +159,6 @@ export default function BrandDetailPage() {
     }
   };
 
-  useEffect(() => {
-    if (activeTab === "settings" && id) {
-      fetchAuthSettings();
-    }
-  }, [activeTab, id]);
-
-  useEffect(() => {
-    if (activeTab === "webhooks") {
-      fetchWebhooks();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab === "audit-logs" && id) {
-      fetchAuditLogs(0);
-    }
-  }, [activeTab, id]);
-
-  useEffect(() => {
-    if (activeTab === "memory" && id) {
-      fetchMemory();
-    }
-  }, [activeTab, id]);
-
   const fetchMemory = async () => {
     setMemoryLoading(true);
     try {
@@ -210,6 +188,38 @@ export default function BrandDetailPage() {
       setAuditLogsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === "settings" && id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchAuthSettings();
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab, id]);
+
+  useEffect(() => {
+    if (activeTab === "webhooks") {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchWebhooks();
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "audit-logs" && id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchAuditLogs(0);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab, id]);
+
+  useEffect(() => {
+    if (activeTab === "memory" && id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchMemory();
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab, id]);
 
   const handleUpdateWhitelist = async (e) => {
     e?.preventDefault();
@@ -896,7 +906,7 @@ export default function BrandDetailPage() {
                   Brand Memory is a semantic profile built from your catalog assets. The AI orchestrator analyzes uploaded images and extracts visual attributes like lighting, mood, color palette, style, and composition.
                 </p>
                 <p className="text-xs text-zinc-400 leading-relaxed mb-4">
-                  These tag frequencies are used to maintain consistency across AI-generated model catalog creatives, ensuring generated outputs align with your brand's visual identity.
+                  These tag frequencies are used to maintain consistency across AI-generated model catalog creatives, ensuring generated outputs align with your {"brand's"} visual identity.
                 </p>
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">

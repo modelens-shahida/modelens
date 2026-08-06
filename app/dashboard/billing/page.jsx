@@ -40,6 +40,7 @@ export default function BillingPage() {
         frequency: frequency,
       });
       if (response.session_url) {
+        /* eslint-disable-next-line react-hooks/immutability */
         window.location.href = response.session_url;
       } else {
         toast.error("Failed to create checkout session");
@@ -80,11 +81,15 @@ export default function BillingPage() {
   };
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchBalance();
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchHistory();
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [page]);
 
   // Handle Stripe customer portal redirect
