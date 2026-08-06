@@ -198,6 +198,29 @@ async def test_non_destructive_layer_pipeline(client: AsyncClient, db_session: A
 
 
 @pytest.mark.asyncio
+async def test_list_editorial_sessions(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    headers = test_data["get_headers"]("editor")
+
+    # Create session directly in DB
+    session = FluidSession(
+        id="session_list_test",
+        user_id=test_data["users"]["editor"].id,
+        workspace_id="workspace_test",
+        name="List Campaign 1",
+        model_id="model_01",
+        aspect_ratio="1:1"
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    res = await client.get("/api/v1/editorial-sessions", headers=headers)
+    assert res.status_code == status.HTTP_200_OK
+    sessions = res.json()
+    assert len(sessions) >= 1
+    assert any(s["name"] == "List Campaign 1" for s in sessions)
+
+
+@pytest.mark.asyncio
 async def test_brand_model_creation_and_listing(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     headers = test_data["get_headers"]("editor")
 

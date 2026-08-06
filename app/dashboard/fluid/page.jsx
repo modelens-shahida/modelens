@@ -15,6 +15,7 @@ export default function FluidStudioPage() {
   const [activeSession, setActiveSession] = useState(null);
   const [activeLayer, setActiveLayer] = useState(null);
   const [brandModels, setBrandModels] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeOp, setActiveOp] = useState(null);
   const [tab, setTab] = useState("editor"); // "editor" | "models"
@@ -39,17 +40,12 @@ export default function FluidStudioPage() {
 
   // Brand model creation
   const [newModelName, setNewModelName] = useState("");
-  const [newModelGender, setNewModelGender] = useState("female");
+  const [newModelGender, setNewModelGender] = useState("Female");
   const [fullBodyFile, setFullBodyFile] = useState(null);
   const [portraitFile, setPortraitFile] = useState(null);
   const [creatingModel, setCreatingModel] = useState(false);
 
   const maskInputRef = useRef(null);
-
-  useEffect(() => {
-    fetchSessions();
-    fetchBrandModels();
-  }, []);
 
   const fetchSessions = async () => {
     try {
@@ -64,6 +60,21 @@ export default function FluidStudioPage() {
       setBrandModels(data?.models || data || []);
     } catch {}
   };
+
+  const fetchBrands = async () => {
+    try {
+      const data = await api.get("/api/v1/brands");
+      setBrands(data || []);
+    } catch {}
+  };
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    fetchSessions();
+    fetchBrandModels();
+    fetchBrands();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   const fetchSession = async (sessionId) => {
     setLoading(true);
@@ -95,7 +106,7 @@ export default function FluidStudioPage() {
       setNewSessionName("");
       setNewScenePrompt("");
       await fetchSessions();
-      await fetchSession(data.id || data.session_id);
+      await fetchSession(data.session_id);
     } catch (e) {
       toast.error("Failed to create session");
     } finally {
@@ -114,19 +125,19 @@ export default function FluidStudioPage() {
         payload = { prompt: opPrompt };
         if (opMaskFile) payload.mask_asset_id = opMaskFile.name;
       } else if (operation === "model-swap") {
-        payload = { prompt: opModelPrompt };
+        payload = { identity_prompt: opModelPrompt };
       } else if (operation === "reframe") {
         payload = { aspect_ratio: opAspectRatio };
       } else if (operation === "upscale") {
         payload = { resolution: opUpscale };
       }
 
-      const result = await api.post(
-        `/api/v1/editorial-sessions/${activeSession.id}/layers/${activeLayer.id}/${operation}`,
+      await api.post(
+        `/api/v1/editorial-sessions/${activeSession.session_id}/layers/${activeLayer.layer_id}/${operation}`,
         payload
       );
       toast.success("Operation queued!");
-      await fetchSession(activeSession.id);
+      await fetchSession(activeSession.session_id);
       setActiveOp(null);
     } catch (e) {
       toast.error(e.message || "Operation failed");
@@ -137,15 +148,39 @@ export default function FluidStudioPage() {
 
   const handleCreateBrandModel = async () => {
     if (!newModelName.trim()) { toast.error("Please enter a model name"); return; }
+    if (!fullBodyFile || !portraitFile) {
+      toast.error("Please upload both full-body and portrait reference files");
+      return;
+    }
     setCreatingModel(true);
     try {
-      const formData = new FormData();
-      formData.append("name", newModelName);
-      formData.append("gender", newModelGender);
-      if (fullBodyFile) formData.append("full_body_image", fullBodyFile);
-      if (portraitFile) formData.append("portrait_image", portraitFile);
+      const brandId = brands[0]?.id || "1";
 
-      await api.post("/api/v1/brand-models", formData);
+      // 1. Upload Full Body Image as Asset
+      const formData1 = new FormData();
+      formData1.append("brand_id", brandId);
+      formData1.append("name", `${newModelName}_full`);
+      formData1.append("asset_type", "model_pose");
+      formData1.append("file", fullBodyFile);
+      const res1 = await api.post("/api/v1/assets", formData1);
+
+      // 2. Upload Portrait Image as Asset
+      const formData2 = new FormData();
+      formData2.append("brand_id", brandId);
+      formData2.append("name", `${newModelName}_portrait`);
+      formData2.append("asset_type", "model_portrait");
+      formData2.append("file", portraitFile);
+      const res2 = await api.post("/api/v1/assets", formData2);
+
+      // 3. Create Brand Model Entry
+      await api.post("/api/v1/brand-models", {
+        name: newModelName,
+        gender: newModelGender,
+        full_body_reference_asset_id: String(res1.id),
+        portrait_reference_asset_id: String(res2.id),
+        rights_confirmed: true
+      });
+
       toast.success("Brand model created!");
       setNewModelName("");
       setFullBodyFile(null);
@@ -208,7 +243,7 @@ export default function FluidStudioPage() {
                 <p className="text-xs text-zinc-500 text-center py-8">No sessions yet</p>
               ) : (
                 sessions.map(session => (
-                  <div key={session.id} onClick={() => fetchSession(session.id)} className={`p-3 rounded-xl cursor-pointer mb-2 transition ${activeSession?.id === session.id ? "bg-purple-900/30 border border-purple-700" : "hover:bg-zinc-900 border border-transparent"}`}>
+                  <div key={session.session_id} onClick={() => fetchSession(session.session_id)} className={`p-3 rounded-xl cursor-pointer mb-2 transition ${activeSession?.session_id === session.session_id ? "bg-purple-900/30 border border-purple-700" : "hover:bg-zinc-900 border border-transparent"}`}>
                     <p className="text-xs font-medium text-white truncate">{session.name}</p>
                     <p className="text-xs text-zinc-500">{new Date(session.created_at).toLocaleDateString()}</p>
                   </div>
@@ -224,8 +259,8 @@ export default function FluidStudioPage() {
                 <div className="flex-1 flex items-center justify-center bg-zinc-950 p-6">
                   {loading ? (
                     <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
-                  ) : activeLayer?.output_url ? (
-                    <img src={activeLayer.output_url} alt="Layer output" className="max-h-full max-w-full object-contain rounded-xl border border-zinc-800" />
+                  ) : activeLayer?.image_url ? (
+                    <img src={activeLayer.image_url} alt="Layer output" className="max-h-full max-w-full object-contain rounded-xl border border-zinc-800" />
                   ) : (
                     <div className="text-center">
                       <Layers className="w-16 h-16 text-zinc-700 mx-auto mb-3" />
@@ -314,16 +349,13 @@ export default function FluidStudioPage() {
                   <p className="text-xs text-zinc-500 text-center py-8">No layers yet</p>
                 ) : (
                   activeSession.layers?.map((layer, idx) => (
-                    <div key={layer.id} onClick={() => setActiveLayer(layer)} className={`p-3 rounded-xl cursor-pointer mb-2 transition ${activeLayer?.id === layer.id ? "bg-purple-900/30 border border-purple-700" : "hover:bg-zinc-900 border border-transparent"}`}>
+                    <div key={layer.layer_id} onClick={() => setActiveLayer(layer)} className={`p-3 rounded-xl cursor-pointer mb-2 transition ${activeLayer?.layer_id === layer.layer_id ? "bg-purple-900/30 border border-purple-700" : "hover:bg-zinc-900 border border-transparent"}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs text-purple-400">#{idx + 1}</span>
                         <span className="text-xs font-medium text-white capitalize">{layer.operation?.replace("-", " ") || "Base"}</span>
                       </div>
-                      {layer.output_url && <img src={layer.output_url} alt="" className="w-full h-20 object-cover rounded-lg border border-zinc-700" />}
+                      {layer.image_url && <img src={layer.image_url} alt="" className="w-full h-20 object-cover rounded-lg border border-zinc-700" />}
                       {layer.prompt && <p className="text-xs text-zinc-500 mt-1 truncate">{layer.prompt}</p>}
-                      <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${layer.status === "completed" ? "bg-emerald-900/40 text-emerald-400" : layer.status === "failed" ? "bg-red-900/40 text-red-400" : "bg-amber-900/40 text-amber-400"}`}>
-                        {layer.status || "queued"}
-                      </span>
                     </div>
                   ))
                 )}
@@ -349,9 +381,9 @@ export default function FluidStudioPage() {
               <div>
                 <label className="text-xs text-zinc-400 mb-1 block">Gender</label>
                 <select value={newModelGender} onChange={(e) => setNewModelGender(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none">
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="non-binary">Non-binary</option>
+                  <option value="Female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Non-binary">Non-binary</option>
                 </select>
               </div>
             </div>
@@ -378,7 +410,7 @@ export default function FluidStudioPage() {
               </div>
             ) : (
               brandModels.map(model => (
-                <div key={model.id} className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-4">
+                <div key={model.model_id} className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-4">
                   {model.full_body_url && <img src={model.full_body_url} alt={model.name} className="w-full h-40 object-cover rounded-xl border border-zinc-700 mb-3" />}
                   <h3 className="text-sm font-semibold text-white">{model.name}</h3>
                   <p className="text-xs text-zinc-500 capitalize">{model.gender}</p>
