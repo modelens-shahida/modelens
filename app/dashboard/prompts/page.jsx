@@ -21,6 +21,14 @@ export default function PromptsPage() {
   const [promptText, setPromptText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Set up form for creating a new template
+  const handleNewPromptClick = () => {
+    setSelectedPrompt(null);
+    setPromptName("");
+    setPromptText("");
+    setIsEditing(false);
+  };
+
   // Fetch prompts list
   const fetchPrompts = async () => {
     try {
@@ -43,10 +51,6 @@ export default function PromptsPage() {
     }
   };
 
-  useEffect(() => {
-    fetchPrompts();
-  }, []);
-
   // Set selected prompt details in editor
   const handleSelectPrompt = (prompt) => {
     setSelectedPrompt(prompt);
@@ -55,13 +59,11 @@ export default function PromptsPage() {
     setIsEditing(true);
   };
 
-  // Set up form for creating a new template
-  const handleNewPromptClick = () => {
-    setSelectedPrompt(null);
-    setPromptName("");
-    setPromptText("");
-    setIsEditing(false);
-  };
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    fetchPrompts();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   // Submit prompt form (Only POST supported currently on backend)
 
