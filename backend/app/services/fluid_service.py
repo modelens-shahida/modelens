@@ -64,6 +64,13 @@ class FluidService:
         logger.info(f"Created Fluid Session {session_id} ('{name}') for user {user_id} in DB")
         return self._serialize_session(session_obj, [])
 
+    async def list_sessions(self, db: AsyncSession, user_id: int) -> List[Dict[str, Any]]:
+        """Lists all Fluid Sessions for a user."""
+        stmt = select(FluidSession).options(selectinload(FluidSession.layers)).where(FluidSession.user_id == user_id)
+        result = await db.execute(stmt)
+        sessions = result.scalars().all()
+        return [self._serialize_session(s, sorted(s.layers, key=lambda l: l.created_at)) for s in sessions]
+
     async def get_session(self, db: AsyncSession, session_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a Fluid Session by ID with its layers."""
         stmt = select(FluidSession).options(selectinload(FluidSession.layers)).where(FluidSession.id == session_id)

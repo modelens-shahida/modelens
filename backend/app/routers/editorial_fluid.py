@@ -102,6 +102,16 @@ async def create_editorial_session(
     return session
 
 
+@router.get("/editorial-sessions")
+async def list_editorial_sessions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lists all Fluid Sessions for the authenticated user."""
+    sessions = await fluid_service.list_sessions(db, current_user.id)
+    return sessions
+
+
 @router.get("/editorial-sessions/{session_id}")
 async def get_editorial_session(
     session_id: str,

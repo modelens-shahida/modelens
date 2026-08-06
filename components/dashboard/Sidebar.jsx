@@ -15,6 +15,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Overview", path: "/dashboard", icon: LayoutDashboard },
     { name: "Brands", path: "/dashboard/brands", icon: FolderKanban },
     { name: "Assets", path: "/dashboard/assets", icon: ImageIcon },
+    { name: "Fluid Studio", path: "/dashboard/fluid", icon: Layers },
     { name: "Ghost Studio", path: "/dashboard/ghost", icon: Layers },
     { name: "Sketch Studio", path: "/dashboard/sketch", icon: PenTool },
     { name: "Catalog Studio", path: "/dashboard/catalog", icon: Shirt },
