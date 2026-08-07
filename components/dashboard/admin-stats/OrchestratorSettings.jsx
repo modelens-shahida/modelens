@@ -49,8 +49,10 @@ export default function OrchestratorSettings() {
   }
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchSettings();
-  }, []);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     try {

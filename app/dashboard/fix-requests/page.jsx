@@ -34,6 +34,31 @@ export default function FixRequestsPage() {
   const [reviewForm, setReviewForm] = useState({ status: "", reviewer_notes: "", updated_asset_id: "" });
   const [reviewing, setReviewing] = useState(false);
 
+  const fetchRequests = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get(`/api/v1/fix-requests?brand_id=${selectedBrand}&limit=50`);
+      setRequests(data?.requests || data || []);
+    } catch {
+      toast.error("Failed to load fix requests");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const fetchAssets = async () => {
+    try {
+      const data = await api.get(`/api/v1/assets?brand_id=${selectedBrand}&limit=100`);
+      setAssets(data || []);
+    } catch {}
+  };
+  const fetchUserRole = async () => {
+    try {
+      const members = await api.get(`/api/v1/brands/${selectedBrand}/members`);
+      const me = members.find(m => m.user_id === user?.id);
+      setUserRole(me?.role || "viewer");
+    } catch {}
+  };
+
   useEffect(() => {
     api.get("/api/v1/brands").then(data => {
       setBrands(data || []);
@@ -48,32 +73,8 @@ export default function FixRequestsPage() {
     fetchUserRole();
   }, [selectedBrand]);
 
-  const fetchUserRole = async () => {
-    try {
-      const members = await api.get(`/api/v1/brands/${selectedBrand}/members`);
-      const me = members.find(m => m.user_id === user?.id);
-      setUserRole(me?.role || "viewer");
-    } catch {}
-  };
 
-  const fetchRequests = async () => {
-    setLoading(true);
-    try {
-      const data = await api.get(`/api/v1/fix-requests?brand_id=${selectedBrand}&limit=50`);
-      setRequests(data?.requests || data || []);
-    } catch {
-      toast.error("Failed to load fix requests");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const fetchAssets = async () => {
-    try {
-      const data = await api.get(`/api/v1/assets?brand_id=${selectedBrand}&limit=100`);
-      setAssets(data || []);
-    } catch {}
-  };
 
   const handleSubmitRequest = async () => {
     if (!newForm.original_asset_id || !newForm.requester_notes.trim()) {
