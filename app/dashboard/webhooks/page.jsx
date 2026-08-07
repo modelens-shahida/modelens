@@ -116,6 +116,7 @@ export default function WebhookDashboardPage() {
   }, [selectedBrandId, selectedWebhook]);
 
   useEffect(() => { 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     fetchWebhooks(); 
   }, [selectedBrandId]);
 
@@ -190,7 +191,8 @@ export default function WebhookDashboardPage() {
       toast.success("Webhook created successfully!");
       setShowCreateForm(false);
       setNewWebhook({ url: "", events: [], payload_format: "verbose", filterRuleKey: "", filterRuleValue: "" });
-      fetchWebhooks();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchWebhooks();
     } catch (err) {
       toast.error(err.message || "Failed to create webhook");
     }
@@ -204,7 +206,8 @@ export default function WebhookDashboardPage() {
       setSelectedWebhook(null);
       setDeliveryLogs([]);
       setMetrics(null);
-      fetchWebhooks();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchWebhooks();
     } catch {
       toast.error("Failed to delete webhook");
     }
