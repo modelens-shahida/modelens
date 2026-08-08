@@ -320,3 +320,41 @@ async def test_process_video_render_celery_task(db_session: AsyncSession, test_d
     await db_session.refresh(render)
     assert render.status == "completed"
     assert render.duration_seconds == 4.0
+
+
+@pytest.mark.asyncio
+async def test_list_video_projects(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+    editor_user = test_data["users"]["editor"]
+    brand_id = test_data["brand"].id
+    editor_id = editor_user.id
+
+    # Create a couple of projects
+    project1 = VideoProject(
+        user_id=editor_id,
+        brand_id=brand_id,
+        name="Project One",
+        status="draft"
+    )
+    project2 = VideoProject(
+        user_id=editor_id,
+        brand_id=brand_id,
+        name="Project Two",
+        status="draft"
+    )
+    db_session.add_all([project1, project2])
+    await db_session.commit()
+
+    # Query list route without filters
+    res = await client.get("/api/v1/video-projects", headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert len(data) >= 2
+    assert any(p["name"] == "Project One" for p in data)
+    assert any(p["name"] == "Project Two" for p in data)
+
+    # Query with brand filter
+    res_brand = await client.get(f"/api/v1/video-projects?brand_id={brand_id}", headers=editor_headers)
+    assert res_brand.status_code == status.HTTP_200_OK
+    data_brand = res_brand.json()
+    assert len(data_brand) >= 2

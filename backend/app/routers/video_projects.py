@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +76,36 @@ async def create_video_project(
         "status": project.status,
         "created_at": project.created_at.isoformat(),
     }
+
+
+@router.get("")
+async def list_video_projects(
+    brand_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all video projects for the authenticated user, optionally filtered by brand."""
+    query = select(VideoProject).where(VideoProject.user_id == current_user.id)
+    if brand_id is not None:
+        query = query.where(VideoProject.brand_id == brand_id)
+    query = query.order_by(VideoProject.created_at.desc())
+
+    result = await db.execute(query)
+    projects = result.scalars().all()
+
+    return [
+        {
+            "project_id": p.id,
+            "brand_id": p.brand_id,
+            "name": p.name,
+            "master_prompt": p.master_prompt,
+            "aspect_ratio": p.aspect_ratio,
+            "mode": p.mode,
+            "status": p.status,
+            "created_at": p.created_at.isoformat(),
+        }
+        for p in projects
+    ]
 
 
 @router.get("/{project_id}")
