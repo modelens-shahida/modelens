@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi import APIRouter, HTTPException, Depends, Query, status, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -210,12 +210,68 @@ async def get_angle_shot(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_angle_shot(
-    payload: AngleShotCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new angle shot preset."""
-    if payload.code and payload.code.startswith("ML-POSE-"):
+    """Create a new angle shot preset supporting both JSON and FormData."""
+    import os
+    import uuid
+    from app.services.storage import storage_service
+    from app.worker import process_custom_angle_shot
+
+    content_type = request.headers.get("content-type", "")
+    reference_image_url = None
+    is_custom = False
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        name = form.get("name")
+        code = form.get("code")
+        category = form.get("category")
+        framing = form.get("framing")
+        pose = form.get("pose")
+        view_direction = form.get("view_direction")
+        description = form.get("description")
+        
+        file = form.get("reference_image")
+        if file:
+            filename = file.filename or "file.png"
+            file_ext = os.path.splitext(filename)[1]
+            unique_filename = f"{uuid.uuid4()}{file_ext}"
+            file_bytes = await file.read()
+            storage_service.save_file_bytes(unique_filename, file_bytes)
+            reference_image_url = f"/uploads/{unique_filename}"
+            is_custom = True
+            
+        camera_yaw = float(form.get("camera_yaw")) if form.get("camera_yaw") else None
+        camera_pitch = float(form.get("camera_pitch")) if form.get("camera_pitch") else None
+        focal_length_mm = float(form.get("focal_length_mm")) if form.get("focal_length_mm") else None
+        is_premium = form.get("is_premium") == "true"
+        prompt_template = form.get("prompt_template")
+        
+        quality_rules = None
+        compatible_products = []
+    else:
+        json_data = await request.json()
+        payload = AngleShotCreate(**json_data)
+        name = payload.name
+        code = payload.code
+        category = payload.category
+        framing = payload.framing
+        pose = payload.pose
+        view_direction = payload.view_direction
+        description = payload.description
+        camera_yaw = payload.camera_yaw
+        camera_pitch = payload.camera_pitch
+        focal_length_mm = payload.focal_length_mm
+        is_premium = payload.is_premium
+        prompt_template = payload.prompt_template
+        quality_rules = payload.quality_rules
+        compatible_products = payload.compatible_products or []
+        is_custom = True
+
+    if code and code.startswith("ML-POSE-"):
         # Map fields to match JSON schema format for validation
         body_yaw = 0
         qa_rule_codes = []
@@ -223,57 +279,57 @@ async def create_angle_shot(
         risk_level = "LOW"
         version_str = "1.0.0"
         
-        if payload.quality_rules:
-            body_yaw = int(payload.quality_rules.get("body_yaw_deg", 0))
-            raw_qa = payload.quality_rules.get("qa_rule_codes", "")
+        if quality_rules:
+            body_yaw = int(quality_rules.get("body_yaw_deg", 0))
+            raw_qa = quality_rules.get("qa_rule_codes", "")
             if isinstance(raw_qa, list):
                 qa_rule_codes = raw_qa
             elif isinstance(raw_qa, str) and raw_qa:
                 qa_rule_codes = [x.strip() for x in raw_qa.split(";") if x.strip()]
-            tier = payload.quality_rules.get("tier", "CORE")
-            risk_level = payload.quality_rules.get("risk_level", "LOW")
-            version_str = payload.quality_rules.get("version", "1.0.0")
+            tier = quality_rules.get("tier", "CORE")
+            risk_level = quality_rules.get("risk_level", "LOW")
+            version_str = quality_rules.get("version", "1.0.0")
 
         validation_dict = {
-            "preset_id": payload.code,
+            "preset_id": code,
             "version": version_str,
-            "family": payload.category,
-            "display_name": payload.name,
+            "family": category,
+            "display_name": name,
             "body_yaw_deg": body_yaw,
-            "framing": payload.framing,
+            "framing": framing,
             "qa_rule_codes": qa_rule_codes,
             "status": "ACTIVE",
             "tier": tier,
             "risk_level": risk_level
         }
         
-        # Remove None values so required check works
         validation_dict = {k: v for k, v in validation_dict.items() if v is not None}
         validate_pose_preset_schema(validation_dict)
 
     shot = AngleShot(
-        name=payload.name,
-        code=payload.code,
-        category=payload.category,
-        framing=payload.framing,
-        pose=payload.pose,
-        view_direction=payload.view_direction,
-        description=payload.description,
-        camera_yaw=payload.camera_yaw,
-        camera_pitch=payload.camera_pitch,
-        focal_length_mm=payload.focal_length_mm,
-        is_custom=True,
-        is_premium=payload.is_premium,
-        status="active",
+        name=name,
+        code=code,
+        category=category,
+        framing=framing,
+        pose=pose,
+        view_direction=view_direction,
+        description=description,
+        camera_yaw=camera_yaw,
+        camera_pitch=camera_pitch,
+        focal_length_mm=focal_length_mm,
+        is_custom=is_custom,
+        is_premium=is_premium,
+        status="processing" if is_custom and "multipart/form-data" in content_type else "active",
         version=1,
-        prompt_template=payload.prompt_template,
-        quality_rules=payload.quality_rules,
+        prompt_template=prompt_template,
+        quality_rules=quality_rules,
+        reference_image_url=reference_image_url,
     )
     db.add(shot)
     await db.flush()
 
     # Add compatibility rules
-    for product_type in (payload.compatible_products or []):
+    for product_type in compatible_products:
         compat = AngleShotCompatibility(
             angle_shot_id=shot.id,
             product_type=product_type.upper(),
@@ -286,17 +342,24 @@ async def create_angle_shot(
         angle_shot_id=shot.id,
         version=1,
         configuration={
-            "framing": payload.framing,
-            "pose": payload.pose,
-            "view_direction": payload.view_direction,
-            "camera_yaw": payload.camera_yaw,
-            "camera_pitch": payload.camera_pitch,
+            "framing": framing,
+            "pose": pose,
+            "view_direction": view_direction,
+            "camera_yaw": camera_yaw,
+            "camera_pitch": camera_pitch,
         },
         change_note="Initial version",
     )
     db.add(version)
     await db.commit()
     await db.refresh(shot)
+
+    # Trigger Pose extraction task if it's a custom upload
+    if is_custom and "multipart/form-data" in content_type:
+        try:
+            process_custom_angle_shot.delay(shot.id)
+        except Exception as celery_err:
+            print(f"[AngleShot] Celery dispatch failed: {celery_err}")
 
     return {"id": shot.id, "name": shot.name, "status": shot.status, "version": shot.version}
 
