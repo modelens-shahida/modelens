@@ -1,4 +1,5 @@
 "use client";
+import PoseVisualizer from "@/components/dashboard/PoseVisualizer";
 import React, { useState, useRef, useEffect } from "react";
 import { api } from "@/lib/api";
 import { Upload, Layers, Loader2, CheckCircle2, Download, RefreshCw, AlertTriangle, Clock } from "lucide-react";

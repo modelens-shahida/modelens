@@ -1,4 +1,5 @@
 "use client";
+import PoseVisualizer from "@/components/dashboard/PoseVisualizer";
 import React, { useState, useRef, useEffect } from "react";
 import { api } from "@/lib/api";
 import { Upload, Grid, Loader2, CheckCircle2, Download, RefreshCw, AlertTriangle, Clock, X, Plus, Shirt } from "lucide-react";
@@ -226,6 +227,7 @@ export default function CatalogStudioPage() {
             <div>
               <label className="text-xs text-zinc-400 mb-1 block">Pose & Framing</label>
               {angleShots.length > 0 ? (
+                <>
                 <select
                   value={selectedAngleShot?.id || ""}
                   onChange={(e) => {
@@ -238,6 +240,18 @@ export default function CatalogStudioPage() {
                   <option value="">Select pose preset...</option>
                   {angleShots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+                {selectedAngleShot?.keypoints && (
+                  <div className="mb-3">
+                    <p className="text-xs text-zinc-400 mb-1">Pose Skeleton Preview</p>
+                    <PoseVisualizer
+                      keypoints={selectedAngleShot.keypoints}
+                      width={180}
+                      height={270}
+                      showLabels={false}
+                    />
+                  </div>
+                )}
+                </>
               ) : (
                 <select value={pose} onChange={(e) => setPose(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none mb-3">
                   {POSES.map(p => <option key={p} value={p}>{p}</option>)}
