@@ -1,4 +1,5 @@
 "use client";
+import PoseVisualizer from "@/components/dashboard/PoseVisualizer";
 
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
