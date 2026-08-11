@@ -73,9 +73,20 @@ export default function HeaderNotifications({ wsEvents = [] }) {
     });
   }, []);
 
+  const [now, setNow] = useState(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   const formatTime = (date) => {
-    const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (diff < 60) return `${diff}s ago`;
+    if (!now) return "Just now";
+    const diff = Math.floor((now - date.getTime()) / 1000);
+    if (diff < 60) return `${Math.max(0, diff)}s ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     return `${Math.floor(diff / 3600)}h ago`;
   };

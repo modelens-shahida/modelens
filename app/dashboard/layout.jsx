@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/components/dashboard/Sidebar";
 import TopBar from "@/components/dashboard/TopBar";
 import HeaderNotifications from "@/components/dashboard/HeaderNotifications";
-import useWebSocket from "@/lib/useWebSocket";
+import { useWebSocket } from "@/lib/useWebSocket";
 import { Loader2 } from "lucide-react";
 
 export default function DashboardLayout({ children }) {
@@ -24,17 +24,7 @@ export default function DashboardLayout({ children }) {
     brandId: null,
     onEvent: handleWsEvent,
   });
-  const [wsEvents, setWsEvents] = useState([]);
 
-  const handleWsEvent = (event) => {
-    setWsEvents(prev => [...prev, event].slice(-50));
-  };
-
-  const { isConnected } = useWebSocket({
-    token: token,
-    brandId: null,
-    onEvent: handleWsEvent,
-  });
 
   useEffect(() => {
     if (!loading && !token) {
