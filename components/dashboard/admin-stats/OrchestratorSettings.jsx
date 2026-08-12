@@ -271,7 +271,7 @@ export default function OrchestratorSettings() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 mt-4"
+        className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 mt-4"
       >
         <div className="flex items-center justify-between mb-4">
           <div>

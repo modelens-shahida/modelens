@@ -63,8 +63,8 @@ export default function GenerationModeSelector({
           onClick={() => handleSelect("fast_draft")}
           className={`relative rounded-2xl p-6 transition-all duration-200 cursor-pointer border-2 flex flex-col justify-between ${
             currentMode === "fast_draft"
-              ? "border-purple-500 bg-purple-950/20/20 shadow-md ring-2 ring-purple-500/20"
-              : "border-purple-800/50 bg-zinc-900/40 hover:border-purple-700/50 hover:shadow-sm"
+               ? "border-purple-500 bg-purple-950/20 shadow-md ring-2 ring-purple-500/20"
+               : "border-zinc-850 bg-zinc-900/40 hover:border-purple-700/50 hover:shadow-sm"
           }`}
         >
           <div>
@@ -77,8 +77,8 @@ export default function GenerationModeSelector({
 
             {/* Icon & Title */}
             <div className="flex items-start gap-4 mb-5">
-              <div className="w-14 h-14 rounded-full bg-purple-900/30/70 text-purple-400 flex items-center justify-center flex-shrink-0">
-                <Zap className="w-7 h-7 fill-blue-600/20 text-purple-400" />
+              <div className="w-14 h-14 rounded-full bg-purple-900/30 text-purple-400 flex items-center justify-center flex-shrink-0">
+                <Zap className="w-7 h-7 fill-purple-600/20 text-purple-400" />
               </div>
               <div>
                 <h3 className="text-2xl font-bold text-purple-400">Fast Draft</h3>
@@ -89,9 +89,9 @@ export default function GenerationModeSelector({
             </div>
 
             {/* Metrics Row */}
-            <div className="grid grid-cols-2 gap-4 py-4 px-4 bg-zinc-900/60/80 rounded-xl border border-blue-100/60 mb-5">
+            <div className="grid grid-cols-2 gap-4 py-4 px-4 bg-zinc-900/60 rounded-xl border border-zinc-800 mb-5">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-purple-900/30/80 text-purple-400 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-purple-900/30 text-purple-400 flex items-center justify-center">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
@@ -99,8 +99,8 @@ export default function GenerationModeSelector({
                   <div className="text-xs text-zinc-500 font-medium">Estimated time</div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
-                <div className="w-9 h-9 rounded-full bg-purple-900/30/80 text-purple-400 flex items-center justify-center">
+              <div className="flex items-center gap-3 border-l border-zinc-850 pl-4">
+                <div className="w-9 h-9 rounded-full bg-purple-900/30 text-purple-400 flex items-center justify-center">
                   <Coins className="w-5 h-5" />
                 </div>
                 <div>
@@ -111,7 +111,7 @@ export default function GenerationModeSelector({
             </div>
 
             {/* Divider */}
-            <hr className="border-slate-100 mb-4" />
+            <hr className="border-zinc-800 mb-4" />
 
             {/* Use For List */}
             <div className="mb-6">
@@ -124,7 +124,7 @@ export default function GenerationModeSelector({
                   "Lower-credit generations",
                 ].map((item, idx) => (
                   <li key={idx} className="flex items-center gap-2.5 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-4 h-4 text-purple-400 fill-blue-600/10 flex-shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-purple-400 fill-purple-600/10 flex-shrink-0" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -156,8 +156,8 @@ export default function GenerationModeSelector({
           onClick={() => handleSelect("studio_quality")}
           className={`relative rounded-2xl p-6 transition-all duration-200 cursor-pointer border-2 flex flex-col justify-between ${
             currentMode === "studio_quality"
-              ? "border-amber-500 bg-amber-950/20/20 shadow-md ring-2 ring-amber-500/20"
-              : "border-amber-300 bg-zinc-900/40 hover:border-amber-400 hover:shadow-sm"
+              ? "border-amber-500 bg-amber-950/20 shadow-md ring-2 ring-amber-500/20"
+              : "border-zinc-850 bg-zinc-900/40 hover:border-amber-400 hover:shadow-sm"
           }`}
         >
           <div>
@@ -166,7 +166,7 @@ export default function GenerationModeSelector({
               <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-lg uppercase tracking-wider">
                 MODE 2
               </span>
-              <span className="inline-flex items-center gap-1.5 bg-amber-100/90 text-amber-900 border border-amber-300 px-3 py-1 rounded-full text-xs font-semibold">
+              <span className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold">
                 <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
                 Recommended for final images
               </span>
@@ -174,11 +174,11 @@ export default function GenerationModeSelector({
 
             {/* Icon & Title */}
             <div className="flex items-start gap-4 mb-5">
-              <div className="w-14 h-14 rounded-full bg-amber-100/80 text-amber-600 flex items-center justify-center flex-shrink-0">
-                <Gem className="w-7 h-7 text-amber-700" />
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0">
+                <Gem className="w-7 h-7 text-amber-400" />
               </div>
               <div>
-                <h3 className="text-2xl font-bold text-amber-700">Studio Quality</h3>
+                <h3 className="text-2xl font-bold text-amber-400">Studio Quality</h3>
                 <p className="text-sm text-zinc-400 mt-0.5 font-normal">
                   Maximum detail and garment accuracy.
                 </p>
@@ -186,9 +186,9 @@ export default function GenerationModeSelector({
             </div>
 
             {/* Metrics Row */}
-            <div className="grid grid-cols-2 gap-4 py-4 px-4 bg-zinc-900/60/80 rounded-xl border border-amber-100/80 mb-5">
+            <div className="grid grid-cols-2 gap-4 py-4 px-4 bg-zinc-900/60 rounded-xl border border-zinc-800 mb-5">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-amber-100/80 text-amber-700 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
@@ -196,8 +196,8 @@ export default function GenerationModeSelector({
                   <div className="text-xs text-zinc-500 font-medium">Estimated time</div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
-                <div className="w-9 h-9 rounded-full bg-amber-100/80 text-amber-700 flex items-center justify-center">
+              <div className="flex items-center gap-3 border-l border-zinc-850 pl-4">
+                <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center">
                   <Coins className="w-5 h-5" />
                 </div>
                 <div>
@@ -208,7 +208,7 @@ export default function GenerationModeSelector({
             </div>
 
             {/* Divider */}
-            <hr className="border-slate-100 mb-4" />
+            <hr className="border-zinc-800 mb-4" />
 
             {/* Use For List */}
             <div className="mb-6">
