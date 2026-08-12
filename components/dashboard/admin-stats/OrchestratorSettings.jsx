@@ -15,8 +15,34 @@ import {
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 
+// ComfyUI default config
+const DEFAULT_COMFYUI_CONFIG = {
+  upscaler_model: "RealESRGAN_x4plus",
+  lighting_strength: 0.75,
+  controlnet_coefficient: 0.85,
+  denoising_strength: 0.6,
+  cfg_scale: 7.5,
+  steps: 30,
+  sampler: "DPM++ 2M Karras",
+};
+
 export default function OrchestratorSettings() {
   const [rateLimit, setRateLimit] = useState(10);
+  const [comfyuiConfig, setComfyuiConfig] = useState(DEFAULT_COMFYUI_CONFIG);
+  const [showComfyUI, setShowComfyUI] = useState(false);
+  const [savingComfyUI, setSavingComfyUI] = useState(false);
+
+  const handleSaveComfyUI = async () => {
+    setSavingComfyUI(true);
+    try {
+      await adminSettingsApi.updateSettings({ comfyui_config: comfyuiConfig });
+      toast.success("ComfyUI settings saved!");
+    } catch {
+      toast.error("Failed to save ComfyUI settings");
+    } finally {
+      setSavingComfyUI(false);
+    }
+  };
   const [metrics, setMetrics] = useState({
     campaigns_total: 0,
     campaigns_success: 0,
@@ -238,6 +264,92 @@ export default function OrchestratorSettings() {
           </div>
         </div>
 
+      </motion.div>
+
+
+      {/* ComfyUI Pipeline Editor */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 mt-4"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-200">ComfyUI Pipeline Config</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">Edit generative pipeline parameters for admin use only</p>
+          </div>
+          <button
+            onClick={() => setShowComfyUI(!showComfyUI)}
+            className="text-xs border border-zinc-700 hover:border-purple-500 px-3 py-1.5 rounded-xl transition text-zinc-300"
+          >
+            {showComfyUI ? "Collapse" : "Expand"}
+          </button>
+        </div>
+
+        {showComfyUI && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Upscaler Model</label>
+                <select
+                  value={comfyuiConfig.upscaler_model}
+                  onChange={(e) => setComfyuiConfig(p => ({...p, upscaler_model: e.target.value}))}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                >
+                  <option>RealESRGAN_x4plus</option>
+                  <option>RealESRGAN_x2plus</option>
+                  <option>ESRGAN_4x</option>
+                  <option>SwinIR_4x</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Sampler</label>
+                <select
+                  value={comfyuiConfig.sampler}
+                  onChange={(e) => setComfyuiConfig(p => ({...p, sampler: e.target.value}))}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none"
+                >
+                  <option>DPM++ 2M Karras</option>
+                  <option>Euler a</option>
+                  <option>DDIM</option>
+                  <option>UniPC</option>
+                </select>
+              </div>
+            </div>
+
+            {[
+              { key: "lighting_strength", label: "Lighting Strength", min: 0, max: 1, step: 0.05 },
+              { key: "controlnet_coefficient", label: "ControlNet Coefficient", min: 0, max: 1, step: 0.05 },
+              { key: "denoising_strength", label: "Denoising Strength", min: 0, max: 1, step: 0.05 },
+              { key: "cfg_scale", label: "CFG Scale", min: 1, max: 20, step: 0.5 },
+              { key: "steps", label: "Steps", min: 10, max: 100, step: 1 },
+            ].map(({ key, label, min, max, step }) => (
+              <div key={key}>
+                <div className="flex justify-between mb-1">
+                  <label className="text-xs text-zinc-400">{label}</label>
+                  <span className="text-xs text-purple-400 font-mono">{comfyuiConfig[key]}</span>
+                </div>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={comfyuiConfig[key]}
+                  onChange={(e) => setComfyuiConfig(p => ({...p, [key]: parseFloat(e.target.value)}))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+            ))}
+
+            <button
+              onClick={handleSaveComfyUI}
+              disabled={savingComfyUI}
+              className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-2.5 rounded-xl text-xs font-semibold transition"
+            >
+              {savingComfyUI ? "Saving..." : "Save ComfyUI Config"}
+            </button>
+          </div>
+        )}
       </motion.div>
 
     </div>
