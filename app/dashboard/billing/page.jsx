@@ -183,8 +183,8 @@ export default function BillingPage() {
       </AnimatePresence>
 
       {/* Top Section Cards */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Subscription Plans */}
+      {/* Subscription Plans - Full Width */}
+      <div className="mb-8">
           <div className="mb-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-white">Subscription Plans</h2>
@@ -223,6 +223,10 @@ export default function BillingPage() {
             </div>
           </div>
 
+      </div>
+
+      {/* Balance & Top-Up Grid */}
+      <div className="grid md:grid-cols-2 gap-6">
         {/* Credits Balance Card */}
         <div className="bg-zinc-950 border border-zinc-850 p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-10">
