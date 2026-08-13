@@ -6,7 +6,7 @@ from sqlalchemy import select
 from unittest.mock import patch, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db import AngleShot, AngleShotCompatibility, AngleShotVersion, User
+from app.models.db import AngleShot, AngleShotCompatibility, AngleShotVersion, User, Campaign, Asset, ShootAngleShot
 from app.worker import _process_custom_angle_shot_async
 
 
@@ -477,7 +477,6 @@ async def test_seed_angle_shot_presets_integration(db_session: AsyncSession):
         
         await run_seed()
 
-    # Query loaded presets
     res = await db_session.execute(select(AngleShot).where(AngleShot.code == "ML-POSE-CAT-001"))
     shot = res.scalars().first()
     assert shot is not None
@@ -485,4 +484,214 @@ async def test_seed_angle_shot_presets_integration(db_session: AsyncSession):
     assert shot.is_premium is False
     assert shot.quality_rules["version"] == "1.0.0"
     assert "EVEN" in shot.quality_rules["weight_distribution"]
+
+
+@pytest.mark.asyncio
+async def test_list_angle_shots_advanced_and_facets(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    shot_a = AngleShot(
+        name="Front Weight Left",
+        code="ML-POSE-CAT-004",
+        slug="front-weight-left",
+        framing="FULL_BODY",
+        pose="relaxed",
+        view_direction="FRONT",
+        age_groups=["ADULT", "TEEN"],
+        tags=["lifestyle", "catalog"],
+        is_custom=False,
+        is_visible=True,
+    )
+    shot_b = AngleShot(
+        name="Back Neutral",
+        code="ML-POSE-CAT-042",
+        slug="back-neutral",
+        framing="FULL_BODY",
+        pose="neutral",
+        view_direction="BACK",
+        age_groups=["ADULT"],
+        tags=["fit"],
+        is_custom=True,
+        is_visible=True,
+    )
+
+    db_session.add_all([shot_a, shot_b])
+    await db_session.commit()
+
+    # 1. Test filtering by ageGroup
+    res = await client.get("/api/v1/angle-shots?ageGroup=TEEN", headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["code"] == "ML-POSE-CAT-004"
+
+    # 2. Test filtering by source / SYSTEM
+    res = await client.get("/api/v1/angle-shots?source=SYSTEM", headers=editor_headers)
+    assert len(res.json()["items"]) == 1
+    assert res.json()["items"][0]["code"] == "ML-POSE-CAT-004"
+
+    # 3. Test filtering by source / CUSTOM
+    res = await client.get("/api/v1/angle-shots?source=ORGANIZATION", headers=editor_headers)
+    assert len(res.json()["items"]) == 1
+    assert res.json()["items"][0]["code"] == "ML-POSE-CAT-042"
+
+    # 4. Verify facets are computed
+    res = await client.get("/api/v1/angle-shots", headers=editor_headers)
+    facets = res.json()["facets"]
+    assert facets["framing"]["FULL_BODY"] == 2
+    assert facets["viewDirection"]["FRONT"] == 1
+    assert facets["viewDirection"]["BACK"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_filter_facets_endpoint(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+    
+    shot = AngleShot(
+        name="Test Shot Facet",
+        framing="CLOSE_UP",
+        tags=["special", "new-arrivals"],
+        is_visible=True,
+    )
+    db_session.add(shot)
+    await db_session.commit()
+
+    res = await client.get("/api/v1/angle-shots/facets", headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert "productTypes" in data
+    assert "ageGroups" in data
+    assert "framings" in data
+    assert "special" in data["tags"]
+
+
+@pytest.mark.asyncio
+async def test_reorder_and_bulk_update_endpoints(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    shot_a = AngleShot(name="Shot A", is_visible=True, sort_order=0)
+    shot_b = AngleShot(name="Shot B", is_visible=True, sort_order=0)
+    db_session.add_all([shot_a, shot_b])
+    await db_session.commit()
+
+    # 1. Test Reorder
+    reorder_payload = {
+        "orders": [
+            {"id": shot_a.id, "sortOrder": 10},
+            {"id": shot_b.id, "sortOrder": 20}
+        ]
+    }
+    res = await client.post("/api/v1/angle-shots/admin/reorder", json=reorder_payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    
+    await db_session.refresh(shot_a)
+    await db_session.refresh(shot_b)
+    assert shot_a.sort_order == 10
+    assert shot_b.sort_order == 20
+
+    # 2. Test Bulk Update
+    bulk_payload = {
+        "ids": [shot_a.id, shot_b.id],
+        "status": "ARCHIVED",
+        "isVisible": False
+    }
+    res = await client.post("/api/v1/angle-shots/admin/bulk-update", json=bulk_payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["updated_count"] == 2
+
+    await db_session.refresh(shot_a)
+    assert shot_a.status == "ARCHIVED"
+    assert shot_a.is_visible is False
+
+
+@pytest.mark.asyncio
+async def test_custom_pose_endpoints(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+
+    # 1. Request upload URL
+    res = await client.post(
+        "/api/v1/angle-shots/custom/upload-url",
+        json={"fileName": "my-pose.png", "mimeType": "image/png", "fileSize": 1000},
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert "uploadUrl" in data
+    assert "referenceImageKey" in data
+
+    # 2. Create custom preset
+    create_payload = {
+        "name": "My Custom Walk",
+        "referenceImageKey": data["referenceImageKey"],
+        "productTypes": ["DRESS"],
+        "ageGroups": ["ADULT"],
+        "requestedFraming": "FULL_BODY"
+    }
+    res = await client.post("/api/v1/angle-shots/custom", json=create_payload, headers=editor_headers)
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["status"] == "processing"
+    
+    # Verify in DB
+    db_res = await db_session.execute(select(AngleShot).where(AngleShot.id == res.json()["id"]))
+    shot = db_res.scalars().first()
+    assert shot is not None
+    assert shot.pose == "CUSTOM"
+    assert shot.reference_image_url.endswith(data["referenceImageKey"])
+
+
+@pytest.mark.asyncio
+async def test_apply_angle_shots_endpoint(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    editor_headers = test_data["get_headers"]("editor")
+    brand = test_data["brand"]
+
+    # 1. Create a Campaign and an Asset
+    campaign = Campaign(name="Fall Catalog", description="Outerwear launch", brand_id=brand.id)
+    asset = Asset(brand_id=brand.id, filename="jacket.jpg", storage_path="/path/jacket.jpg", asset_type="product")
+    db_session.add_all([campaign, asset])
+    await db_session.commit()
+
+    # Link asset to campaign
+    from app.models.db import CampaignAsset
+    camp_asset = CampaignAsset(campaign_id=campaign.id, asset_id=asset.id)
+    db_session.add(camp_asset)
+    
+    # Seed Angle Shot
+    shot = AngleShot(
+        name="Front Neutral Stance",
+        code="ML-POSE-CAT-001",
+        framing="FULL_BODY",
+        pose="neutral",
+        view_direction="FRONT",
+        is_visible=True,
+    )
+    db_session.add(shot)
+    await db_session.commit()
+
+    # 2. Apply Angle Shot to Campaign
+    apply_payload = {
+        "angleShotIds": ["ML-POSE-CAT-001"],
+        "applyMode": "ALL_PRODUCTS",
+        "productIds": []
+    }
+    res = await client.post(
+        f"/api/v1/campaigns/{campaign.id}/angle-shots/apply",
+        json=apply_payload,
+        headers=editor_headers
+    )
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["applied_count"] == 1
+
+    # 3. Verify ShootAngleShot record is snapshot-copied
+    db_res = await db_session.execute(
+        select(ShootAngleShot).where(
+            ShootAngleShot.shoot_id == campaign.id,
+            ShootAngleShot.shoot_product_id == str(asset.id),
+            ShootAngleShot.angle_shot_id == shot.id
+        )
+    )
+    shoot_shot = db_res.scalars().first()
+    assert shoot_shot is not None
+    assert shoot_shot.configuration["framing"] == "FULL_BODY"
+    assert shoot_shot.configuration["view_direction"] == "FRONT"
+
 

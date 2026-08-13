@@ -43,6 +43,10 @@ def validate_compatibility(
     fabric_type: Optional[str] = None,
     model_age_group: Optional[str] = None,
     has_back_reference: bool = True,
+    shot_product_types: Optional[list] = None,
+    shot_age_groups: Optional[list] = None,
+    shot_gender_rules: Optional[list] = None,
+    model_gender: Optional[str] = None,
 ) -> CompatibilityResult:
     """
     Validates compatibility between an angle shot preset and product/model details.
@@ -50,6 +54,25 @@ def validate_compatibility(
     """
     warnings = []
     blocking_reasons = []
+
+    # Check explicit product type compatibility list if provided
+    if shot_product_types is not None:
+        # Case insensitive check
+        shot_prod_types_upper = [t.upper() for t in shot_product_types]
+        if product_type.upper() not in shot_prod_types_upper:
+            blocking_reasons.append("ANGLE_NOT_SUPPORTED_FOR_PRODUCT_TYPE")
+
+    # Check explicit model age group compatibility list if provided
+    if shot_age_groups is not None and model_age_group:
+        shot_age_groups_upper = [a.upper() for a in shot_age_groups]
+        if model_age_group.upper() not in shot_age_groups_upper:
+            blocking_reasons.append("ANGLE_NOT_SUPPORTED_FOR_MODEL_AGE")
+
+    # Check explicit gender rules if provided
+    if shot_gender_rules is not None and model_gender:
+        shot_gender_rules_upper = [g.upper() for g in shot_gender_rules]
+        if model_gender.upper() not in shot_gender_rules_upper:
+            blocking_reasons.append("ANGLE_NOT_SUPPORTED_FOR_GENDER")
 
     # Product type framing rules
     if product_type.upper() in INCOMPATIBLE_RULES:

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from datetime import datetime
 import json
 import os
@@ -76,38 +77,95 @@ class CompatibilityCheckRequest(BaseModel):
     has_back_reference: bool = True
 
 
+class ReorderItem(BaseModel):
+    id: int
+    sort_order: Optional[int] = None
+    sortOrder: Optional[int] = None
+
+
+class ReorderRequest(BaseModel):
+    orders: List[ReorderItem]
+
+
+class BulkUpdateRequest(BaseModel):
+    ids: List[int]
+    status: Optional[str] = None
+    is_visible: Optional[bool] = None
+    isVisible: Optional[bool] = None
+    is_premium: Optional[bool] = None
+    isPremium: Optional[bool] = None
+
+
+class CustomUploadUrlRequest(BaseModel):
+    fileName: str
+    mimeType: str
+    fileSize: int
+
+
+class CustomAngleShotCreate(BaseModel):
+    name: str
+    referenceImageKey: str
+    productTypes: List[str]
+    ageGroups: List[str]
+    requestedFraming: str
+    visibility: Optional[str] = "ORGANIZATION"
+
+
 # ========================== Endpoints ============================
 
 @router.get("")
 async def list_angle_shots(
     category: Optional[str] = Query(None),
+    ageGroup: Optional[str] = Query(None),
     framing: Optional[str] = Query(None),
     pose: Optional[str] = Query(None),
+    poseType: Optional[str] = Query(None),
+    view_direction: Optional[str] = Query(None),
+    viewDirection: Optional[str] = Query(None),
     garment_type: Optional[str] = Query(None),
+    productType: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     is_custom: Optional[bool] = Query(None),
+    source: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(40, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all angle shot presets with filters."""
-    query = select(AngleShot).where(AngleShot.is_visible == True)
+    """List all angle shot presets with filters, computed facets, and pagination."""
+    query = select(AngleShot).where(AngleShot.is_visible == True).options(selectinload(AngleShot.compatibilities))
 
-    if category:
-        query = query.where(AngleShot.category == category)
+    # Resolve viewDirection / view_direction
+    resolved_view_dir = viewDirection or view_direction
+    if resolved_view_dir:
+        query = query.where(AngleShot.view_direction == resolved_view_dir)
+
+    # Resolve framing
     if framing:
         query = query.where(AngleShot.framing == framing)
-    if pose:
-        query = query.where(AngleShot.pose == pose)
-    if is_custom is not None:
+
+    # Resolve pose / poseType
+    resolved_pose = poseType or pose
+    if resolved_pose:
+        query = query.where(AngleShot.pose.ilike(f"%{resolved_pose}%"))
+
+    # Resolve source / is_custom
+    if source:
+        if source.upper() == "SYSTEM":
+            query = query.where(AngleShot.is_custom == False)
+        else:
+            query = query.where(AngleShot.is_custom == True)
+    elif is_custom is not None:
         query = query.where(AngleShot.is_custom == is_custom)
+
+    # Resolve search
     if search:
         query = query.where(
             or_(
                 AngleShot.name.ilike(f"%{search}%"),
                 AngleShot.description.ilike(f"%{search}%"),
                 AngleShot.pose.ilike(f"%{search}%"),
+                AngleShot.code.ilike(f"%{search}%"),
             )
         )
 
@@ -116,20 +174,54 @@ async def list_angle_shots(
     result = await db.execute(query)
     all_shots = result.scalars().all()
 
-    # Filter by garment type compatibility
-    if garment_type:
+    # Apply ageGroup / category filters in Python for SQLite JSON compatibility
+    resolved_age_group = ageGroup or category
+    if resolved_age_group:
+        filtered = []
+        for s in all_shots:
+            match_category = s.category and resolved_age_group.lower() in s.category.lower()
+            match_age_group = False
+            if s.age_groups:
+                match_age_group = any(resolved_age_group.upper() == str(ag).upper() for ag in s.age_groups)
+            if match_category or match_age_group:
+                filtered.append(s)
+        all_shots = filtered
+
+    # Filter by garment type / productType compatibility
+    resolved_prod_type = productType or garment_type
+    if resolved_prod_type:
         filtered = []
         for shot in all_shots:
             compat_result = await db.execute(
                 select(AngleShotCompatibility).where(
                     AngleShotCompatibility.angle_shot_id == shot.id,
-                    AngleShotCompatibility.product_type == garment_type.upper(),
+                    AngleShotCompatibility.product_type == resolved_prod_type.upper(),
                     AngleShotCompatibility.compatible == True,
                 )
             )
             if compat_result.scalars().first():
                 filtered.append(shot)
         all_shots = filtered
+
+    # Compute facets counts over all matched shots (before pagination)
+    from collections import Counter
+    framing_counts = Counter()
+    view_direction_counts = Counter()
+    pose_counts = Counter()
+
+    for s in all_shots:
+        if s.framing:
+            framing_counts[s.framing] += 1
+        if s.view_direction:
+            view_direction_counts[s.view_direction] += 1
+        if s.pose:
+            pose_counts[s.pose] += 1
+
+    facets = {
+        "framing": dict(framing_counts),
+        "viewDirection": dict(view_direction_counts),
+        "poseType": dict(pose_counts),
+    }
 
     total = len(all_shots)
     offset = (page - 1) * limit
@@ -141,16 +233,24 @@ async def list_angle_shots(
                 "id": s.id,
                 "name": s.name,
                 "code": s.code,
+                "slug": s.slug or s.name.lower().replace(" ", "-").replace("—", "-"),
                 "category": s.category,
                 "framing": s.framing,
                 "pose": s.pose,
+                "viewDirection": s.view_direction,
                 "view_direction": s.view_direction,
+                "poseType": s.pose,
                 "description": s.description,
+                "thumbnailUrl": s.thumbnail_url,
                 "thumbnail_url": s.thumbnail_url,
                 "is_custom": s.is_custom,
+                "isPremium": s.is_premium,
                 "is_premium": s.is_premium,
                 "status": s.status,
                 "version": s.version,
+                "productTypes": [c.product_type for c in s.compatibilities if c.compatible],
+                "ageGroups": s.age_groups or ([s.category.upper()] if s.category else []),
+                "tags": s.tags or [],
             }
             for s in shots
         ],
@@ -159,7 +259,45 @@ async def list_angle_shots(
             "limit": limit,
             "total": total,
             "pages": (total + limit - 1) // limit,
-        }
+        },
+        "facets": facets,
+    }
+@router.get("/facets")
+async def get_filter_facets(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve all available unique filter options for angle shots."""
+    # Query distinct tags if any exist in the database
+    result = await db.execute(select(AngleShot).where(AngleShot.is_visible == True))
+    shots = result.scalars().all()
+    
+    unique_tags = set()
+    for s in shots:
+        if s.tags:
+            for t in s.tags:
+                unique_tags.add(t)
+
+    return {
+        "productTypes": [
+            "APPAREL", "DRESS", "TOP", "BOTTOM", "OUTERWEAR", "SWIMWEAR", 
+            "ACTIVEWEAR", "FOOTWEAR", "BAG", "EYEWEAR", "HEADWEAR", "JEWELRY", "ACCESSORY"
+        ],
+        "ageGroups": ["BABY", "KID", "TEEN", "ADULT", "SENIOR"],
+        "framings": [
+            "EXTREME_CLOSE_UP", "CLOSE_UP", "HEADSHOT", "BUST", "UPPER_BODY", 
+            "THREE_QUARTER", "AMERICAN_SHOT", "FULL_BODY", "WIDE", "DETAIL"
+        ],
+        "viewDirections": [
+            "FRONT", "FRONT_LEFT", "FRONT_RIGHT", "LEFT_PROFILE", "RIGHT_PROFILE", 
+            "BACK", "BACK_LEFT", "BACK_RIGHT", "TOP_DOWN", "LOW_ANGLE"
+        ],
+        "poseTypes": [
+            "NEUTRAL", "RELAXED", "ENGAGED", "HANDS_AT_SIDES", "HANDS_IN_POCKETS", 
+            "ONE_HAND_IN_POCKET", "HAND_ON_HIP", "ARMS_CROSSED", "WALKING", "TURNING", 
+            "SEATED", "LEANING", "CUSTOM"
+        ],
+        "tags": list(unique_tags)
     }
 
 
@@ -546,4 +684,141 @@ async def validate_preset_payload(
     """Validate a raw pose preset payload against the JSON Schema."""
     validate_pose_preset_schema(payload)
     return {"valid": True, "message": "Preset configuration conforms to the JSON Schema."}
+
+
+@router.post("/admin/reorder")
+@router.post("/reorder")
+async def reorder_angle_shots(
+    payload: ReorderRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder multiple angle shot presets."""
+    for item in payload.orders:
+        sort_val = item.sort_order if item.sort_order is not None else item.sortOrder
+        if sort_val is None:
+            continue
+        result = await db.execute(select(AngleShot).where(AngleShot.id == item.id))
+        shot = result.scalars().first()
+        if shot:
+            shot.sort_order = sort_val
+            
+    await db.commit()
+    return {"success": True, "message": "Presets reordered successfully."}
+
+
+@router.post("/admin/bulk-update")
+@router.post("/bulk-update")
+async def bulk_update_angle_shots(
+    payload: BulkUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk update multiple angle shot presets."""
+    updated_count = 0
+    for shot_id in payload.ids:
+        result = await db.execute(select(AngleShot).where(AngleShot.id == shot_id))
+        shot = result.scalars().first()
+        if not shot:
+            continue
+            
+        if payload.status is not None:
+            shot.status = payload.status
+            
+        # is_visible
+        vis_val = payload.is_visible if payload.is_visible is not None else payload.isVisible
+        if vis_val is not None:
+            shot.is_visible = vis_val
+            
+        # is_premium
+        prem_val = payload.is_premium if payload.is_premium is not None else payload.isPremium
+        if prem_val is not None:
+            shot.is_premium = prem_val
+            
+        updated_count += 1
+        
+    await db.commit()
+    return {"success": True, "updated_count": updated_count}
+
+
+@router.post("/custom/upload-url")
+async def request_custom_upload_url(
+    payload: CustomUploadUrlRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Request a mock or pre-signed upload URL for a custom reference image."""
+    import uuid
+    # Generate a unique key for the organization/user upload
+    unique_id = uuid.uuid4()
+    ext = os.path.splitext(payload.fileName)[1] or ".jpg"
+    key = f"organizations/org_default/custom-poses/{unique_id}{ext}"
+    
+    return {
+        "uploadUrl": f"http://localhost:8000/api/v1/assets/upload/mock?key={key}",
+        "referenceImageKey": key
+    }
+
+
+@router.post("/custom")
+async def create_custom_angle_shot_custom(
+    payload: CustomAngleShotCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a custom preset from an uploaded reference image key."""
+    # Create the AngleShot record matching the spec
+    shot = AngleShot(
+        name=payload.name,
+        code=f"ML-POSE-CUST-{int(datetime.utcnow().timestamp())}",
+        slug=payload.name.lower().replace(" ", "-").replace("—", "-"),
+        framing=payload.requestedFraming,
+        view_direction="FRONT",  # default
+        pose="CUSTOM",
+        reference_image_url=f"/uploads/{payload.referenceImageKey}",
+        is_custom=True,
+        status="processing",  # will be marked ACTIVE after worker processing
+        version=1,
+        age_groups=payload.ageGroups,
+        tags=["custom"],
+    )
+    db.add(shot)
+    await db.flush()
+
+    # Add compatibility rules
+    for product_type in payload.productTypes:
+        compat = AngleShotCompatibility(
+            angle_shot_id=shot.id,
+            product_type=product_type.upper(),
+            compatible=True,
+        )
+        db.add(compat)
+
+    # Save initial version
+    version = AngleShotVersion(
+        angle_shot_id=shot.id,
+        version=1,
+        configuration={
+            "framing": payload.requestedFraming,
+            "pose": "CUSTOM",
+            "reference_image_url": shot.reference_image_url,
+        },
+        change_note="Created custom angle-shot from reference image.",
+    )
+    db.add(version)
+    await db.commit()
+    await db.refresh(shot)
+
+    # Trigger async worker pose extraction if worker module is available
+    from app.worker import process_custom_angle_shot
+    try:
+        process_custom_angle_shot.delay(shot.id)
+    except Exception as e:
+        print(f"[AngleShot] Celery dispatch failed: {e}")
+
+    return {
+        "id": shot.id,
+        "name": shot.name,
+        "status": shot.status,
+        "version": shot.version
+    }
 
