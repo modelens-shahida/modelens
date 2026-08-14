@@ -72,7 +72,7 @@ from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 from app.services.asset_pipeline import process_image
 from app.services.ai_tagging_service import generate_ai_tags
-from app.services.webhook_security import build_signature_header
+from app.services.webhook_security import build_webhook_headers
 from app.config import settings
 
 @celery_app.task
@@ -998,9 +998,8 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
             secret = secret_holder[0]
             if secret:
                 payload_str = _json.dumps(payload, separators=(",", ":"))
-                sig_header, ts_header, timestamp = build_signature_header(secret, payload_str)
-                headers["X-Modelens-Signature"] = sig_header
-                headers["X-Modelens-Request-Timestamp"] = ts_header
+                sig_headers = build_webhook_headers(secret, payload_str)
+                headers.update(sig_headers)
         except Exception as sig_err:
             print(f"[Worker] HMAC signing failed (non-fatal): {sig_err}")
 

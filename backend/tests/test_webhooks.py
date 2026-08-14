@@ -413,5 +413,5 @@ async def test_dispatch_webhook_includes_hmac_header(db_session, test_data: dict
 
     assert "X-Modelens-Signature" in captured_headers
     sig = captured_headers["X-Modelens-Signature"]
-    assert sig.startswith("t=")
-    assert "v1=" in sig
+    assert sig.startswith("sha256=")
+    assert "X-Modelens-Timestamp" in captured_headers

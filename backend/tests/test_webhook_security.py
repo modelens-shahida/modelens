@@ -1,123 +1,152 @@
 import pytest
+import time
 import hmac
 import hashlib
-import time
 from app.services.webhook_security import (
-    sign_payload,
-    build_signature_header,
-    verify_webhook_signature,
+    generate_signature,
+    verify_signature,
+    build_webhook_headers,
+    SIGNATURE_HEADER,
+    TIMESTAMP_HEADER,
+    REPLAY_WINDOW_SECONDS,
 )
 
-SECRET = "ml_sec_test_secret_key_12345"
-PAYLOAD = '{"type": "job.completed", "job_id": 1}'
+
+SECRET = "test_secret_key_modelens"
+PAYLOAD = '{"event": "job.completed", "job_id": 123}'
 
 
-# ========================== Happy Path ==========================
+# ========================== Signature Generation Tests ===========
 
-def test_valid_signature_passes():
+def test_generate_signature_returns_sha256_prefix():
+    """Signature should start with sha256="""
+    sig, ts = generate_signature(SECRET, PAYLOAD)
+    assert sig.startswith("sha256=")
+    assert isinstance(ts, int)
+
+
+def test_generate_signature_is_deterministic():
+    """Same secret + payload + timestamp should produce same signature."""
+    ts = int(time.time())
+    sig1, _ = generate_signature(SECRET, PAYLOAD, timestamp=ts)
+    sig2, _ = generate_signature(SECRET, PAYLOAD, timestamp=ts)
+    assert sig1 == sig2
+
+
+def test_generate_signature_different_secrets():
+    """Different secrets should produce different signatures."""
+    ts = int(time.time())
+    sig1, _ = generate_signature("secret_a", PAYLOAD, timestamp=ts)
+    sig2, _ = generate_signature("secret_b", PAYLOAD, timestamp=ts)
+    assert sig1 != sig2
+
+
+def test_generate_signature_different_payloads():
+    """Different payloads should produce different signatures."""
+    ts = int(time.time())
+    sig1, _ = generate_signature(SECRET, PAYLOAD, timestamp=ts)
+    sig2, _ = generate_signature(SECRET, '{"event": "job.failed"}', timestamp=ts)
+    assert sig1 != sig2
+
+
+# ========================== Signature Verification Tests =========
+
+def test_verify_signature_valid():
     """Valid signature should pass verification."""
-    timestamp, signature = sign_payload(SECRET, PAYLOAD)
-    sig_header = f"t={timestamp},v1={signature}"
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
+    ts = int(time.time())
+    sig, _ = generate_signature(SECRET, PAYLOAD, timestamp=ts)
+    is_valid, reason = verify_signature(SECRET, PAYLOAD, sig, str(ts))
     assert is_valid is True
     assert reason == "Valid"
 
 
-def test_build_and_verify_roundtrip():
-    """build_signature_header output should pass verify_webhook_signature."""
-    sig_header, ts_header, timestamp = build_signature_header(SECRET, PAYLOAD)
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
-    assert is_valid is True
-
-
-# ========================== Forged Signature Tests ==============
-
-def test_forged_signature_fails():
-    """Tampered signature should fail verification."""
-    timestamp, _ = sign_payload(SECRET, PAYLOAD)
-    forged_sig = "a" * 64
-    sig_header = f"t={timestamp},v1={forged_sig}"
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
+def test_verify_signature_wrong_secret():
+    """Wrong secret should fail verification."""
+    ts = int(time.time())
+    sig, _ = generate_signature("wrong_secret", PAYLOAD, timestamp=ts)
+    is_valid, reason = verify_signature(SECRET, PAYLOAD, sig, str(ts))
     assert is_valid is False
     assert "mismatch" in reason.lower()
 
 
-def test_wrong_secret_fails():
-    """Signature generated with wrong secret should fail."""
-    timestamp, signature = sign_payload("wrong_secret", PAYLOAD)
-    sig_header = f"t={timestamp},v1={signature}"
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
+def test_verify_signature_tampered_payload():
+    """Tampered payload should fail verification."""
+    ts = int(time.time())
+    sig, _ = generate_signature(SECRET, PAYLOAD, timestamp=ts)
+    is_valid, reason = verify_signature(SECRET, '{"tampered": true}', sig, str(ts))
     assert is_valid is False
 
 
-def test_tampered_payload_fails():
-    """Signature for original payload should fail with modified payload."""
-    timestamp, signature = sign_payload(SECRET, PAYLOAD)
-    sig_header = f"t={timestamp},v1={signature}"
-    tampered_payload = '{"type": "job.completed", "job_id": 999}'
-    is_valid, reason = verify_webhook_signature(SECRET, tampered_payload, sig_header)
+def test_verify_signature_invalid_format():
+    """Signature without sha256= prefix should fail."""
+    ts = int(time.time())
+    is_valid, reason = verify_signature(SECRET, PAYLOAD, "invalidsignature", str(ts))
     assert is_valid is False
+    assert "format" in reason.lower()
 
 
-# ========================== Replay Attack Tests =================
-
-def test_expired_timestamp_fails():
-    """Signature older than 5 minutes should be rejected."""
-    old_timestamp = str(int(time.time()) - 400)  # 400 seconds ago
-    _, signature = sign_payload(SECRET, PAYLOAD, timestamp=old_timestamp)
-    sig_header = f"t={old_timestamp},v1={signature}"
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
-    assert is_valid is False
-    assert "expired" in reason.lower()
-
-
-def test_future_timestamp_fails():
-    """Timestamp too far in the future should be rejected."""
-    future_timestamp = str(int(time.time()) + 120)  # 2 minutes in the future
-    _, signature = sign_payload(SECRET, PAYLOAD, timestamp=future_timestamp)
-    sig_header = f"t={future_timestamp},v1={signature}"
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
-    assert is_valid is False
-    assert "future" in reason.lower()
-
-
-def test_timestamp_within_window_passes():
-    """Timestamp within 5 minute window should pass."""
-    old_timestamp = str(int(time.time()) - 200)  # 200 seconds ago (within 300s window)
-    _, signature = sign_payload(SECRET, PAYLOAD, timestamp=old_timestamp)
-    sig_header = f"t={old_timestamp},v1={signature}"
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
-    assert is_valid is True
-
-
-# ========================== Malformed Header Tests ==============
-
-def test_missing_signature_header_fails():
-    """Empty signature header should fail."""
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, "")
-    assert is_valid is False
-    assert "missing" in reason.lower()
-
-
-def test_missing_timestamp_in_header_fails():
-    """Header without t= should fail."""
-    timestamp, signature = sign_payload(SECRET, PAYLOAD)
-    sig_header = f"v1={signature}"  # Missing t=
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
+def test_verify_signature_invalid_timestamp():
+    """Non-numeric timestamp should fail."""
+    sig, _ = generate_signature(SECRET, PAYLOAD)
+    is_valid, reason = verify_signature(SECRET, PAYLOAD, sig, "not-a-number")
     assert is_valid is False
     assert "timestamp" in reason.lower()
 
 
-def test_missing_v1_in_header_fails():
-    """Header without v1= should fail."""
-    timestamp, _ = sign_payload(SECRET, PAYLOAD)
-    sig_header = f"t={timestamp}"  # Missing v1=
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, sig_header)
+# ========================== Replay Attack Tests ==================
+
+def test_verify_signature_expired_timestamp():
+    """Timestamp older than 5 minutes should fail replay protection."""
+    old_ts = int(time.time()) - REPLAY_WINDOW_SECONDS - 10
+    sig, _ = generate_signature(SECRET, PAYLOAD, timestamp=old_ts)
+    is_valid, reason = verify_signature(SECRET, PAYLOAD, sig, str(old_ts))
     assert is_valid is False
-    assert "v1" in reason.lower()
+    assert "expired" in reason.lower()
 
 
-def test_malformed_header_fails():
-    """Completely malformed header should fail."""
-    is_valid, reason = verify_webhook_signature(SECRET, PAYLOAD, "not_a_valid_header")
+def test_verify_signature_future_timestamp_too_far():
+    """Timestamp too far in the future should also fail."""
+    future_ts = int(time.time()) + REPLAY_WINDOW_SECONDS + 10
+    sig, _ = generate_signature(SECRET, PAYLOAD, timestamp=future_ts)
+    is_valid, reason = verify_signature(SECRET, PAYLOAD, sig, str(future_ts))
     assert is_valid is False
+
+
+def test_verify_signature_no_replay_protection():
+    """Expired timestamp should pass when replay protection is disabled."""
+    old_ts = int(time.time()) - 9999
+    sig, _ = generate_signature(SECRET, PAYLOAD, timestamp=old_ts)
+    is_valid, reason = verify_signature(
+        SECRET, PAYLOAD, sig, str(old_ts), enforce_replay_protection=False
+    )
+    assert is_valid is True
+
+
+# ========================== Build Headers Tests ==================
+
+def test_build_webhook_headers_contains_required_keys():
+    """Build headers should contain all required security headers."""
+    headers = build_webhook_headers(SECRET, PAYLOAD)
+    assert SIGNATURE_HEADER in headers
+    assert TIMESTAMP_HEADER in headers
+    assert "Content-Type" in headers
+    assert "User-Agent" in headers
+
+
+def test_build_webhook_headers_signature_verifiable():
+    """Headers built by build_webhook_headers should pass verification."""
+    headers = build_webhook_headers(SECRET, PAYLOAD)
+    is_valid, reason = verify_signature(
+        SECRET,
+        PAYLOAD,
+        headers[SIGNATURE_HEADER],
+        headers[TIMESTAMP_HEADER],
+    )
+    assert is_valid is True
+    assert reason == "Valid"
+
+
+def test_build_webhook_headers_user_agent():
+    """User-Agent should identify ModelLens."""
+    headers = build_webhook_headers(SECRET, PAYLOAD)
+    assert "ModelLens" in headers["User-Agent"]
