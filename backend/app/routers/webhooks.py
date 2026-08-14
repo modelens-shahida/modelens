@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
+from app.services.webhook_security import build_webhook_headers, verify_signature, SIGNATURE_HEADER, TIMESTAMP_HEADER
 import secrets
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional
@@ -9,6 +10,22 @@ from datetime import datetime
 from app.models.db import get_db, WebhookSubscription, Brand, BrandMember, User, WebhookLog, WebhookDeliveryLog
 from app.middleware.auth import get_current_user
 from app.services.audit import write_audit_log
+
+
+
+async def deliver_webhook_with_security(url: str, payload: dict, secret: str) -> bool:
+    """Deliver webhook payload with HMAC-SHA256 signature."""
+    import httpx
+    import json
+    payload_str = json.dumps(payload)
+    headers = build_webhook_headers(secret, payload_str)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(url, content=payload_str, headers=headers)
+            return response.status_code < 300
+    except Exception as e:
+        print(f"[Webhook] Delivery failed: {e}")
+        return False
 
 router = APIRouter(
     prefix="/api/v1/webhooks",

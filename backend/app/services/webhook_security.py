@@ -1,113 +1,82 @@
 import hmac
 import hashlib
 import time
-from typing import Optional, Tuple
+from typing import Optional
 
 
+SIGNATURE_HEADER = "X-Modelens-Signature"
+TIMESTAMP_HEADER = "X-Modelens-Timestamp"
 REPLAY_WINDOW_SECONDS = 300  # 5 minutes
-FUTURE_TOLERANCE_SECONDS = 60  # 1 minute tolerance for clock drift
 
 
-def sign_payload(secret_token: str, payload_str: str, timestamp: Optional[str] = None) -> Tuple[str, str]:
+def generate_signature(secret: str, payload: str, timestamp: Optional[int] = None) -> tuple[str, int]:
     """
-    Generate HMAC SHA-256 signature for a webhook payload.
-
-    Returns:
-        (timestamp, signature) tuple
+    Generate HMAC-SHA256 signature for webhook payload.
+    Returns (signature, timestamp).
     """
     if timestamp is None:
-        timestamp = str(int(time.time()))
+        timestamp = int(time.time())
 
-    sig_payload = f"{timestamp}.{payload_str}"
+    message = f"{timestamp}.{payload}"
     signature = hmac.new(
-        secret_token.encode("utf-8"),
-        sig_payload.encode("utf-8"),
+        secret.encode("utf-8"),
+        message.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
-    return timestamp, signature
+    return f"sha256={signature}", timestamp
 
 
-def build_signature_header(secret_token: str, payload_str: str) -> Tuple[str, str, str]:
-    """
-    Build X-Modelens-Signature and X-Modelens-Request-Timestamp headers.
-
-    Returns:
-        (signature_header, timestamp_header, timestamp)
-    """
-    timestamp, signature = sign_payload(secret_token, payload_str)
-    signature_header = f"t={timestamp},v1={signature}"
-    return signature_header, timestamp, timestamp
-
-
-def verify_webhook_signature(
-    secret_token: str,
-    payload_str: str,
+def verify_signature(
+    secret: str,
+    payload: str,
     signature_header: str,
-    timestamp_header: Optional[str] = None,
-) -> Tuple[bool, str]:
+    timestamp_header: str,
+    enforce_replay_protection: bool = True,
+) -> tuple[bool, str]:
     """
-    Verify an incoming webhook signature.
-
-    Uses constant-time comparison (hmac.compare_digest) to prevent timing attacks.
-    Enforces a 5-minute replay window.
-    Rejects timestamps too far in the future (clock drift protection).
-
-    Args:
-        secret_token: The subscription's secret token
-        payload_str: The raw JSON payload string
-        signature_header: The X-Modelens-Signature header value (t=...,v1=...)
-        timestamp_header: Optional X-Modelens-Request-Timestamp header
-
-    Returns:
-        (is_valid, reason) tuple
+    Verify HMAC-SHA256 signature of incoming webhook payload.
+    Returns (is_valid, reason).
     """
-    if not signature_header:
-        return False, "Missing signature header"
-
-    # Parse signature header
-    parts = {}
-    try:
-        for part in signature_header.split(","):
-            key, value = part.split("=", 1)
-            parts[key.strip()] = value.strip()
-    except Exception:
-        return False, "Malformed signature header"
-
-    if "t" not in parts:
-        return False, "Missing timestamp (t) in signature header"
-    if "v1" not in parts:
-        return False, "Missing signature (v1) in signature header"
-
-    timestamp_str = parts["t"]
-    received_signature = parts["v1"]
-
     # Validate timestamp
     try:
-        timestamp = int(timestamp_str)
-    except ValueError:
-        return False, "Invalid timestamp format"
+        timestamp = int(timestamp_header)
+    except (ValueError, TypeError):
+        return False, "Invalid timestamp header"
 
-    now = int(time.time())
+    # Replay attack protection
+    if enforce_replay_protection:
+        current_time = int(time.time())
+        if abs(current_time - timestamp) > REPLAY_WINDOW_SECONDS:
+            return False, f"Timestamp expired. Must be within {REPLAY_WINDOW_SECONDS} seconds"
 
-    # Reject timestamps too far in the future (clock drift attack)
-    if timestamp > now + FUTURE_TOLERANCE_SECONDS:
-        return False, "Timestamp is too far in the future"
+    # Validate signature format
+    if not signature_header.startswith("sha256="):
+        return False, "Invalid signature format. Expected sha256=<hash>"
 
-    # Reject timestamps older than replay window
-    if now - timestamp > REPLAY_WINDOW_SECONDS:
-        return False, "Signature has expired (replay attack prevention)"
-
-    # Compute expected signature
-    sig_payload = f"{timestamp_str}.{payload_str}"
-    expected_signature = hmac.new(
-        secret_token.encode("utf-8"),
-        sig_payload.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    # Generate expected signature
+    expected_signature, _ = generate_signature(secret, payload, timestamp)
 
     # Constant-time comparison to prevent timing attacks
-    if not hmac.compare_digest(expected_signature, received_signature):
+    is_valid = hmac.compare_digest(
+        signature_header.encode("utf-8"),
+        expected_signature.encode("utf-8"),
+    )
+
+    if not is_valid:
         return False, "Signature mismatch"
 
     return True, "Valid"
+
+
+def build_webhook_headers(secret: str, payload: str) -> dict:
+    """
+    Build the full set of security headers for outgoing webhook delivery.
+    """
+    signature, timestamp = generate_signature(secret, payload)
+    return {
+        SIGNATURE_HEADER: signature,
+        TIMESTAMP_HEADER: str(timestamp),
+        "Content-Type": "application/json",
+        "User-Agent": "ModelLens-Webhook/1.0",
+    }
