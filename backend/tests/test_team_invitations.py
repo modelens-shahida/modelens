@@ -306,3 +306,80 @@ async def test_celery_task_sends_email(db_session: AsyncSession, test_data: dict
         kwargs = mock_send_email.call_args[1]
         assert kwargs["to_email"] == "worker@brand.com"
         assert "t-worker-email" in kwargs["html_content"]
+
+
+@pytest.mark.asyncio
+async def test_update_member_role_auth_required(client: AsyncClient, test_data: dict):
+    brand_id = test_data["brand"].id
+    editor_user = test_data["users"]["editor"]
+    res = await client.patch(
+        f"/api/v1/brands/{brand_id}/members/{editor_user.id}",
+        json={"role": "admin"}
+    )
+    assert res.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_update_member_role_admin_success(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    brand_id = test_data["brand"].id
+    admin_headers = test_data["get_headers"]("admin")
+    viewer_user = test_data["users"]["viewer"]
+
+    res = await client.patch(
+        f"/api/v1/brands/{brand_id}/members/{viewer_user.id}",
+        json={"role": "editor"},
+        headers=admin_headers
+    )
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()["role"] == "editor"
+
+    # Reload check
+    member_query = select(BrandMember).where(BrandMember.brand_id == brand_id, BrandMember.user_id == viewer_user.id)
+    member_result = await db_session.execute(member_query)
+    member = member_result.scalars().first()
+    assert member.role == "editor"
+
+
+@pytest.mark.asyncio
+async def test_update_member_role_change_owner_forbidden(client: AsyncClient, test_data: dict):
+    brand_id = test_data["brand"].id
+    admin_headers = test_data["get_headers"]("admin")
+    owner_user = test_data["users"]["owner"]
+
+    res = await client.patch(
+        f"/api/v1/brands/{brand_id}/members/{owner_user.id}",
+        json={"role": "admin"},
+        headers=admin_headers
+    )
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+    assert "owner's role" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_member_role_change_self_forbidden(client: AsyncClient, test_data: dict):
+    brand_id = test_data["brand"].id
+    admin_user = test_data["users"]["admin"]
+    admin_headers = test_data["get_headers"]("admin")
+
+    res = await client.patch(
+        f"/api/v1/brands/{brand_id}/members/{admin_user.id}",
+        json={"role": "viewer"},
+        headers=admin_headers
+    )
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+    assert "own role" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_member_role_invalid_role(client: AsyncClient, test_data: dict):
+    brand_id = test_data["brand"].id
+    admin_headers = test_data["get_headers"]("admin")
+    viewer_user = test_data["users"]["viewer"]
+
+    res = await client.patch(
+        f"/api/v1/brands/{brand_id}/members/{viewer_user.id}",
+        json={"role": "invalid_role_type"},
+        headers=admin_headers
+    )
+    assert res.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+

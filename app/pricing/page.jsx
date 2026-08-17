@@ -269,6 +269,7 @@ const PricingPage = () => {
         frequency: isMonthly ? "monthly" : "annual",
       });
       if (response && response.session_url) {
+        /* eslint-disable-next-line react-hooks/immutability */
         window.location.href = response.session_url;
       } else {
         throw new Error("Invalid response from checkout session API");

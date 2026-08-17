@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { 
   ArrowLeft, Users, Settings, Plus, X, Mail, Shield, 
-  Loader2, Edit3, Check, Webhook, Activity, Trash2, 
+  Loader2, Edit3, Check, Webhook, Activity, Trash2, Brain,
   Key, RefreshCw, Sliders, Eye, FileText, Download
 } from "lucide-react";
 import Link from "next/link";
@@ -23,9 +23,17 @@ export default function BrandDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("members"); // "members" | "settings" | "webhooks" | "audit-logs"
   const [auditLogs, setAuditLogs] = useState([]);
+  const [memoryData, setMemoryData] = useState(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState("all");
   const [auditLogsOffset, setAuditLogsOffset] = useState(0);
   const [auditLogsLoading, setAuditLogsLoading] = useState(false);
   const [auditLogsHasMore, setAuditLogsHasMore] = useState(true);
+
+  // Brand management states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   // Settings states
   const [newBrandName, setNewBrandName] = useState("");
@@ -118,9 +126,29 @@ export default function BrandDetailPage() {
 
   useEffect(() => {
     if (id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       fetchData();
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [id]);
+
+  const handleDeleteBrand = async () => {
+    if (deleteConfirmText !== brand?.name) {
+      toast.error("Brand name does not match");
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/api/v1/brands/${id}`);
+      toast.success("Brand workspace deleted");
+      router.push("/dashboard/brands");
+    } catch (e) {
+      toast.error("Failed to delete brand");
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   const fetchAuthSettings = async () => {
     try {
@@ -131,23 +159,17 @@ export default function BrandDetailPage() {
     }
   };
 
-  useEffect(() => {
-    if (activeTab === "settings" && id) {
-      fetchAuthSettings();
+  const fetchMemory = async () => {
+    setMemoryLoading(true);
+    try {
+      const data = await api.get(`/api/v1/brands/${id}/memory`);
+      setMemoryData(data);
+    } catch (e) {
+      toast.error("Failed to load brand memory");
+    } finally {
+      setMemoryLoading(false);
     }
-  }, [activeTab, id]);
-
-  useEffect(() => {
-    if (activeTab === "webhooks") {
-      fetchWebhooks();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab === "audit-logs" && id) {
-      fetchAuditLogs(0);
-    }
-  }, [activeTab, id]);
+  };
 
   const fetchAuditLogs = async (offset = 0) => {
     setAuditLogsLoading(true);
@@ -166,6 +188,38 @@ export default function BrandDetailPage() {
       setAuditLogsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === "settings" && id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchAuthSettings();
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab, id]);
+
+  useEffect(() => {
+    if (activeTab === "webhooks") {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchWebhooks();
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "audit-logs" && id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchAuditLogs(0);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab, id]);
+
+  useEffect(() => {
+    if (activeTab === "memory" && id) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      fetchMemory();
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [activeTab, id]);
 
   const handleUpdateWhitelist = async (e) => {
     e?.preventDefault();
@@ -408,6 +462,27 @@ export default function BrandDetailPage() {
   // Check RBAC permission for settings and invite
   const canManage = userRole === "owner" || userRole === "admin";
 
+
+  const handleRemoveMember = async (memberId) => {
+    try {
+      await api.delete(`/api/v1/brands/${id}/members/${memberId}`);
+      toast.success("Member removed");
+      fetchData();
+    } catch (e) {
+      toast.error("Failed to remove member");
+    }
+  };
+
+  const handleUpdateRole = async (memberId, newRole) => {
+    try {
+      await api.patch(`/api/v1/brands/${id}/members/${memberId}`, { role: newRole });
+      toast.success("Role updated");
+      fetchData();
+    } catch (e) {
+      toast.error("Failed to update role");
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Back link & Header */}
@@ -493,6 +568,16 @@ export default function BrandDetailPage() {
             <Activity size={14} /> Audit Logs
           </button>
         )}
+        <button
+          onClick={() => setActiveTab("memory")}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            activeTab === "memory"
+              ? "border-purple-500 text-purple-400"
+              : "border-transparent text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <Brain size={14} /> Brand Memory
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -534,11 +619,36 @@ export default function BrandDetailPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(member.role)}`}>
-                        {member.role}
-                      </span>
+                      {canManage && member.user_id !== brand?.owner_id && member.user_id !== user?.id ? (
+                        <select
+                          value={member.role}
+                          onChange={(e) => handleUpdateRole(member.user_id, e.target.value)}
+                          className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none cursor-pointer"
+                        >
+                          <option value="viewer">Viewer</option>
+                          <option value="editor">Editor</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      ) : (
+                        <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(member.role)}`}>
+                          {member.role}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 text-zinc-400">Active</td>
+                    <td className="px-6 py-4 text-zinc-400">
+                      <div className="flex items-center justify-between">
+                        <span>Active</span>
+                        {canManage && member.user_id !== brand?.owner_id && member.user_id !== user?.id && (
+                          <button
+                            onClick={() => handleRemoveMember(member.user_id)}
+                            className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-950/20"
+                            title="Remove Member"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
 
@@ -671,10 +781,149 @@ export default function BrandDetailPage() {
                 ))}
               </div>
             )}
+
+            {/* Danger Zone - Owner Only */}
+            {userRole === "owner" && (
+              <div className="border-t border-red-900/30 pt-6">
+                <h3 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h3>
+                <p className="text-xs text-zinc-500 mb-4">Permanently delete this brand workspace. This cannot be undone.</p>
+                <button
+                  onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(""); }}
+                  className="text-xs text-red-400 border border-red-800 hover:bg-red-950/30 px-4 py-2 rounded-xl transition"
+                >
+                  Delete Workspace
+                </button>
+              </div>
+            )}
           </div>
         )}
 
   
+
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 border border-red-900/50 rounded-2xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-red-400 mb-2">Delete Workspace</h2>
+            <p className="text-xs text-zinc-400 mb-4">
+              This will permanently delete <strong className="text-white">{brand?.name}</strong> and all its data.
+            </p>
+            <p className="text-xs text-zinc-400 mb-2">Type <strong className="text-white">{brand?.name}</strong> to confirm:</p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={brand?.name}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteBrand}
+                disabled={deleteConfirmText !== brand?.name || deleting}
+                className="flex-1 bg-red-700 hover:bg-red-600 disabled:opacity-40 py-2 rounded-xl text-sm font-medium transition"
+              >
+                {deleting ? "Deleting..." : "Delete Workspace"}
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 border border-zinc-700 py-2 rounded-xl text-sm text-zinc-300 hover:text-white transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Brand Memory Tab */}
+      {activeTab === "memory" && (
+        <div className="space-y-6">
+          {memoryLoading && (
+            <div className="text-zinc-400 text-sm text-center py-8">Loading brand memory...</div>
+          )}
+
+          {memoryData && !memoryLoading && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Tag Cloud */}
+              <div className="lg:col-span-2 bg-zinc-900/20 border border-zinc-800 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-white">Tag Cloud</h3>
+                  <span className="text-xs text-zinc-500">{memoryData.total_assets} assets analyzed</span>
+                </div>
+
+                {/* Category Filters */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {["all", ...new Set(
+                    Object.keys(memoryData.tag_frequency || {})
+                      .filter(k => k.includes(":"))
+                      .map(k => k.split(":")[0])
+                  )].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategoryFilter(cat)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
+                        activeCategoryFilter === cat
+                          ? "bg-purple-600 border-purple-500 text-white"
+                          : "border-zinc-700 text-zinc-400 hover:border-purple-500"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tag Pills */}
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(memoryData.tag_frequency || {})
+                    .filter(([tag]) => activeCategoryFilter === "all" || tag.startsWith(activeCategoryFilter + ":"))
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([tag, count]) => {
+                      const maxCount = Math.max(...Object.values(memoryData.tag_frequency));
+                      const ratio = count / maxCount;
+                      const size = ratio > 0.7 ? "text-lg px-4 py-2" : ratio > 0.4 ? "text-sm px-3 py-1.5" : "text-xs px-2 py-1";
+                      const label = tag.includes(":") ? tag.split(":")[1] : tag;
+                      return (
+                        <span
+                          key={tag}
+                          className={`${size} rounded-full font-medium bg-gradient-to-r from-purple-900/60 to-indigo-900/60 border border-purple-700/40 text-purple-200`}
+                          title={`${tag}: ${count} occurrences`}
+                        >
+                          {label} <span className="text-purple-400 text-xs">{count}</span>
+                        </span>
+                      );
+                    })}
+                </div>
+
+                {Object.keys(memoryData.tag_frequency || {}).length === 0 && (
+                  <div className="text-zinc-500 text-sm text-center py-8">No tags recorded yet. Upload and process assets to build brand memory.</div>
+                )}
+              </div>
+
+              {/* Side Panel */}
+              <div className="bg-gradient-to-br from-purple-950/30 to-indigo-950/30 border border-purple-800/30 rounded-2xl p-6">
+                <h3 className="text-sm font-semibold text-purple-300 mb-3">🧠 How Brand Memory Works</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+                  Brand Memory is a semantic profile built from your catalog assets. The AI orchestrator analyzes uploaded images and extracts visual attributes like lighting, mood, color palette, style, and composition.
+                </p>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+                  These tag frequencies are used to maintain consistency across AI-generated model catalog creatives, ensuring generated outputs align with your {"brand's"} visual identity.
+                </p>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Total Assets</span>
+                    <span className="text-white font-semibold">{memoryData.total_assets}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Unique Tags</span>
+                    <span className="text-white font-semibold">{Object.keys(memoryData.tag_frequency || {}).length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Audit Logs Tab */}
       {activeTab === "audit-logs" && canManage && (
         <div className="space-y-4">

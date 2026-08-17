@@ -538,6 +538,411 @@ class Invitation(Base):
     brand = relationship("Brand")
 
 
+
+class CampaignTemplate(Base):
+    __tablename__ = "campaign_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    default_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EditorialAsset(Base):
+    __tablename__ = "editorial_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    shot_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    camera_body: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    lens_spec: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    lighting_setup: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    composition_grid: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    style_mood: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    asset = relationship("Asset")
+
+
+
+class GhostJob(Base):
+    __tablename__ = "ghost_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    product_hint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    garment_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    view: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    resolution: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    preserve_print: Mapped[bool] = mapped_column(default=True)
+    preserve_seams: Mapped[bool] = mapped_column(default=True)
+    generation_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    credits_reserved: Mapped[int] = mapped_column(default=0)
+    credits_consumed: Mapped[int] = mapped_column(default=0)
+    progress: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    assets = relationship("GhostJobAsset", back_populates="job", cascade="all, delete-orphan")
+    outputs = relationship("GhostOutput", back_populates="job", cascade="all, delete-orphan")
+
+
+class GhostJobAsset(Base):
+    __tablename__ = "ghost_job_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("ghost_jobs.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mask_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    crop_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("GhostJob", back_populates="assets")
+
+
+class GhostOutput(Base):
+    __tablename__ = "ghost_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("ghost_jobs.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    fidelity_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    api_interaction_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("GhostJob", back_populates="outputs")
+
+
+class VideoProject(Base):
+    __tablename__ = "video_projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    master_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="16:9")
+    mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="standard")
+    status: Mapped[str] = mapped_column(String(50), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    clips = relationship("VideoClip", back_populates="project", cascade="all, delete-orphan")
+    renders = relationship("VideoRender", back_populates="project", cascade="all, delete-orphan")
+
+
+class VideoClip(Base):
+    __tablename__ = "video_clips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("video_projects.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(default=0)
+    prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    motion_preset: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    duration: Mapped[Optional[float]] = mapped_column(nullable=True, default=4.0)
+    start_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    end_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    provider_job_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    clip_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    credits_consumed: Mapped[int] = mapped_column(default=0)
+    trim_start: Mapped[Optional[float]] = mapped_column(nullable=True)
+    trim_end: Mapped[Optional[float]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project = relationship("VideoProject", back_populates="clips")
+
+
+class VideoRender(Base):
+    __tablename__ = "video_renders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("video_projects.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    duration_seconds: Mapped[Optional[float]] = mapped_column(nullable=True)
+    resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="1080p")
+    audio_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project = relationship("VideoProject", back_populates="renders")
+
+
+class SketchJob(Base):
+    __tablename__ = "sketch_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    product_hint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    material_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    model_brief: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    background_brief: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    output_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="ON_MODEL")
+    resolution: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="2K")
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="3:4")
+    generation_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="studio_quality")
+    credits_reserved: Mapped[int] = mapped_column(default=0)
+    credits_consumed: Mapped[int] = mapped_column(default=0)
+    progress: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    references = relationship("SketchJobReference", back_populates="job", cascade="all, delete-orphan")
+    outputs = relationship("SketchOutput", back_populates="job", cascade="all, delete-orphan")
+
+
+class SketchJobReference(Base):
+    __tablename__ = "sketch_job_references"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("sketch_jobs.id", ondelete="CASCADE"), index=True)
+    reference_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mask_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("SketchJob", back_populates="references")
+
+
+class SketchOutput(Base):
+    __tablename__ = "sketch_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("sketch_jobs.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    api_interaction_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("SketchJob", back_populates="outputs")
+
+
+
+class CatalogJob(Base):
+    __tablename__ = "catalog_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    engine_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="product_to_model")
+    generation_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="studio_quality")
+    model_identity: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pose: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    background: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="4:5")
+    resolution: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="2K")
+    total_items: Mapped[int] = mapped_column(default=0)
+    completed_items: Mapped[int] = mapped_column(default=0)
+    failed_items: Mapped[int] = mapped_column(default=0)
+    credits_reserved: Mapped[int] = mapped_column(default=0)
+    credits_consumed: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    items = relationship("CatalogJobItem", back_populates="job", cascade="all, delete-orphan")
+
+
+class CatalogJobItem(Base):
+    __tablename__ = "catalog_job_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("catalog_jobs.id", ondelete="CASCADE"), index=True)
+    sku_tag: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    product_image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mask_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    fidelity_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    provider_job_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job = relationship("CatalogJob", back_populates="items")
+
+
+
+class CatalogOutput(Base):
+    __tablename__ = "catalog_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("catalog_jobs.id", ondelete="CASCADE"), index=True)
+    job_item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("catalog_job_items.id", ondelete="SET NULL"), nullable=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    output_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    api_interaction_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+
+class AngleShot(Base):
+    __tablename__ = "angle_shots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
+    slug: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    framing: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pose: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    view_direction: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    reference_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    pose_map_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    depth_map_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    segmentation_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    camera_yaw: Mapped[Optional[float]] = mapped_column(nullable=True)
+    camera_pitch: Mapped[Optional[float]] = mapped_column(nullable=True)
+    camera_roll: Mapped[Optional[float]] = mapped_column(nullable=True)
+    camera_distance: Mapped[Optional[float]] = mapped_column(nullable=True)
+    focal_length_mm: Mapped[Optional[float]] = mapped_column(nullable=True)
+    crop_top: Mapped[Optional[float]] = mapped_column(nullable=True)
+    crop_bottom: Mapped[Optional[float]] = mapped_column(nullable=True)
+    subject_scale: Mapped[Optional[float]] = mapped_column(nullable=True)
+    is_custom: Mapped[bool] = mapped_column(default=False)
+    is_premium: Mapped[bool] = mapped_column(default=False)
+    is_visible: Mapped[bool] = mapped_column(default=True)
+    status: Mapped[str] = mapped_column(String(50), default="active", index=True)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    version: Mapped[int] = mapped_column(default=1)
+    prompt_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    negative_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    generation_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    quality_rules: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    age_groups: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    gender_rules: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    tags: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    compatibilities = relationship("AngleShotCompatibility", back_populates="angle_shot", cascade="all, delete-orphan")
+    versions = relationship("AngleShotVersion", back_populates="angle_shot", cascade="all, delete-orphan")
+
+
+class AngleShotCompatibility(Base):
+    __tablename__ = "angle_shot_compatibilities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    angle_shot_id: Mapped[int] = mapped_column(ForeignKey("angle_shots.id", ondelete="CASCADE"), index=True)
+    product_type: Mapped[str] = mapped_column(String(100))
+    compatible: Mapped[bool] = mapped_column(default=True)
+    warning_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    angle_shot = relationship("AngleShot", back_populates="compatibilities")
+
+
+class AngleShotVersion(Base):
+    __tablename__ = "angle_shot_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    angle_shot_id: Mapped[int] = mapped_column(ForeignKey("angle_shots.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(default=1)
+    configuration: Mapped[dict] = mapped_column(JSONB, default=dict)
+    change_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    angle_shot = relationship("AngleShot", back_populates="versions")
+
+
+class ShootAngleShot(Base):
+    __tablename__ = "shoot_angle_shots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shoot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True, index=True)
+    shoot_product_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    angle_shot_id: Mapped[int] = mapped_column(ForeignKey("angle_shots.id", ondelete="CASCADE"), index=True)
+    angle_shot_version: Mapped[int] = mapped_column(default=1)
+    configuration: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    position: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String(50), default="selected")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BrandModel(Base):
+    __tablename__ = "brand_models"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    gender: Mapped[str] = mapped_column(String(50), default="Female")
+    full_body_reference_asset_id: Mapped[str] = mapped_column(String(100))
+    portrait_reference_asset_id: Mapped[str] = mapped_column(String(100))
+    appearance_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rights_confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_brand_model_workspace_name"),
+    )
+
+
+class FluidSession(Base):
+    __tablename__ = "fluid_sessions"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    model_id: Mapped[str] = mapped_column(String(100), default="model_01")
+    model_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scene_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pose_reference_asset_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    background_asset_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    product_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    aspect_ratio: Mapped[str] = mapped_column(String(20), default="4:5")
+    resolution: Mapped[str] = mapped_column(String(20), default="2K")
+    generation_mode: Mapped[str] = mapped_column(String(50), default="QUALITY")
+    active_layer_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    layers = relationship("FluidLayer", back_populates="session", cascade="all, delete-orphan")
+
+
+class FluidLayer(Base):
+    __tablename__ = "fluid_layers"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("fluid_sessions.id", ondelete="CASCADE"), index=True)
+    parent_layer_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    operation: Mapped[str] = mapped_column(String(100))
+    provider: Mapped[str] = mapped_column(String(100))
+    provider_model: Mapped[str] = mapped_column(String(100))
+    provider_job_id: Mapped[str] = mapped_column(String(100))
+    image_url: Mapped[str] = mapped_column(String(1000))
+    mask_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    aspect_ratio: Mapped[str] = mapped_column(String(20))
+    quality_score: Mapped[float] = mapped_column(default=1.0)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    session = relationship("FluidSession", back_populates="layers")
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(

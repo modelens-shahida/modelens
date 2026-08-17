@@ -124,6 +124,80 @@ class ComfyUIService:
 
         raise TimeoutError(f"ComfyUI generation timed out for prompt_id: {prompt_id}")
 
+    def inject_node_input(self, workflow: dict, node_id: str, field_name: str, value: Any) -> dict:
+        """
+        Inject a specific input value directly into a target Node ID.
+        Useful for raw ComfyUI API exported workflows (e.g. Node '14' text, Node '22' image).
+        """
+        workflow_copy = json.loads(json.dumps(workflow))
+        node_str_id = str(node_id)
+
+        if node_str_id in workflow_copy:
+            if "inputs" not in workflow_copy[node_str_id]:
+                workflow_copy[node_str_id]["inputs"] = {}
+            workflow_copy[node_str_id]["inputs"][field_name] = value
+            logger.info(f"[ComfyUI] Injected '{field_name}' into Node {node_str_id}")
+        else:
+            logger.warning(f"[ComfyUI] Node ID '{node_str_id}' not found in workflow schema.")
+
+        return workflow_copy
+
+    async def listen_websocket_completion(
+        self, prompt_id: str, client_id: str, timeout: float = 300.0
+    ) -> Dict[str, Any]:
+        """
+        Listen for ComfyUI execution status events via WebSocket connection (ws://<host>/ws?clientId=<client_id>).
+        Blocks until final execution completes or times out.
+        """
+        if self.mock_mode:
+            await asyncio.sleep(0.5)
+            logger.info(f"[ComfyUI Mock WS] Execution completed for prompt_id: {prompt_id}")
+            return {
+                "status": "completed",
+                "prompt_id": prompt_id,
+                "outputs": [
+                    {"filename": f"mock_ws_output_{uuid.uuid4().hex[:8]}.png", "type": "output"}
+                ],
+            }
+
+        ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://") + f"/ws?clientId={client_id}"
+
+        try:
+            import websockets
+            async with websockets.connect(ws_url, close_timeout=10) as ws:
+                logger.info(f"[ComfyUI WS] Connected to {ws_url} for prompt_id: {prompt_id}")
+                start_time = datetime.utcnow()
+
+                while True:
+                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                    if elapsed > timeout:
+                        raise TimeoutError(f"ComfyUI WS execution timed out for prompt_id: {prompt_id}")
+
+                    raw_msg = await asyncio.wait_for(ws.recv(), timeout=timeout - elapsed)
+                    if isinstance(raw_msg, str):
+                        msg = json.loads(raw_msg)
+                        msg_type = msg.get("type")
+
+                        if msg_type == "executing":
+                            data = msg.get("data", {})
+                            executed_node = data.get("node")
+                            msg_prompt_id = data.get("prompt_id")
+
+                            # When node is None and prompt_id matches, execution graph is complete
+                            if executed_node is None and msg_prompt_id == prompt_id:
+                                logger.info(f"[ComfyUI WS] Final execution complete for prompt_id: {prompt_id}")
+                                return await self.poll_until_complete(prompt_id)
+
+                        elif msg_type == "execution_error":
+                            data = msg.get("data", {})
+                            if data.get("prompt_id") == prompt_id:
+                                err_msg = data.get("exception_message", "Unknown execution error")
+                                logger.error(f"[ComfyUI WS Error] {err_msg}")
+                                raise RuntimeError(f"ComfyUI execution error: {err_msg}")
+        except ImportError:
+            logger.warning("[ComfyUI WS] 'websockets' library not installed. Falling back to HTTP polling.")
+            return await self.poll_until_complete(prompt_id)
+
     async def download_output(self, filename: str) -> bytes:
         """Download generated output from ComfyUI."""
         if self.mock_mode:

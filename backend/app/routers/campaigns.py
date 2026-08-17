@@ -13,7 +13,9 @@ from app.models.db import (
     WorkflowTemplate,
     User,
     Brand,
-    BrandMember
+    BrandMember,
+    AngleShot,
+    ShootAngleShot,
 )
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 
@@ -408,4 +410,114 @@ async def list_campaign_workflows(
         }
         for w in workflows
     ]
+
+
+class ApplyAngleShotRequest(BaseModel):
+    angleShotIds: List[str]
+    applyMode: str = "ALL_PRODUCTS"
+    productIds: Optional[List[str]] = []
+
+
+@router.post("/{campaign_id}/angle-shots/apply")
+async def apply_angle_shots_to_campaign(
+    campaign_id: int,
+    payload: ApplyAngleShotRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Apply multiple angle shots to products in a campaign/shoot and save snapshot configurations."""
+    campaign = await check_campaign_access(campaign_id, "editor", current_user, db)
+
+    # 1. Fetch matching angle shots
+    shots = []
+    for shot_id_or_code in payload.angleShotIds:
+        # Check if integer ID or string code
+        try:
+            val_id = int(shot_id_or_code)
+            res = await db.execute(select(AngleShot).where(AngleShot.id == val_id))
+        except ValueError:
+            res = await db.execute(select(AngleShot).where(AngleShot.code == shot_id_or_code))
+        
+        shot = res.scalars().first()
+        if shot:
+            shots.append(shot)
+
+    if not shots:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid angle shot presets found for the provided IDs."
+        )
+
+    # 2. Resolve campaign assets (products) to apply to
+    target_asset_ids = []
+    if payload.applyMode == "ALL_PRODUCTS":
+        res_assets = await db.execute(select(CampaignAsset.asset_id).where(CampaignAsset.campaign_id == campaign_id))
+        target_asset_ids = list(res_assets.scalars().all())
+    else:
+        for p_id in (payload.productIds or []):
+            try:
+                target_asset_ids.append(int(p_id))
+            except ValueError:
+                pass
+
+    if not target_asset_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No target products/assets selected or found for this campaign."
+        )
+
+    # 3. Create or update ShootAngleShot snapshots
+    applied_count = 0
+    for shot in shots:
+        for asset_id in target_asset_ids:
+            # Check unique constraint: shoot_id, shoot_product_id, angle_shot_id
+            stmt = select(ShootAngleShot).where(
+                ShootAngleShot.shoot_id == campaign_id,
+                ShootAngleShot.shoot_product_id == str(asset_id),
+                ShootAngleShot.angle_shot_id == shot.id
+            )
+            res_existing = await db.execute(stmt)
+            shoot_shot = res_existing.scalars().first()
+            
+            snapshot = {
+                "framing": shot.framing,
+                "pose": shot.pose,
+                "view_direction": shot.view_direction,
+                "camera_yaw": shot.camera_yaw,
+                "camera_pitch": shot.camera_pitch,
+                "camera_roll": shot.camera_roll,
+                "camera_distance": shot.camera_distance,
+                "focal_length_mm": shot.focal_length_mm,
+                "crop_top": shot.crop_top,
+                "crop_bottom": shot.crop_bottom,
+                "subject_scale": shot.subject_scale,
+                "thumbnail_url": shot.thumbnail_url,
+                "reference_image_url": shot.reference_image_url,
+                "pose_map_url": shot.pose_map_url,
+                "depth_map_url": shot.depth_map_url,
+                "segmentation_url": shot.segmentation_url,
+                "prompt_template": shot.prompt_template,
+                "negative_prompt": shot.negative_prompt,
+                "generation_config": shot.generation_config,
+                "quality_rules": shot.quality_rules,
+            }
+            
+            if shoot_shot:
+                shoot_shot.angle_shot_version = shot.version
+                shoot_shot.configuration = snapshot
+                shoot_shot.status = "selected"
+            else:
+                shoot_shot = ShootAngleShot(
+                    shoot_id=campaign_id,
+                    shoot_product_id=str(asset_id),
+                    angle_shot_id=shot.id,
+                    angle_shot_version=shot.version,
+                    configuration=snapshot,
+                    status="selected",
+                )
+                db.add(shoot_shot)
+            applied_count += 1
+
+    await db.commit()
+    return {"success": True, "applied_count": applied_count}
 

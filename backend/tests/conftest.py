@@ -10,6 +10,106 @@ from pgvector.sqlalchemy import Vector
 
 from sqlalchemy.dialects.postgresql import JSONB
 
+from unittest.mock import MagicMock
+import sys
+
+# Global MLflow mock to prevent real HTTP connection attempts during test runs
+mock_mlflow = MagicMock()
+mock_run = MagicMock()
+mock_run.info.run_id = "mock_global_run_id"
+mock_mlflow.start_run.return_value = mock_run
+mock_mlflow.start_run.return_value.__enter__.return_value = mock_run
+mock_mlflow.start_run.return_value.__exit__.return_value = False
+sys.modules["mlflow"] = mock_mlflow
+# Global Redis mock to prevent real Redis socket connections and timeouts
+class MockRedisPipeline:
+    def __init__(self, client):
+        self.client = client
+        self.key = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def zremrangebyscore(self, key, min_val, max_val):
+        self.key = key
+        if key not in self.client.store:
+            self.client.store[key] = []
+        self.client.store[key] = [t for t in self.client.store[key] if t > max_val]
+
+    def zcard(self, key):
+        self.key = key
+
+    def zadd(self, key, mapping):
+        self.key = key
+        if key not in self.client.store:
+            self.client.store[key] = []
+        for val in mapping.values():
+            self.client.store[key].append(val)
+
+    def expire(self, key, seconds):
+        self.key = key
+
+    async def execute(self):
+        count = len(self.client.store.get(self.key, [])) if self.key else 0
+        return (None, count, None, None)
+
+class MockRedisClient:
+    def __init__(self):
+        self.store = {}
+
+    def pipeline(self, transaction=True):
+        return MockRedisPipeline(self)
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+        return True
+
+    async def setex(self, key, time, value):
+        self.store[key] = value
+        return True
+
+    async def get(self, key):
+        return self.store.get(key)
+
+    async def delete(self, key):
+        self.store.pop(key, None)
+        return True
+
+    async def ping(self):
+        return True
+
+    async def close(self):
+        pass
+
+    async def aclose(self):
+        pass
+
+# Initialize global mock redis client
+global_mock_redis = MockRedisClient()
+
+import app.middleware.rate_limit
+app.middleware.rate_limit.redis_client = global_mock_redis
+
+import app.services.cache_service
+app.services.cache_service.redis_client = global_mock_redis
+
+import app.routers.jobs
+app.routers.jobs.redis_client = global_mock_redis
+
+import app.worker
+app.worker.redis_client = global_mock_redis
+
+
+
+
+@pytest.fixture(autouse=True)
+def clear_mock_redis():
+    global_mock_redis.store.clear()
+    yield
+
 # 1. Custom compile rule for pgvector's Vector type on SQLite
 @compiles(Vector, "sqlite")
 def compile_vector_sqlite(type_, compiler, **kw):
@@ -18,6 +118,27 @@ def compile_vector_sqlite(type_, compiler, **kw):
 @compiles(JSONB, "sqlite")
 def compile_jsonb_sqlite(type_, compiler, **kw):
     return "JSON"
+
+
+# Proxy session maker to redirect all module-level session creations to the active test database
+class TestSessionMakerProxy:
+    def __init__(self):
+        self.actual_maker = None
+
+    def __call__(self, **kwargs):
+        if self.actual_maker is None:
+            raise RuntimeError("TestSessionMakerProxy: actual_maker not initialized yet")
+        return self.actual_maker(**kwargs)
+
+    def configure(self, **kwargs):
+        if self.actual_maker:
+            self.actual_maker.configure(**kwargs)
+
+
+import app.models.db
+proxy_session_maker = TestSessionMakerProxy()
+app.models.db.async_session_maker = proxy_session_maker
+
 
 # 2. Import Base and strip PostgreSQL-specific indexes before any table creation
 from app.models.db import Base, get_db, User, Brand, BrandMember, Campaign, WorkflowTemplate
@@ -68,6 +189,12 @@ async def setup_test_db():
             pass
 
     test_engine = create_async_engine(db_url, echo=False)
+    
+    proxy_session_maker.actual_maker = async_sessionmaker(
+        bind=test_engine,
+        expire_on_commit=False,
+        class_=AsyncSession
+    )
     
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

@@ -21,6 +21,14 @@ export default function PromptsPage() {
   const [promptText, setPromptText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Set up form for creating a new template
+  const handleNewPromptClick = () => {
+    setSelectedPrompt(null);
+    setPromptName("");
+    setPromptText("");
+    setIsEditing(false);
+  };
+
   // Fetch prompts list
   const fetchPrompts = async () => {
     try {
@@ -43,10 +51,6 @@ export default function PromptsPage() {
     }
   };
 
-  useEffect(() => {
-    fetchPrompts();
-  }, []);
-
   // Set selected prompt details in editor
   const handleSelectPrompt = (prompt) => {
     setSelectedPrompt(prompt);
@@ -55,15 +59,30 @@ export default function PromptsPage() {
     setIsEditing(true);
   };
 
-  // Set up form for creating a new template
-  const handleNewPromptClick = () => {
-    setSelectedPrompt(null);
-    setPromptName("");
-    setPromptText("");
-    setIsEditing(false);
-  };
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    fetchPrompts();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   // Submit prompt form (Only POST supported currently on backend)
+
+  const handleDeletePrompt = async () => {
+    if (!selectedPrompt) return;
+    if (!window.confirm(`Are you sure you want to delete "${selectedPrompt.name}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/api/v1/prompts/${selectedPrompt.id}`);
+      toast.success("Prompt template deleted");
+      setPrompts((prev) => prev.filter((p) => p.id !== selectedPrompt.id));
+      setSelectedPrompt(null);
+      setPromptName("");
+      setPromptText("");
+      setIsEditing(false);
+    } catch (e) {
+      toast.error("Failed to delete prompt template");
+    }
+  };
+
   const handleSavePrompt = async (e) => {
     e.preventDefault();
     if (!promptName.trim()) {
@@ -90,17 +109,11 @@ export default function PromptsPage() {
         setSelectedPrompt(newPrompt);
         setIsEditing(true);
       } else {
-        // Backend currently only exposes GET & POST, updates are handled by saving as new version/copy
-        // We will save it as a new prompt template with a unique/updated name
-        const copyPayload = {
-          name: `${promptName.trim()} (Copy)`,
-          prompt_text: promptText.trim(),
-        };
-        const copiedPrompt = await api.post("/api/v1/prompts", copyPayload);
-        toast.success("Prompt version saved as copy successfully!");
-        setPrompts((prev) => [...prev, copiedPrompt]);
-        setSelectedPrompt(copiedPrompt);
-        setPromptName(copiedPrompt.name);
+        // PATCH existing prompt template in-place
+        const updatedPrompt = await api.patch(`/api/v1/prompts/${selectedPrompt.id}`, payload);
+        toast.success("Prompt template updated successfully!");
+        setPrompts((prev) => prev.map((p) => p.id === selectedPrompt.id ? updatedPrompt : p));
+        setSelectedPrompt(updatedPrompt);
       }
     } catch (error) {
       toast.error(error.message || "Failed to save prompt template");
@@ -259,8 +272,17 @@ export default function PromptsPage() {
                 ) : (
                   <Save size={12} />
                 )}
-                {isEditing ? "Save as New Version" : "Save Template"}
+                {isEditing ? "Save Changes" : "Save Template"}
               </button>
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={handleDeletePrompt}
+                  className="px-4 py-2 text-sm font-medium text-red-400 border border-red-800 hover:bg-red-950/30 rounded-xl transition"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </form>
         </div>

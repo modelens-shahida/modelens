@@ -56,6 +56,19 @@ export default function AssetsPage() {
   // Details Modal and Trash states
   const [isTrashView, setIsTrashView] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [editorialData, setEditorialData] = useState(null);
+  const [editorialForm, setEditorialForm] = useState({
+    shot_type: "", camera_body: "", lens_spec: "",
+    lighting_setup: "", composition_grid: "", style_mood: ""
+  });
+  const [savingEditorial, setSavingEditorial] = useState(false);
+
+  // Bulk action states
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState(new Set());
+  const [showBulkTagInput, setShowBulkTagInput] = useState(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   // Advanced filter states
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -114,6 +127,20 @@ export default function AssetsPage() {
   useEffect(() => {
     if (selectedAsset) {
       fetchModalTags(selectedAsset.id);
+      api.get(`/api/v1/assets/${selectedAsset.id}/editorial`).then(data => {
+        setEditorialData(data);
+        setEditorialForm({
+          shot_type: data.shot_type || "",
+          camera_body: data.camera_body || "",
+          lens_spec: data.lens_spec || "",
+          lighting_setup: data.lighting_setup || "",
+          composition_grid: data.composition_grid || "",
+          style_mood: data.style_mood || "",
+        });
+      }).catch(() => {
+        setEditorialData(null);
+        setEditorialForm({ shot_type: "", camera_body: "", lens_spec: "", lighting_setup: "", composition_grid: "", style_mood: "" });
+      });
     } else {
       setModalTags([]);
     }
@@ -284,6 +311,66 @@ export default function AssetsPage() {
       toast.error(error.message || "Upload failed. Please try again.");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+
+  const toggleAssetSelection = (assetId) => {
+    setSelectedAssetIds(prev => {
+      const next = new Set(prev);
+      next.has(assetId) ? next.delete(assetId) : next.add(assetId);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`Delete ${selectedAssetIds.size} selected assets? This cannot be undone.`)) return;
+    setBulkProcessing(true);
+    let success = 0, failed = 0;
+    for (const assetId of selectedAssetIds) {
+      try {
+        await api.delete(`/api/v1/assets/${assetId}`);
+        success++;
+      } catch { failed++; }
+    }
+    setBulkProcessing(false);
+    setSelectedAssetIds(new Set());
+    setSelectionMode(false);
+    toast.success(`Deleted ${success} assets${failed > 0 ? `, ${failed} failed` : ""}`);
+    fetchAssets();
+  };
+
+  const handleBulkAddTag = async () => {
+    if (!bulkTagInput.trim()) return;
+    setBulkProcessing(true);
+    let success = 0, failed = 0;
+    for (const assetId of selectedAssetIds) {
+      try {
+        await api.post(`/api/v1/assets/${assetId}/tags?tag=${encodeURIComponent(bulkTagInput.trim())}`);
+        success++;
+      } catch { failed++; }
+    }
+    setBulkProcessing(false);
+    setBulkTagInput("");
+    setShowBulkTagInput(false);
+    setSelectedAssetIds(new Set());
+    setSelectionMode(false);
+    toast.success(`Tag added to ${success} assets${failed > 0 ? `, ${failed} failed` : ""}`);
+    fetchAssets();
+  };
+
+
+  const handleSaveEditorial = async () => {
+    if (!selectedAsset) return;
+    setSavingEditorial(true);
+    try {
+      const data = await api.patch(`/api/v1/assets/${selectedAsset.id}/editorial`, editorialForm);
+      setEditorialData(data);
+      toast.success("Editorial specs saved!");
+    } catch (e) {
+      toast.error("Failed to save editorial specs");
+    } finally {
+      setSavingEditorial(false);
     }
   };
 
@@ -480,6 +567,19 @@ export default function AssetsPage() {
 
         {/* Advanced Filters Toggle */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setSelectionMode(!selectionMode);
+              setSelectedAssetIds(new Set());
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+              selectionMode
+                ? "bg-purple-600 border-purple-500 text-white"
+                : "bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-purple-500"
+            }`}
+          >
+            {selectionMode ? `✓ ${selectedAssetIds.size} Selected` : "Select"}
+          </button>
           <button
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
@@ -688,11 +788,32 @@ export default function AssetsPage() {
                   <motion.div
                     key={asset.id}
                     whileHover={{ y: -3 }}
-                    onClick={() => !isTrashView && setSelectedAsset(asset)}
-                    className={`bg-zinc-900/20 border border-zinc-900 hover:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg ${!isTrashView ? "cursor-pointer" : ""}`}
+                    onClick={() => {
+                      if (selectionMode) {
+                        toggleAssetSelection(asset.id);
+                      } else if (!isTrashView) {
+                        setSelectedAsset(asset);
+                      }
+                    }}
+                    className={`bg-zinc-900/20 border rounded-2xl overflow-hidden flex flex-col justify-between h-80 group shadow-lg transition-all duration-200 ${
+                      selectedAssetIds.has(asset.id)
+                        ? "border-purple-500 bg-purple-950/5 shadow-purple-950/10"
+                        : "border-zinc-900 hover:border-zinc-800"
+                    } ${!isTrashView ? "cursor-pointer" : ""}`}
                   >
                     {/* Thumbnail container */}
                     <div className="h-44 bg-zinc-950 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-zinc-900">
+                      {/* Bulk actions check box indicator */}
+                      {selectionMode && (
+                        <div className={`absolute top-3 right-3 z-10 w-5 h-5 rounded-lg border flex items-center justify-center transition-all duration-150 ${
+                          selectedAssetIds.has(asset.id)
+                            ? "bg-purple-600 border-purple-500 text-white"
+                            : "bg-black/60 backdrop-blur-md border-zinc-700 text-transparent"
+                        }`}>
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+
                       <img
                         src={asset.storage_path}
                         alt={asset.name}
@@ -1053,6 +1174,53 @@ export default function AssetsPage() {
                       </button>
                     </form>
                   </div>
+
+                  {/* Editorial Specifications */}
+                  <div className="space-y-3 border-t border-zinc-850 pt-4">
+                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>📸 Editorial Specs</span>
+                    </h4>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-0.5 uppercase tracking-wider font-semibold">Shot Type</label>
+                        <select
+                          value={editorialForm.shot_type}
+                          onChange={(e) => setEditorialForm(p => ({ ...p, shot_type: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-[10px] text-zinc-200 outline-none transition-all"
+                        >
+                          <option value="">Select Shot Type...</option>
+                          {["Hero Shot", "Beauty Shot", "Lookbook Image", "Editorial", "Lifestyle", "Product Detail"].map((o) => (
+                            <option key={o} value={o}>{o}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {[
+                        { key: "camera_body", label: "Camera Body", placeholder: "e.g. Hasselblad H6D" },
+                        { key: "lens_spec", label: "Lens Spec", placeholder: "e.g. 80mm f/2.8" },
+                        { key: "lighting_setup", label: "Lighting Setup", placeholder: "e.g. Softbox Fill" },
+                        { key: "composition_grid", label: "Composition Grid", placeholder: "e.g. Rule of Thirds" },
+                        { key: "style_mood", label: "Style / Mood", placeholder: "e.g. Quiet Luxury" },
+                      ].map(({ key, label, placeholder }) => (
+                        <div key={key}>
+                          <label className="text-[9px] text-zinc-500 block mb-0.5 uppercase tracking-wider font-semibold">{label}</label>
+                          <input
+                            type="text"
+                            value={editorialForm[key]}
+                            onChange={(e) => setEditorialForm(p => ({ ...p, [key]: e.target.value }))}
+                            placeholder={placeholder}
+                            className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-[10px] text-zinc-200 placeholder-zinc-650 outline-none transition-all"
+                          />
+                        </div>
+                      ))}
+                      <button
+                        onClick={handleSaveEditorial}
+                        disabled={savingEditorial}
+                        className="w-full mt-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-[10px] font-semibold py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md shadow-purple-950/20"
+                      >
+                        {savingEditorial ? <Loader2 size={10} className="animate-spin" /> : "Save Editorial Specs"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
@@ -1077,6 +1245,60 @@ export default function AssetsPage() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+      {/* Bulk Actions Floating Toolbar */}
+      {selectionMode && selectedAssetIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900/90 backdrop-blur-md border border-zinc-700 rounded-2xl px-5 py-3 shadow-2xl">
+          <span className="text-xs text-zinc-300 font-medium">{selectedAssetIds.size} selected</span>
+          <div className="w-px h-4 bg-zinc-700" />
+
+          {/* Bulk Add Tag */}
+          {showBulkTagInput ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={bulkTagInput}
+                onChange={(e) => setBulkTagInput(e.target.value)}
+                placeholder="Enter tag..."
+                className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 text-xs text-white outline-none w-32"
+                onKeyDown={(e) => e.key === "Enter" && handleBulkAddTag()}
+                autoFocus
+              />
+              <button
+                onClick={handleBulkAddTag}
+                disabled={bulkProcessing}
+                className="text-xs bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg transition disabled:opacity-50"
+              >
+                {bulkProcessing ? "Adding..." : "Add"}
+              </button>
+              <button onClick={() => setShowBulkTagInput(false)} className="text-zinc-400 hover:text-white text-xs">✕</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowBulkTagInput(true)}
+              className="flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white border border-zinc-600 hover:border-purple-500 px-3 py-1.5 rounded-lg transition"
+            >
+              🏷 Add Tag
+            </button>
+          )}
+
+          {/* Bulk Delete */}
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkProcessing}
+            className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+          >
+            🗑 Delete All
+          </button>
+
+          {/* Deselect */}
+          <button
+            onClick={() => { setSelectedAssetIds(new Set()); setSelectionMode(false); }}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+          >
+            ✕ Cancel
+          </button>
+        </div>
+      )}
+</div>
   );
 }

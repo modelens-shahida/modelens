@@ -5,12 +5,26 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/dashboard/Sidebar";
 import TopBar from "@/components/dashboard/TopBar";
+import HeaderNotifications from "@/components/dashboard/HeaderNotifications";
+import { useWebSocket } from "@/lib/useWebSocket";
 import { Loader2 } from "lucide-react";
 
 export default function DashboardLayout({ children }) {
   const { token, loading } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [wsEvents, setWsEvents] = useState([]);
+
+  const handleWsEvent = (event) => {
+    setWsEvents(prev => [...prev, event].slice(-50));
+  };
+
+  const { isConnected } = useWebSocket({
+    token: token,
+    brandId: null,
+    onEvent: handleWsEvent,
+  });
+
 
   useEffect(() => {
     if (!loading && !token) {
@@ -43,7 +57,10 @@ export default function DashboardLayout({ children }) {
 
       {/* Main Content Pane */}
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar toggleSidebar={toggleSidebar} />
+        <div className="flex items-center justify-between">
+          <TopBar toggleSidebar={toggleSidebar} />
+          <HeaderNotifications wsEvents={wsEvents} />
+        </div>
         <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-zinc-950 relative">
           {children}
         </main>

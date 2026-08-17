@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mode Lens Pose Preset",
+  "type": "object",
+  "required": [
+    "preset_id",
+    "version",
+    "family",
+    "display_name",
+    "body_yaw_deg",
+    "framing",
+    "qa_rule_codes",
+    "status"
+  ],
+  "properties": {
+    "preset_id": {
+      "type": "string",
+      "pattern": "^ML-POSE-[A-Z]{3}-[0-9]{3}$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "tier": {
+      "enum": [
+        "CORE",
+        "EXPANSION"
+      ]
+    },
+    "family": {
+      "enum": [
+        "CATALOG_STANDING",
+        "EDITORIAL_STANDING",
+        "MOTION",
+        "SEATED",
+        "LEANING",
+        "CROPPED_DETAIL",
+        "GARMENT_INTERACTION",
+        "ACCESSORY",
+        "KIDS_BABY"
+      ]
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 3
+    },
+    "body_yaw_deg": {
+      "type": "integer",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "torso_yaw_deg": {
+      "type": "integer",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "face_yaw_deg": {
+      "type": "integer",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "face_pitch_deg": {
+      "type": "integer",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "framing": {
+      "enum": [
+        "PORTRAIT",
+        "BUST",
+        "UPPER_BODY",
+        "WAIST_UP",
+        "HIP_UP",
+        "THREE_QUARTER",
+        "FULL_BODY",
+        "DETAIL"
+      ]
+    },
+    "risk_level": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "status": {
+      "enum": [
+        "DRAFT",
+        "ACTIVE",
+        "DEPRECATED",
+        "ARCHIVED"
+      ]
+    }
+  },
+  "additionalProperties": true
+}
