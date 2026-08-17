@@ -63,7 +63,7 @@ export default function AngleShotsPage() {
         setLoading(true);
       }
       const data = await api.get("/api/v1/angle-shots");
-      setPresets(data);
+      setPresets(data?.items || []);
     } catch (err) {
       toast.error(err.message || "Failed to fetch presets");
     } finally {
@@ -90,7 +90,7 @@ export default function AngleShotsPage() {
 
       api.get(`/api/v1/angle-shots/${selectedPreset.id}/history`)
         .then((data) => {
-          setPresetHistory(data);
+          setPresetHistory(data?.versions || []);
         })
         .catch((err) => {
           toast.error("Failed to load version history");
@@ -219,8 +219,9 @@ export default function AngleShotsPage() {
       
       // Refresh presets list and select state
       const updatedList = await api.get("/api/v1/angle-shots");
-      setPresets(updatedList);
-      const match = updatedList.find(p => p.id === selectedPreset.id);
+      const listItems = updatedList?.items || [];
+      setPresets(listItems);
+      const match = listItems.find(p => p.id === selectedPreset.id);
       setSelectedPreset(match);
     } catch (err) {
       toast.error(err.message || "Failed to restore version snapshot");

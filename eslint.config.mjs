@@ -1,7 +1,10 @@
-import { defineConfig, globalIgnores } from "eslint/config";
+import { defineConfig } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 
 const eslintConfig = [
+  {
+    ignores: [".venv/**", "node_modules/**", ".next/**"]
+  },
   ...nextVitals,
   {
     rules: {
