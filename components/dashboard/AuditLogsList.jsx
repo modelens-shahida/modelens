@@ -41,18 +41,24 @@ export default function AuditLogsList({ brandId }) {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        limit: LIMIT,
-        offset: (page - 1) * LIMIT,
+        limit: LIMIT.toString(),
+        offset: ((page - 1) * LIMIT).toString(),
       });
       if (category) params.append("category", category);
       if (searchEmail) params.append("user_email", searchEmail);
 
       const data = await api.get(`/api/v1/brands/${brandId}/audit-logs?${params}`);
-      setLogs(data?.logs || data || []);
-      setTotal(data?.total || 0);
-      setTotalPages(Math.ceil((data?.total || 0) / LIMIT) || 1);
+      const list = data?.logs || data || [];
+      setLogs(list);
+      setTotal(list.length);
+      
+      // Dynamic pagination for flat list responses
+      const hasMore = list.length === LIMIT;
+      setTotalPages(hasMore ? page + 1 : page);
     } catch {
       setLogs([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }

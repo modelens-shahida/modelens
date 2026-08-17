@@ -385,6 +385,8 @@ async def get_brand_audit_logs(
     brand_id: int,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    category: Optional[str] = Query(None),
+    user_email: Optional[str] = Query(None),
     _caller: User = Depends(require_brand_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -396,14 +398,45 @@ async def get_brand_audit_logs(
     webhook subscriptions, member role updates, and billing tier changes.
     """
     query = (
-        select(AuditLog)
+        select(AuditLog, User.email)
+        .join(User, User.id == AuditLog.user_id)
         .where(AuditLog.brand_id == brand_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-        .offset(offset)
     )
+
+    if user_email:
+        query = query.where(User.email.ilike(f"%{user_email}%"))
+
+    if category:
+        category_lower = category.lower()
+        if category_lower == "auth":
+            query = query.where(AuditLog.action.in_(["api_key_created", "api_key_deleted"]))
+        elif category_lower == "webhook":
+            query = query.where(AuditLog.action.in_(["webhook_created", "webhook_deleted"]))
+        elif category_lower == "asset":
+            query = query.where(AuditLog.action.in_(["asset_deleted", "asset_uploaded"]))
+        elif category_lower == "user":
+            query = query.where(AuditLog.action.in_(["brand_member_added", "brand_member_removed"]))
+        elif category_lower == "billing":
+            query = query.where(AuditLog.action.ilike("%billing%"))
+
+    query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
-    logs = result.scalars().all()
+    rows = result.all()
+
+    # Map category based on action
+    def get_category_by_action(action: str) -> str:
+        act = action.lower()
+        if "api_key" in act:
+            return "auth"
+        elif "webhook" in act:
+            return "webhook"
+        elif "asset" in act:
+            return "asset"
+        elif "member" in act:
+            return "user"
+        elif "billing" in act:
+            return "billing"
+        return "auth"
 
     return [
         {
@@ -413,9 +446,13 @@ async def get_brand_audit_logs(
             "action": log.action,
             "details": log.details,
             "client_ip": log.client_ip,
+            "ip_address": log.client_ip,
             "created_at": log.created_at.isoformat(),
+            "user_email": email,
+            "category": get_category_by_action(log.action),
+            "status": "success",
         }
-        for log in logs
+        for log, email in rows
     ]
 
 # ========================== Auth Settings Endpoint ===============
