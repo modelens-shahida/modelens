@@ -7,6 +7,7 @@ from typing import Optional
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 
 class Settings(BaseSettings):
+    TEMPLATES_BACKEND_URL: str = "http://localhost:4000"
     # Database
     POSTGRES_URL: str = Field(
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/modelens"
