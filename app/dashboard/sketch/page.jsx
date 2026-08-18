@@ -6,8 +6,8 @@ import toast from "react-hot-toast";
 import Link from "next/link";
 
 const MODEL_TIERS = [
-  { id: "v1", name: "V1 Fast", model: "Gemini 3.1 Flash", credits: "1-2 credits", description: "Rapid design previews" },
-  { id: "v2", name: "V2 Pro", model: "Gemini 3 Pro", credits: "4-5 credits", description: "Detailed multi-reference renders" },
+  { id: "fast_draft", name: "Fast Draft", model: "Gemini 3.1 Flash", credits: "1-2 credits", description: "Rapid design previews" },
+  { id: "studio_quality", name: "Studio Quality", model: "Gemini 3 Pro", credits: "4-5 credits", description: "Detailed multi-reference renders" },
 ];
 
 const OUTPUT_MODES = ["On-Model", "Ghost Mannequin", "Product Only", "Flat-Lay"];
@@ -65,7 +65,7 @@ export default function SketchStudioPage() {
   const [fabricFiles, setFabricFiles] = useState([]);
   const [printFiles, setPrintFiles] = useState([]);
   const [constructionFiles, setConstructionFiles] = useState([]);
-  const [modelTier, setModelTier] = useState("v1");
+  const [modelTier, setModelTier] = useState("studio_quality");
   const [outputMode, setOutputMode] = useState("On-Model");
   const [aspectRatio, setAspectRatio] = useState("3:4");
   const [resolution, setResolution] = useState("2K");
@@ -149,7 +149,7 @@ export default function SketchStudioPage() {
           <PenTool className="w-7 h-7 text-purple-400" />
           <div>
             <h1 className="text-2xl font-bold">Sketch-to-Image Studio</h1>
-            <p className="text-zinc-400 text-sm">V1 (Gemini 3.1 Flash) for previews • V2 (Gemini 3 Pro) for detailed renders</p>
+            <p className="text-zinc-400 text-sm">Fast Draft for previews • Studio Quality for detailed renders</p>
           </div>
         </div>
 
@@ -164,9 +164,9 @@ export default function SketchStudioPage() {
 
           {/* Middle: Controls & Briefs */}
           <div className="space-y-5 lg:col-span-1">
-            {/* Model Tier */}
+            {/* Generation Mode */}
             <div>
-              <label className="text-xs text-zinc-400 mb-2 block">Model Tier</label>
+              <label className="text-xs text-zinc-400 mb-2 block">Generation Mode</label>
               <div className="space-y-2">
                 {MODEL_TIERS.map(tier => (
                   <div key={tier.id} onClick={() => setModelTier(tier.id)} className={`cursor-pointer border-2 rounded-xl p-3 transition ${modelTier === tier.id ? "border-purple-600 bg-purple-950/20" : "border-zinc-800 hover:border-zinc-600"}`}>

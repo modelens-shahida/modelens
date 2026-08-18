@@ -15,6 +15,28 @@ const RESOLUTIONS = [
   { value: "4K", label: "4K", credits: "5-7 credits" },
 ];
 
+const GENERATION_MODES = [
+  {
+    id: "fast",
+    name: "Fast Draft",
+    time: "~15 sec",
+    credits: "1-2 credits",
+    description: "Quick previews for testing ideas.",
+    badge: null,
+    useCases: ["Early previews", "Composition testing", "Quick iterations"],
+  },
+  {
+    id: "studio",
+    name: "Studio Quality",
+    time: "~45 sec",
+    credits: "3-4 credits",
+    description: "Maximum detail and garment accuracy.",
+    badge: "Recommended for final images",
+    recommended: true,
+    useCases: ["Ghost mannequin output", "Construction-heavy garments", "Printed/embellished garments", "Final commercial review"],
+  },
+];
+
 const STATUS_STEPS = [
   { status: "queued", label: "Queued", color: "text-amber-400 bg-amber-900/40 border-amber-700", progress: 10 },
   { status: "preprocessing", label: "Preprocessing", color: "text-blue-400 bg-blue-900/40 border-blue-700", progress: 30 },
@@ -32,6 +54,7 @@ export default function GhostStudioPage() {
   const [view, setView] = useState("front");
   const [aspectRatio, setAspectRatio] = useState("3:4");
   const [resolution, setResolution] = useState("2K");
+  const [generationMode, setGenerationMode] = useState("studio");
   const [preservePrint, setPreservePrint] = useState(true);
   const [preserveSeams, setPreserveSeams] = useState(true);
   const [angleShots, setAngleShots] = useState([]);
@@ -104,6 +127,7 @@ export default function GhostStudioPage() {
       formData.append("view", view);
       formData.append("aspect_ratio", aspectRatio);
       formData.append("resolution", resolution);
+      formData.append("generation_mode", generationMode);
       formData.append("preserve_print", preservePrint);
       formData.append("preserve_seams", preserveSeams);
       if (selectedAngleShot) {
@@ -186,6 +210,42 @@ export default function GhostStudioPage() {
 
             {/* Controls */}
             <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 space-y-4">
+              {/* Generation Mode */}
+              <div>
+                <label className="text-xs text-zinc-400 mb-2 block font-semibold uppercase tracking-wider">Generation Mode</label>
+                <div className="space-y-2">
+                  {GENERATION_MODES.map(mode => (
+                    <div
+                      key={mode.id}
+                      onClick={() => setGenerationMode(mode.id)}
+                      className={`cursor-pointer border rounded-xl p-4 transition ${
+                        generationMode === mode.id
+                          ? "border-purple-600 bg-purple-950/20"
+                          : "border-zinc-850 hover:border-zinc-700 bg-zinc-950/30"
+                      }`}
+                    >
+                      {mode.badge && (
+                        <span className="inline-block text-[9px] bg-purple-900/60 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full mb-2 font-bold uppercase tracking-wider">
+                          {mode.badge}
+                        </span>
+                      )}
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-white">{mode.name}</span>
+                        <span className="text-[10px] text-zinc-400">{mode.time} · {mode.credits}</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mb-1">{mode.description}</p>
+                      <ul className="space-y-0.5">
+                        {mode.useCases.map(u => (
+                          <li key={u} className="text-[10px] text-zinc-500">• {u}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <hr className="border-zinc-800" />
+
               <h3 className="text-xs font-semibold text-zinc-300 uppercase">Generation Controls</h3>
 
               <div className="grid grid-cols-2 gap-3">

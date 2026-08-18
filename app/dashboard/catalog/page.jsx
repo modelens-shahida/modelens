@@ -14,6 +14,28 @@ const FASHN_MODES = [
   { id: "tryon_max", name: "Try-On Max", desc: "Existing model try-on" },
 ];
 
+const GENERATION_MODES = [
+  {
+    id: "fast_draft",
+    name: "Fast Draft",
+    time: "~15 sec",
+    credits: "1 credit",
+    description: "Quick previews for testing ideas.",
+    badge: null,
+    useCases: ["Early previews", "Pose exploration", "Background testing", "Rapid iterations"],
+  },
+  {
+    id: "studio_quality",
+    name: "Studio Quality",
+    time: "~45 sec",
+    credits: "5 credits",
+    description: "Maximum detail and garment accuracy.",
+    badge: "Recommended for final images",
+    recommended: true,
+    useCases: ["Final on-model output", "Printed/embellished garments", "Construction-heavy garments", "Commercial catalog imagery"],
+  },
+];
+
 const SKU_STATUSES = {
   queued: { label: "Queued", color: "text-amber-400 bg-amber-900/30 border-amber-700" },
   segmenting: { label: "Segmenting SAM2", color: "text-blue-400 bg-blue-900/30 border-blue-700" },
@@ -33,6 +55,7 @@ export default function CatalogStudioPage() {
   const [selectedAngleShot, setSelectedAngleShot] = useState(null);
   const [background, setBackground] = useState("Soft Front Studio");
   const [fashnMode, setFashnMode] = useState("product_to_model");
+  const [generationMode, setGenerationMode] = useState("studio_quality");
   const [submitting, setSubmitting] = useState(false);
   const [jobStatus, setJobStatus] = useState(null);
   const [skuStatuses, setSkuStatuses] = useState({});
@@ -109,6 +132,7 @@ export default function CatalogStudioPage() {
       }
       formData.append("background", background);
       formData.append("fashn_mode", fashnMode);
+      formData.append("generation_mode", generationMode);
 
       const result = await api.post("/api/v1/catalog-jobs", formData);
       setJobStatus({ status: "queued", ...result });
@@ -192,6 +216,40 @@ export default function CatalogStudioPage() {
 
           {/* Middle: Model & Studio Controls */}
           <div className="lg:col-span-1 space-y-5">
+            {/* Generation Mode */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-2 block">Generation Mode</label>
+              <div className="space-y-2">
+                {GENERATION_MODES.map(mode => (
+                  <div
+                    key={mode.id}
+                    onClick={() => setGenerationMode(mode.id)}
+                    className={`cursor-pointer border-2 rounded-xl p-4 transition ${
+                      generationMode === mode.id
+                        ? "border-purple-600 bg-purple-950/20"
+                        : "border-zinc-850 hover:border-zinc-700 bg-zinc-950/30"
+                    }`}
+                  >
+                    {mode.badge && (
+                      <span className="inline-block text-[9px] bg-purple-900/60 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full mb-2 font-bold uppercase tracking-wider">
+                        {mode.badge}
+                      </span>
+                    )}
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-white">{mode.name}</span>
+                      <span className="text-[10px] text-zinc-400">{mode.time} · {mode.credits}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mb-1">{mode.description}</p>
+                    <ul className="space-y-0.5">
+                      {mode.useCases.map(u => (
+                        <li key={u} className="text-[10px] text-zinc-500">• {u}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* FASHN Mode */}
             <div>
               <label className="text-xs text-zinc-400 mb-2 block">FASHN Engine Mode</label>
