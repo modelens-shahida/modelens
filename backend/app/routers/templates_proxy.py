@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.responses import JSONResponse
-import httpx
+from httpx import AsyncClient, ConnectError, TimeoutException
 from app.middleware.auth import get_current_user
 from app.models.db import User
 from app.config import settings
@@ -38,7 +38,7 @@ async def _proxy_request(
     body = await request.body()
 
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        async with AsyncClient(timeout=TIMEOUT) as client:
             response = await client.request(
                 method=request.method,
                 url=target_url,
@@ -46,20 +46,25 @@ async def _proxy_request(
                 content=body,
             )
 
-        # Return mirrored response
+        # Mirror response headers securely, popping transport-level headers
+        resp_headers = dict(response.headers)
+        resp_headers.pop("content-encoding", None)
+        resp_headers.pop("transfer-encoding", None)
+        resp_headers.pop("content-length", None)
+
         return Response(
             content=response.content,
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=resp_headers,
             media_type=response.headers.get("content-type", "application/json"),
         )
 
-    except httpx.ConnectError:
+    except ConnectError:
         raise HTTPException(
             status_code=502,
             detail=f"Templates service unavailable at {base_url}",
         )
-    except httpx.TimeoutException:
+    except TimeoutException:
         raise HTTPException(
             status_code=504,
             detail="Templates service request timed out",
