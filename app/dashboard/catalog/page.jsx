@@ -38,8 +38,8 @@ const GENERATION_MODES = [
 
 const SKU_STATUSES = {
   queued: { label: "Queued", color: "text-amber-400 bg-amber-900/30 border-amber-700" },
-  segmenting: { label: "Segmenting SAM2", color: "text-blue-400 bg-blue-900/30 border-blue-700" },
-  generating: { label: "Generating FASHN", color: "text-purple-400 bg-purple-900/30 border-purple-700" },
+  segmenting: { label: "Segmenting Product", color: "text-blue-400 bg-blue-900/30 border-blue-700" },
+  generating: { label: "Generating Render", color: "text-purple-400 bg-purple-900/30 border-purple-700" },
   qa_passed: { label: "QA Passed", color: "text-emerald-400 bg-emerald-900/30 border-emerald-700" },
   failed: { label: "Failed", color: "text-red-400 bg-red-900/30 border-red-700" },
 };
@@ -162,7 +162,7 @@ export default function CatalogStudioPage() {
           <Shirt className="w-7 h-7 text-purple-400" />
           <div>
             <h1 className="text-2xl font-bold">Flatlay-to-Catalog Studio</h1>
-            <p className="text-zinc-400 text-sm">Virtual try-on engine powered by FASHN API — Product-to-Model & Try-On Max</p>
+            <p className="text-zinc-400 text-sm">Virtual try-on engine — Product-to-Model & Try-On Max</p>
           </div>
         </div>
 
@@ -250,9 +250,9 @@ export default function CatalogStudioPage() {
               </div>
             </div>
 
-            {/* FASHN Mode */}
+            {/* Try-On Mode */}
             <div>
-              <label className="text-xs text-zinc-400 mb-2 block">FASHN Engine Mode</label>
+              <label className="text-xs text-zinc-400 mb-2 block">Try-On Engine Mode</label>
               <div className="space-y-2">
                 {FASHN_MODES.map(mode => (
                   <div key={mode.id} onClick={() => setFashnMode(mode.id)} className={`cursor-pointer border-2 rounded-xl p-3 transition ${fashnMode === mode.id ? "border-purple-600 bg-purple-950/20" : "border-zinc-800 hover:border-zinc-600"}`}>

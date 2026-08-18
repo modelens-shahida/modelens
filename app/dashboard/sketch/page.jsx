@@ -6,8 +6,31 @@ import toast from "react-hot-toast";
 import Link from "next/link";
 
 const MODEL_TIERS = [
-  { id: "fast_draft", name: "Fast Draft", model: "Gemini 3.1 Flash", credits: "1-2 credits", description: "Rapid design previews" },
-  { id: "studio_quality", name: "Studio Quality", model: "Gemini 3 Pro", credits: "4-5 credits", description: "Detailed multi-reference renders" },
+  {
+    id: "fast_draft",
+    name: "Fast Draft",
+    time: "~15 sec",
+    credits: "1-2 credits",
+    description: "Best for quick previews and early concept testing.",
+    badge: null,
+    useCases: ["Early previews", "Testing briefs", "Background exploration", "Pose exploration", "Rapid iterations"],
+  },
+  {
+    id: "studio_quality",
+    name: "Studio Quality",
+    time: "~45 sec",
+    credits: "4-5 credits",
+    description: "Best for final-quality renders and higher garment accuracy.",
+    badge: "Recommended for final images",
+    recommended: true,
+    useCases: [
+      "Sketch-to-Image",
+      "Final on-model output",
+      "Ghost mannequin output",
+      "Construction-heavy garments",
+      "Printed or embellished garments"
+    ],
+  },
 ];
 
 const OUTPUT_MODES = ["On-Model", "Ghost Mannequin", "Product Only", "Flat-Lay"];
@@ -169,12 +192,30 @@ export default function SketchStudioPage() {
               <label className="text-xs text-zinc-400 mb-2 block">Generation Mode</label>
               <div className="space-y-2">
                 {MODEL_TIERS.map(tier => (
-                  <div key={tier.id} onClick={() => setModelTier(tier.id)} className={`cursor-pointer border-2 rounded-xl p-3 transition ${modelTier === tier.id ? "border-purple-600 bg-purple-950/20" : "border-zinc-800 hover:border-zinc-600"}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-white">{tier.name}</span>
-                      <span className="text-xs text-purple-400">{tier.credits}</span>
+                  <div
+                    key={tier.id}
+                    onClick={() => setModelTier(tier.id)}
+                    className={`cursor-pointer border-2 rounded-xl p-4 transition ${
+                      modelTier === tier.id
+                        ? "border-purple-600 bg-purple-950/20"
+                        : "border-zinc-850 hover:border-zinc-700 bg-zinc-950/30"
+                    }`}
+                  >
+                    {tier.badge && (
+                      <span className="inline-block text-[9px] bg-purple-900/60 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full mb-2 font-bold uppercase tracking-wider">
+                        {tier.badge}
+                      </span>
+                    )}
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-white">{tier.name}</span>
+                      <span className="text-[10px] text-zinc-400">{tier.time} · {tier.credits}</span>
                     </div>
-                    <p className="text-xs text-zinc-500">{tier.model} — {tier.description}</p>
+                    <p className="text-[11px] text-zinc-400 mb-1">{tier.description}</p>
+                    <ul className="space-y-0.5">
+                      {tier.useCases.map(u => (
+                        <li key={u} className="text-[10px] text-zinc-500">• {u}</li>
+                      ))}
+                    </ul>
                   </div>
                 ))}
               </div>

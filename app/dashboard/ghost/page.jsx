@@ -40,7 +40,7 @@ const GENERATION_MODES = [
 const STATUS_STEPS = [
   { status: "queued", label: "Queued", color: "text-amber-400 bg-amber-900/40 border-amber-700", progress: 10 },
   { status: "preprocessing", label: "Preprocessing", color: "text-blue-400 bg-blue-900/40 border-blue-700", progress: 30 },
-  { status: "generating", label: "Generating (Gemini 3 Pro)", color: "text-purple-400 bg-purple-900/40 border-purple-700", progress: 65 },
+  { status: "generating", label: "Generating Render", color: "text-purple-400 bg-purple-900/40 border-purple-700", progress: 65 },
   { status: "quality_check", label: "Quality Check", color: "text-indigo-400 bg-indigo-900/40 border-indigo-700", progress: 85 },
   { status: "completed", label: "Completed", color: "text-emerald-400 bg-emerald-900/40 border-emerald-700", progress: 100 },
   { status: "failed", label: "Failed", color: "text-red-400 bg-red-900/40 border-red-700", progress: 100 },
@@ -167,7 +167,7 @@ export default function GhostStudioPage() {
           <Layers className="w-7 h-7 text-purple-400" />
           <div>
             <h1 className="text-2xl font-bold">Image-to-Ghost Studio</h1>
-            <p className="text-zinc-400 text-sm">Powered by Gemini 3 Pro Image — Generate 2K/4K ghost mannequin catalog assets</p>
+            <p className="text-zinc-400 text-sm">Generate 2K/4K ghost mannequin catalog assets using advanced rendering models</p>
           </div>
         </div>
 

@@ -386,8 +386,8 @@ export default function TemplatesStudio() {
                         className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2.5 text-xs text-zinc-200 focus:border-purple-500 outline-none cursor-pointer"
                       >
                         <option value="AUTO">Auto-Select Model</option>
-                        <option value="GEMINI">Google Gemini Multimodal</option>
-                        <option value="FASHN">Fashn Tryon Engine</option>
+                        <option value="GEMINI">Multimodal AI Engine</option>
+                        <option value="FASHN">High-Realism Tryon Engine</option>
                       </select>
                     </div>
                   </div>
