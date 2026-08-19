@@ -74,3 +74,40 @@ async def test_proxy_templates_timeout(client, test_data):
         res = await client.post("/api/v1/generations/create", json={"templateId": "1"}, headers=owner_headers)
         assert res.status_code == status.HTTP_504_GATEWAY_TIMEOUT
         assert "timed out" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_proxy_angle_shots_unauthenticated(client):
+    """Proxy angle-shots and shoots endpoints must require a valid JWT token."""
+    res = await client.get("/api/v1/angle-shots")
+    assert res.status_code == status.HTTP_401_UNAUTHORIZED
+
+    res2 = await client.post("/api/v1/shoots/1/angle-shots/apply")
+    assert res2.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_proxy_angle_shots_success(client, test_data):
+    """Proxy angle-shots request should successfully forward and inject headers."""
+    owner_headers = test_data["get_headers"]("owner")
+    
+    mock_response = Response(
+        status_code=200,
+        content=b'{"items": [{"id": "shot_1", "name": "Full Body"}]}',
+        headers={"content-type": "application/json"}
+    )
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.request.return_value = mock_response
+
+    with patch("app.routers.templates_proxy.AsyncClient", return_value=mock_client) as mock_class:
+        res = await client.get("/api/v1/angle-shots?page=1", headers=owner_headers)
+        assert res.status_code == 200
+        assert res.json() == {"items": [{"id": "shot_1", "name": "Full Body"}]}
+
+        mock_client.request.assert_called_once()
+        called_kwargs = mock_client.request.call_args[1]
+        assert called_kwargs["method"] == "GET"
+        assert called_kwargs["url"].endswith("v1/angle-shots?page=1")
+

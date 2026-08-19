@@ -106,3 +106,62 @@ async def proxy_generations(
 ):
     """Proxy all generation requests to NestJS templates service."""
     return await _proxy_request(request, f"v1/generations/{path}", current_user)
+
+
+# ========================== Angle-Shots Proxy =====================
+
+@router.get("/api/v1/angle-shots")
+@router.get("/api/v1/angle-shots/{path:path}")
+@router.post("/api/v1/angle-shots")
+@router.post("/api/v1/angle-shots/{path:path}")
+@router.patch("/api/v1/angle-shots")
+@router.patch("/api/v1/angle-shots/{path:path}")
+@router.put("/api/v1/angle-shots")
+@router.put("/api/v1/angle-shots/{path:path}")
+@router.delete("/api/v1/angle-shots")
+@router.delete("/api/v1/angle-shots/{path:path}")
+async def proxy_angle_shots(
+    request: Request,
+    path: str = "",
+    current_user: User = Depends(get_current_user),
+):
+    """Proxy all angle-shots requests to NestJS templates service."""
+    target_path = f"v1/angle-shots/{path}" if path else "v1/angle-shots"
+    return await _proxy_request(request, target_path, current_user)
+
+
+@router.get("/api/v1/admin/angle-shots")
+@router.get("/api/v1/admin/angle-shots/{path:path}")
+@router.post("/api/v1/admin/angle-shots")
+@router.post("/api/v1/admin/angle-shots/{path:path}")
+@router.patch("/api/v1/admin/angle-shots")
+@router.patch("/api/v1/admin/angle-shots/{path:path}")
+@router.put("/api/v1/admin/angle-shots")
+@router.put("/api/v1/admin/angle-shots/{path:path}")
+@router.delete("/api/v1/admin/angle-shots")
+@router.delete("/api/v1/admin/angle-shots/{path:path}")
+async def proxy_admin_angle_shots(
+    request: Request,
+    path: str = "",
+    current_user: User = Depends(get_current_user),
+):
+    """Proxy all admin angle-shots requests to NestJS templates service."""
+    target_path = f"v1/admin/angle-shots/{path}" if path else "v1/admin/angle-shots"
+    return await _proxy_request(request, target_path, current_user)
+
+
+# ========================== Shoots Proxy =========================
+
+@router.get("/api/v1/shoots/{path:path}")
+@router.post("/api/v1/shoots/{path:path}")
+@router.patch("/api/v1/shoots/{path:path}")
+@router.put("/api/v1/shoots/{path:path}")
+@router.delete("/api/v1/shoots/{path:path}")
+async def proxy_shoots(
+    path: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Proxy all shoots requests to NestJS templates service."""
+    return await _proxy_request(request, f"v1/shoots/{path}", current_user)
+
