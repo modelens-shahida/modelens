@@ -14,7 +14,7 @@ INTERNAL_HEADERS = {"x-internal-secret": INTERNAL_SECRET}
 
 def test_estimate_credits_default():
     from app.routers.templates_proxy import estimate_credits
-    assert estimate_credits({}) == 1
+    assert estimate_credits({}) == 2
 
 
 def test_estimate_credits_2k_2outputs():

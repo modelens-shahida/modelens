@@ -55,6 +55,7 @@ class Brand(Base):
     tier: Mapped[str] = mapped_column(String(50), default="free", index=True)
     domain_whitelist: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True, default=None)
     monthly_credit_quota: Mapped[int] = mapped_column(Integer, default=100)
+    credits: Mapped[int] = mapped_column(Integer, default=100)
     credits_used_this_month: Mapped[int] = mapped_column(Integer, default=0)
     tier_reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
@@ -452,15 +453,20 @@ class CreditTransaction(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    brand_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("brands.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     amount: Mapped[int] = mapped_column(Integer)
     transaction_type: Mapped[str] = mapped_column(String(50), index=True)
     reference_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    reference_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    balance_after: Mapped[int] = mapped_column(Integer)
+    reference_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    balance_after: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="completed")
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
+    brand = relationship("Brand")
 
 
 
