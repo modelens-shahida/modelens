@@ -261,3 +261,106 @@ async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, t
     user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
     user = user_result.scalars().first()
     assert user.credits == starting_credits + 4
+
+# ========================== Batch Tests ==========================
+
+@pytest.mark.asyncio
+async def test_batch_create_success(client: AsyncClient, test_data: dict, db_session: AsyncSession):
+    """Batch creation should succeed and return list of job IDs."""
+    owner_headers = test_data["get_headers"]("owner")
+    brand = test_data["brand"]
+    owner_user = test_data["users"]["owner"]
+    owner_user.credits = 100
+    await db_session.commit()
+
+    with patch("app.routers.ghost_jobs.process_ghost_job") as mock_task:
+        mock_task.delay = MagicMock()
+        res = await client.post(
+            "/api/v1/ghost-jobs/batch",
+            json={
+                "brand_id": brand.id,
+                "jobs": [
+                    {"resolution": "2K", "garment_type": "dress", "view": "front"},
+                    {"resolution": "1K", "garment_type": "top", "view": "back"},
+                ]
+            },
+            headers=owner_headers,
+        )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["batch_size"] == 2
+    assert len(data["job_ids"]) == 2
+    assert data["total_credits_reserved"] == 6  # 2K=4 + 1K=2
+
+
+@pytest.mark.asyncio
+async def test_batch_insufficient_credits(client: AsyncClient, test_data: dict, db_session: AsyncSession):
+    """Batch should fail with 402 if insufficient credits."""
+    owner_headers = test_data["get_headers"]("owner")
+    brand = test_data["brand"]
+    owner_user = test_data["users"]["owner"]
+    owner_user.credits = 3
+    await db_session.commit()
+
+    with patch("app.routers.ghost_jobs.process_ghost_job") as mock_task:
+        mock_task.delay = MagicMock()
+        res = await client.post(
+            "/api/v1/ghost-jobs/batch",
+            json={
+                "brand_id": brand.id,
+                "jobs": [
+                    {"resolution": "4K"},
+                    {"resolution": "4K"},
+                ]
+            },
+            headers=owner_headers,
+        )
+    assert res.status_code == 402
+
+
+@pytest.mark.asyncio
+async def test_batch_empty_jobs_rejected(client: AsyncClient, test_data: dict):
+    """Batch with empty jobs list should fail validation."""
+    owner_headers = test_data["get_headers"]("owner")
+    brand = test_data["brand"]
+    res = await client.post(
+        "/api/v1/ghost-jobs/batch",
+        json={"brand_id": brand.id, "jobs": []},
+        headers=owner_headers,
+    )
+    assert res.status_code in (400, 422)
+
+
+@pytest.mark.asyncio
+async def test_batch_auth_required(client: AsyncClient, test_data: dict):
+    """Batch endpoint requires authentication."""
+    brand = test_data["brand"]
+    res = await client.post(
+        "/api/v1/ghost-jobs/batch",
+        json={"brand_id": brand.id, "jobs": [{"resolution": "2K"}]},
+    )
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_batch_credit_deduction(client: AsyncClient, test_data: dict, db_session: AsyncSession):
+    """Credits should be deducted atomically after batch creation."""
+    owner_headers = test_data["get_headers"]("owner")
+    brand = test_data["brand"]
+    owner_user = test_data["users"]["owner"]
+    owner_user.credits = 50
+    await db_session.commit()
+
+    with patch("app.routers.ghost_jobs.process_ghost_job") as mock_task:
+        mock_task.delay = MagicMock()
+        res = await client.post(
+            "/api/v1/ghost-jobs/batch",
+            json={
+                "brand_id": brand.id,
+                "jobs": [{"resolution": "2K"}, {"resolution": "2K"}]
+            },
+            headers=owner_headers,
+        )
+    assert res.status_code == 201
+    await db_session.refresh(owner_user)
+    assert (owner_user.credits or 0) == 42  # 50 - (4+4) = 42
