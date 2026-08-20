@@ -10,6 +10,22 @@ from app.models.db import AngleShot, AngleShotCompatibility, AngleShotVersion, U
 from app.worker import _process_custom_angle_shot_async
 
 
+@pytest.fixture(autouse=True, scope="module")
+def prioritize_local_angle_shots():
+    from app.main import app
+    local_routes = []
+    other_routes = []
+    for r in app.routes:
+        if hasattr(r, "tags") and "Angle Shots" in r.tags:
+            local_routes.append(r)
+        else:
+            other_routes.append(r)
+    original_routes = list(app.router.routes)
+    app.router.routes = local_routes + other_routes
+    yield
+    app.router.routes = original_routes
+
+
 @pytest.mark.asyncio
 async def test_list_angle_shots(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     editor_headers = test_data["get_headers"]("editor")

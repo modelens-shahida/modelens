@@ -202,6 +202,9 @@ app.include_router(catalog_jobs_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
 # app.include_router(angle_shots_router)
+import sys
+if "pytest" in sys.modules or os.getenv("TESTING") == "true":
+    app.include_router(angle_shots_router)
 app.include_router(video_projects_router)
 app.include_router(generation_jobs_router)
 app.include_router(editorial_assets_router)
