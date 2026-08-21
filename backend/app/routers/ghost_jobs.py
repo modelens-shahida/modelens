@@ -253,3 +253,90 @@ async def get_ghost_job_outputs(
             for o in outputs
         ]
     }
+
+# ========================== Batch Schema =========================
+
+class GhostJobBatchItem(BaseModel):
+    product_hint: Optional[str] = None
+    garment_type: Optional[str] = "dress"
+    view: Optional[str] = "front"
+    aspect_ratio: Optional[str] = "3:4"
+    resolution: Optional[str] = "2K"
+    preserve_print: bool = True
+    preserve_seams: bool = True
+    generation_mode: Optional[str] = "studio"
+    image_key: Optional[str] = None
+
+
+class GhostJobBatchCreate(BaseModel):
+    brand_id: int
+    jobs: List[GhostJobBatchItem] = Field(..., min_length=1, max_length=50)
+
+
+# ========================== Batch Endpoint =======================
+
+@router.post("/batch", status_code=status.HTTP_201_CREATED)
+async def create_ghost_job_batch(
+    payload: GhostJobBatchCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a batch of ghost mannequin generation jobs atomically."""
+    if not payload.jobs:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one job is required.")
+
+    # Calculate total credits needed
+    total_credits = sum(RESOLUTION_CREDITS.get(job.resolution, 4) for job in payload.jobs)
+
+    # Single atomic credit check
+    if (current_user.credits or 0) < total_credits:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits. Need {total_credits}, have {current_user.credits or 0}."
+        )
+
+    # Deduct credits atomically
+    current_user.credits = (current_user.credits or 0) - total_credits
+
+    # Create all GhostJob records
+    created_jobs = []
+    for job_config in payload.jobs:
+        credits_for_job = RESOLUTION_CREDITS.get(job_config.resolution, 4)
+        job = GhostJob(
+            user_id=current_user.id,
+            brand_id=payload.brand_id,
+            status="queued",
+            product_hint=job_config.product_hint,
+            garment_type=job_config.garment_type,
+            view=job_config.view,
+            aspect_ratio=job_config.aspect_ratio,
+            resolution=job_config.resolution,
+            preserve_print=job_config.preserve_print,
+            preserve_seams=job_config.preserve_seams,
+            generation_mode=job_config.generation_mode,
+            credits_reserved=credits_for_job,
+            credits_consumed=0,
+            progress=0,
+        )
+        db.add(job)
+        created_jobs.append((job, credits_for_job))
+
+    await db.commit()
+
+    # Dispatch Celery tasks in parallel
+    queued_job_ids = []
+    for job, _ in created_jobs:
+        await db.refresh(job)
+        queued_job_ids.append(job.id)
+        try:
+            from app.worker import process_ghost_job
+            process_ghost_job.delay(job.id)
+        except Exception as e:
+            print(f"[GhostBatch] Celery dispatch failed for job {job.id}: {e}")
+
+    return {
+        "batch_size": len(queued_job_ids),
+        "job_ids": queued_job_ids,
+        "total_credits_reserved": total_credits,
+        "status": "queued",
+    }

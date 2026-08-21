@@ -21,6 +21,11 @@ mock_mlflow.start_run.return_value = mock_run
 mock_mlflow.start_run.return_value.__enter__.return_value = mock_run
 mock_mlflow.start_run.return_value.__exit__.return_value = False
 sys.modules["mlflow"] = mock_mlflow
+
+# Global Celery task delay mock to prevent real Redis/broker connections during test runs
+import celery.app.task
+celery.app.task.Task.delay = MagicMock()
+celery.app.task.Task.apply_async = MagicMock()
 # Global Redis mock to prevent real Redis socket connections and timeouts
 class MockRedisPipeline:
     def __init__(self, client):

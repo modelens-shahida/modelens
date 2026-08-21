@@ -49,6 +49,10 @@ __pycache__/
 # databases
 *.db
 /backend/*.db
+*.db-journal
+*.db-wal
+*.db-shm
+test_modelens_*
 
 # local asset uploads
 /uploads/
