@@ -95,6 +95,25 @@ class MockRedisClient:
 # Initialize global mock redis client
 global_mock_redis = MockRedisClient()
 
+# Proxy session maker to redirect all module-level session creations to the active test database
+class TestSessionMakerProxy:
+    def __init__(self):
+        self.actual_maker = None
+
+    def __call__(self, **kwargs):
+        if self.actual_maker is None:
+            raise RuntimeError("TestSessionMakerProxy: actual_maker not initialized yet")
+        return self.actual_maker(**kwargs)
+
+    def configure(self, **kwargs):
+        if self.actual_maker:
+            self.actual_maker.configure(**kwargs)
+
+
+import app.models.db
+proxy_session_maker = TestSessionMakerProxy()
+app.models.db.async_session_maker = proxy_session_maker
+
 import app.middleware.rate_limit
 app.middleware.rate_limit.redis_client = global_mock_redis
 
@@ -125,24 +144,7 @@ def compile_jsonb_sqlite(type_, compiler, **kw):
     return "JSON"
 
 
-# Proxy session maker to redirect all module-level session creations to the active test database
-class TestSessionMakerProxy:
-    def __init__(self):
-        self.actual_maker = None
 
-    def __call__(self, **kwargs):
-        if self.actual_maker is None:
-            raise RuntimeError("TestSessionMakerProxy: actual_maker not initialized yet")
-        return self.actual_maker(**kwargs)
-
-    def configure(self, **kwargs):
-        if self.actual_maker:
-            self.actual_maker.configure(**kwargs)
-
-
-import app.models.db
-proxy_session_maker = TestSessionMakerProxy()
-app.models.db.async_session_maker = proxy_session_maker
 
 
 # 2. Import Base and strip PostgreSQL-specific indexes before any table creation

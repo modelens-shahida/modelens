@@ -724,12 +724,7 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
                         from app.services.fashn_service import FASHNService
                         import httpx
                         fashn_service = FASHNService()
-                        source_url = None
-                        if job.asset_id:
-                            asset_result = await db.execute(select(Asset).where(Asset.id == job.asset_id))
-                            source_asset = asset_result.scalars().first()
-                            if source_asset:
-                                source_url = source_asset.storage_path
+                        source_url = source_asset.storage_path if source_asset else None
 
                         if workflow_type == "flat_lay_to_model":
                             fashn_response = await fashn_service.generate_product_to_model(
@@ -738,6 +733,17 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
                             )
                         else:
                             model_url = None
+                            if character_version_id:
+                                ver_res = await db.execute(select(CharacterVersion).where(CharacterVersion.id == character_version_id))
+                                char_ver = ver_res.scalars().first()
+                                if char_ver:
+                                    model_url = char_ver.reference_image_path
+                            elif character_id:
+                                char_res = await db.execute(select(Character).where(Character.id == character_id))
+                                char = char_res.scalars().first()
+                                if char:
+                                    model_url = char.image_path
+
                             fashn_response = await fashn_service.generate_try_on_max(
                                 product_image_url=source_url or "mock://mannequin",
                                 model_image_url=model_url or "mock://model",
