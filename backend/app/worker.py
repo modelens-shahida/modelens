@@ -715,10 +715,49 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
                 
                 final_prompt = f"{prompt_prefix}. Character: {char_prompt_trigger or 'model'}. Backdrop: {bg_prompt}."
 
-                # Generate image
-                image_bytes = await _generate_image(final_prompt)
-
+                # FASHN Integration
+                image_bytes = None
                 output_filename = f"generated_workflow_{job_id}.png"
+
+                if workflow_type in ("flat_lay_to_model", "mannequin_to_model"):
+                    try:
+                        from app.services.fashn_service import FASHNService
+                        import httpx
+                        fashn_service = FASHNService()
+                        source_url = None
+                        if job.asset_id:
+                            asset_result = await db.execute(select(Asset).where(Asset.id == job.asset_id))
+                            source_asset = asset_result.scalars().first()
+                            if source_asset:
+                                source_url = source_asset.storage_path
+
+                        if workflow_type == "flat_lay_to_model":
+                            fashn_response = await fashn_service.generate_product_to_model(
+                                product_image_url=source_url or "mock://flat_lay",
+                                prompt=final_prompt,
+                            )
+                        else:
+                            model_url = None
+                            fashn_response = await fashn_service.generate_try_on_max(
+                                product_image_url=source_url or "mock://mannequin",
+                                model_image_url=model_url or "mock://model",
+                                prompt=final_prompt,
+                            )
+
+                        output_url = fashn_response.get("output", [{}])[0].get("url", "") if fashn_response else ""
+                        if output_url and not output_url.startswith("mock://"):
+                            async with httpx.AsyncClient(timeout=60) as client:
+                                img_response = await client.get(output_url)
+                                image_bytes = img_response.content
+                        else:
+                            image_bytes = await _generate_image(final_prompt)
+                        print(f"[FASHN] {workflow_type} complete for job {job_id}")
+                    except Exception as fashn_err:
+                        print(f"[FASHN] Failed: {fashn_err}. Falling back.")
+                        image_bytes = await _generate_image(final_prompt)
+                else:
+                    image_bytes = await _generate_image(final_prompt)
+
                 storage_path = await anyio.to_thread.run_sync(
                     storage_service.save_file_bytes, output_filename, image_bytes, "image"
                 )
