@@ -949,6 +949,27 @@ class FluidLayer(Base):
     session = relationship("FluidSession", back_populates="layers")
 
 
+
+class TaxonomyItem(Base):
+    __tablename__ = "taxonomy_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    taxonomy_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    taxonomy_type: Mapped[str] = mapped_column(String(50), index=True)
+    family: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    name: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    version: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="1.0")
+    approval_status: Mapped[str] = mapped_column(String(50), default="pending", index=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    recommended_for: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    not_recommended_for: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    configuration: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(

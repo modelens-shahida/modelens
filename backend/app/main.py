@@ -36,6 +36,7 @@ from app.routers.campaign_templates import router as campaign_templates_router
 from app.routers.ghost_jobs import router as ghost_jobs_router
 from app.routers.sketch_jobs import router as sketch_jobs_router
 from app.routers.catalog_jobs import router as catalog_jobs_router
+from app.routers.taxonomy import router as taxonomy_router
 from app.routers.templates_proxy import router as templates_proxy_router
 from app.routers.internal_callbacks import router as internal_callbacks_router
 from app.routers.angle_shots import router as angle_shots_router
@@ -199,6 +200,7 @@ app.include_router(campaign_templates_router)
 app.include_router(ghost_jobs_router)
 app.include_router(sketch_jobs_router)
 app.include_router(catalog_jobs_router)
+app.include_router(taxonomy_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
 # app.include_router(angle_shots_router)
