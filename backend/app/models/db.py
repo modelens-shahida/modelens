@@ -970,6 +970,128 @@ class TaxonomyItem(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+
+# ========================== Digital Asset Registry ==============
+
+class AssetVersion(Base):
+    __tablename__ = "asset_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(default=1)
+    storage_uri: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    content_hash_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    width: Mapped[Optional[int]] = mapped_column(nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    file_size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AssetRelationship(Base):
+    __tablename__ = "asset_relationships"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    target_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    relationship_type: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ReferenceSet(Base):
+    __tablename__ = "reference_sets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    character_id: Mapped[Optional[int]] = mapped_column(ForeignKey("characters.id", ondelete="CASCADE"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    items = relationship("ReferenceSetItem", back_populates="reference_set", cascade="all, delete-orphan")
+
+
+class ReferenceSetItem(Base):
+    __tablename__ = "reference_set_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference_set_id: Mapped[int] = mapped_column(ForeignKey("reference_sets.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    view_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    position: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    reference_set = relationship("ReferenceSet", back_populates="items")
+
+
+# ========================== QA Registry =========================
+
+class QAProfile(Base):
+    __tablename__ = "qa_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    qa_profile_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    workflow: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    generation_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    dimensions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    overall_pass_threshold: Mapped[Optional[float]] = mapped_column(nullable=True, default=92.0)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    evaluations = relationship("QAEvaluation", back_populates="profile", cascade="all, delete-orphan")
+
+
+class QAEvaluation(Base):
+    __tablename__ = "qa_evaluations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    qa_profile_id: Mapped[int] = mapped_column(ForeignKey("qa_profiles.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    job_id: Mapped[Optional[int]] = mapped_column(nullable=True)
+    job_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    overall_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    decision: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    dimension_scores: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    hard_gate_failures: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    profile = relationship("QAProfile", back_populates="evaluations")
+    artifacts = relationship("QAArtifact", back_populates="evaluation", cascade="all, delete-orphan")
+
+
+class QAArtifact(Base):
+    __tablename__ = "qa_artifacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    evaluation_id: Mapped[int] = mapped_column(ForeignKey("qa_evaluations.id", ondelete="CASCADE"), index=True)
+    artifact_code: Mapped[str] = mapped_column(String(100))
+    severity: Mapped[str] = mapped_column(String(50), default="WARNING")
+    bbox_x: Mapped[Optional[float]] = mapped_column(nullable=True)
+    bbox_y: Mapped[Optional[float]] = mapped_column(nullable=True)
+    bbox_width: Mapped[Optional[float]] = mapped_column(nullable=True)
+    bbox_height: Mapped[Optional[float]] = mapped_column(nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    evaluation = relationship("QAEvaluation", back_populates="artifacts")
+
+
+# ========================== Workflow Node Map ====================
+
+class WorkflowNodeMap(Base):
+    __tablename__ = "workflow_node_maps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(String(100), index=True)
+    taxonomy_type: Mapped[str] = mapped_column(String(50))
+    taxonomy_id: Mapped[str] = mapped_column(String(100))
+    node_id: Mapped[str] = mapped_column(String(50))
+    field_name: Mapped[str] = mapped_column(String(100))
+    value_mapping: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # --- Production Ready Database Session Management ---
 # Create async database engine with optimized connection pooling parameters for scaling
 engine = create_async_engine(
