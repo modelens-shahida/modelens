@@ -1993,6 +1993,42 @@ async def _process_campaign_generation_async(task_self, parent_job_id: int):
             raise task_self.retry(exc=e, countdown=60 * (2 ** task_self.request.retries))
 
 
+
+
+# ========================== Asset Lineage Helper ================
+
+async def _register_asset_relationship(db, source_asset_id: int, target_asset_id: int, relationship_type: str):
+    """Register a relationship between two assets for lineage tracking."""
+    try:
+        from app.models.db import AssetRelationship
+        rel = AssetRelationship(
+            source_asset_id=source_asset_id,
+            target_asset_id=target_asset_id,
+            relationship_type=relationship_type,
+        )
+        db.add(rel)
+        await db.flush()
+        print(f"[Lineage] {relationship_type}: {source_asset_id} -> {target_asset_id}")
+    except Exception as e:
+        print(f"[Lineage] Failed to register relationship: {e}")
+
+
+async def _register_asset_version(db, asset_id: int, storage_uri: str, mime_type: str = "image/png"):
+    """Register initial version for a newly created asset."""
+    try:
+        from app.models.db import AssetVersion
+        version = AssetVersion(
+            asset_id=asset_id,
+            version=1,
+            storage_uri=storage_uri,
+            mime_type=mime_type,
+        )
+        db.add(version)
+        await db.flush()
+        print(f"[Lineage] AssetVersion registered for asset {asset_id}")
+    except Exception as e:
+        print(f"[Lineage] Failed to register version: {e}")
+
 # ========================== Ghost Studio Task ==================
 
 @celery_app.task(
@@ -2116,6 +2152,13 @@ async def _process_ghost_job_async(task_self, job_id: int):
                 api_interaction_id=api_interaction_id,
             )
             db.add(ghost_output)
+
+            # Register asset version and lineage
+            await _register_asset_version(db, new_asset.id, storage_path)
+            if job.assets:
+                for source_asset in job.assets:
+                    if source_asset.asset_id:
+                        await _register_asset_relationship(db, source_asset.asset_id, new_asset.id, "REL-DERIVED-FROM")
 
             # Complete job
             job.status = "completed"
@@ -2470,6 +2513,13 @@ async def _process_sketch_job_async(task_self, job_id: int):
             )
             db.add(sketch_output)
 
+            # Register asset version and lineage
+            await _register_asset_version(db, new_asset.id, storage_path)
+            if job.references:
+                for ref in job.references:
+                    if ref.image_path:
+                        await _register_asset_relationship(db, new_asset.id, new_asset.id, "REL-DERIVED-FROM")
+
             job.status = "completed"
             job.progress = 100
             job.credits_consumed = job.credits_reserved
@@ -2612,6 +2662,12 @@ async def _process_catalog_job_async(task_self, job_id: int):
                 item.provider_job_id = provider_job_id
                 job.completed_items += 1
                 job.credits_consumed += 5 if job.generation_mode == "studio_quality" else 2
+
+                # Register asset version and lineage
+                await _register_asset_version(db, new_asset.id, output_url)
+                if item.product_image_path:
+                    await _register_asset_relationship(db, new_asset.id, new_asset.id, "REL-DERIVED-FROM")
+
                 await db.commit()
 
             except Exception as item_err:
