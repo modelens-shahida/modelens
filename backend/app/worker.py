@@ -2029,6 +2029,59 @@ async def _register_asset_version(db, asset_id: int, storage_uri: str, mime_type
     except Exception as e:
         print(f"[Lineage] Failed to register version: {e}")
 
+
+
+# ========================== QA Evaluation Helper ================
+
+async def _run_qa_evaluation(db, asset_id: int, qa_profile_id: str, job_type: str = "catalog", generation_mode: str = "studio_quality"):
+    """Run QA evaluation and store results."""
+    try:
+        from app.services.qa_service import qa_service
+        from app.models.db import QAProfile, QAEvaluation, QAArtifact
+
+        result = qa_service.evaluate(
+            asset_id=asset_id,
+            qa_profile_id=qa_profile_id,
+            generation_mode=generation_mode,
+        )
+
+        # Get QA profile
+        profile_result = await db.execute(select(QAProfile).where(QAProfile.qa_profile_id == qa_profile_id))
+        qa_profile = profile_result.scalars().first()
+
+        evaluation = QAEvaluation(
+            qa_profile_id=qa_profile.id if qa_profile else 1,
+            asset_id=asset_id,
+            job_type=job_type,
+            overall_score=result.overall_score,
+            decision=result.decision,
+            dimension_scores=result.dimension_scores,
+            hard_gate_failures={"failures": result.hard_gate_failures},
+        )
+        db.add(evaluation)
+        await db.flush()
+
+        for artifact_data in result.artifacts:
+            artifact = QAArtifact(
+                evaluation_id=evaluation.id,
+                artifact_code=artifact_data["artifact_code"],
+                severity=artifact_data["severity"],
+                bbox_x=artifact_data.get("bbox_x"),
+                bbox_y=artifact_data.get("bbox_y"),
+                bbox_width=artifact_data.get("bbox_width"),
+                bbox_height=artifact_data.get("bbox_height"),
+                description=artifact_data.get("description"),
+            )
+            db.add(artifact)
+
+        await db.flush()
+        print(f"[QA] Asset {asset_id} evaluated: {result.decision} ({result.overall_score})")
+        return result
+
+    except Exception as e:
+        print(f"[QA] Evaluation failed for asset {asset_id}: {e}")
+        return None
+
 # ========================== Ghost Studio Task ==================
 
 @celery_app.task(
@@ -2160,8 +2213,12 @@ async def _process_ghost_job_async(task_self, job_id: int):
                     if source_asset.asset_id:
                         await _register_asset_relationship(db, source_asset.asset_id, new_asset.id, "REL-DERIVED-FROM")
 
-            # Complete job
-            job.status = "completed"
+            # Run QA evaluation
+            qa_result = await _run_qa_evaluation(db, new_asset.id, "QA-PROFILE-GHOST-001", "ghost", job.generation_mode or "studio_quality")
+            if qa_result and qa_result.decision == "QA-AUTO-CORRECT":
+                job.status = "qa_review"
+            else:
+                job.status = "completed"
             job.progress = 100
             job.credits_consumed = job.credits_reserved
             await db.commit()
