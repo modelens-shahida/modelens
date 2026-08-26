@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { Plus, Loader2, CheckCircle2, Clock, XCircle, AlertCircle, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
+import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
 
 const STATUS_CONFIG = {
   pending: { label: "Pending", color: "bg-amber-900/40 text-amber-400 border-amber-700", icon: Clock },
@@ -278,6 +279,12 @@ export default function FixRequestsPage() {
             <h2 className="text-lg font-semibold text-white mb-4">Review Fix Request #{reviewRequest.id}</h2>
             <p className="text-xs text-zinc-400 mb-4 bg-zinc-800 rounded-xl px-3 py-2">{reviewRequest.requester_notes}</p>
             <div className="space-y-4">
+              {reviewRequest?.original_asset_id && (
+                <div className="mb-3">
+                  <QADiagnosticCard assetId={reviewRequest.original_asset_id} />
+                </div>
+              )}
+
               <div>
                 <label className="text-xs text-zinc-400 mb-1 block">Update Status</label>
                 <select

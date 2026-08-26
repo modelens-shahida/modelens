@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import { ShieldCheck } from "lucide-react";
 
 const GARMENT_TYPES = ["dress", "top", "outerwear", "pants", "jumpsuit", "full outfit"];
 const VIEWS = ["front", "back", "detail"];
@@ -663,6 +665,28 @@ export default function GhostStudioPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* Section 20 Content Rights Attestation */}
+                <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-zinc-300 font-medium">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Section 20 Upload Rights Attestation Active</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500">
+                    Product uploads are protected by Mode Lens workspace multi-tenant isolation.
+                  </p>
+                </div>
+
+                {/* Live Resolver Simulation */}
+                <TaxonomyResolverPreview
+                  taxonomyIds={{
+                    garment: `GAR-${garmentType.toUpperCase()}`,
+                    pose: "POS-GHOST-001",
+                    environment: "ENV-TRANS-0001",
+                  }}
+                  workflowId="WF-GHOST-001"
+                  generationMode={generationMode === "studio" ? "studio_quality" : "fast_draft"}
+                />
               </div>
 
               <button onClick={handleSubmit} disabled={submitting || !primaryImage || !productHint.trim()} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">

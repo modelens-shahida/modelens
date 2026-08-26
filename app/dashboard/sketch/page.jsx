@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 import { Upload, PenTool, Loader2, CheckCircle2, Download, RefreshCw, AlertTriangle, Clock, X, Plus } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import { ShieldCheck } from "lucide-react";
 
 const MODEL_TIERS = [
   {
@@ -266,6 +268,29 @@ export default function SketchStudioPage() {
                 <textarea value={value} onChange={(e) => setter(e.target.value)} placeholder={placeholder} rows={2} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-purple-500 transition resize-none" />
               </div>
             ))}
+
+            {/* Section 20 Content Rights Attestation */}
+            <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-zinc-300 font-medium">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Section 20 Upload Rights Attestation Active</span>
+              </div>
+              <p className="text-[10px] text-zinc-500">
+                Uploaded sketches & CAD designs are protected by workspace multi-tenant isolation.
+              </p>
+            </div>
+
+            {/* Live Resolver Simulation */}
+            <TaxonomyResolverPreview
+              taxonomyIds={{
+                garment: "GAR-SKETCH-001",
+                fabric: "FAB-COTTON-001",
+                pose: "POS-CAT-0001",
+                environment: "ENV-STU-0001",
+              }}
+              workflowId="WF-SKETCH-001"
+              generationMode={modelTier}
+            />
 
             <button onClick={handleSubmit} disabled={submitting || sketchFiles.length === 0 || !productDesc.trim()} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenTool className="w-4 h-4" />}

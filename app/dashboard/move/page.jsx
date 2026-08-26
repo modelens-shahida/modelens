@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { Film, Plus, Loader2, Play, Download, Clock, CheckCircle2, XCircle, Video, Music, Image } from "lucide-react";
 import toast from "react-hot-toast";
+import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
 
 const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:5", "3:4"];
 const MOTION_PRESETS = ["SUBTLE_FASHION", "RUNWAY_WALK", "ORBIT", "PUSH_IN", "PAN", "HANDHELD"];
@@ -245,6 +246,20 @@ export default function MoveStudioPage() {
                       {MOTION_PRESETS.map(m => <option key={m}>{m}</option>)}
                     </select>
                   </div>
+
+                  {/* Move Studio Live Resolver Preview */}
+                  <div className="mb-3">
+                    <TaxonomyResolverPreview
+                      taxonomyIds={{
+                        pose: `MOT-${sbMotionPreset}-001`,
+                        camera: "CAM-MOV-DOLLY-001",
+                        environment: "ENV-STU-0001",
+                      }}
+                      workflowId="WF-MOVE-001"
+                      generationMode="studio_quality"
+                    />
+                  </div>
+
                   <button onClick={handleCreateStoryboard} disabled={generatingStoryboard} className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-4 py-2 rounded-xl text-xs font-medium transition">
                     {generatingStoryboard ? "Creating..." : `Generate ${sbNumClips} Clips`}
                   </button>
