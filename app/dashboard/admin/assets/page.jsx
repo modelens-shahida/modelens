@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { assetRegistryApi } from "@/lib/assetRegistryApi";
 import AssetVersionHistoryModal from "@/components/dashboard/AssetVersionHistoryModal";
 import AssetLineageGraph from "@/components/dashboard/AssetLineageGraph";
+import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
 import CharacterReferenceSetManager from "@/components/dashboard/CharacterReferenceSetManager";
 import AutoFilenameGenerator from "@/components/dashboard/AutoFilenameGenerator";
 import { 
@@ -22,6 +23,7 @@ import {
   Loader2,
   Calendar,
   ExternalLink,
+  Award,
   ChevronRight
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -46,6 +48,7 @@ export default function AdminAssetRegistryPage() {
   // Selected Asset for Modal / Drawer
   const [selectedAssetForVersion, setSelectedAssetForVersion] = useState(null);
   const [selectedAssetForLineage, setSelectedAssetForLineage] = useState(null);
+  const [selectedAssetForQA, setSelectedAssetForQA] = useState(null);
 
   useEffect(() => {
     fetchAssets();
@@ -119,7 +122,7 @@ export default function AdminAssetRegistryPage() {
               </span>
             </h1>
             <p className="text-zinc-400 text-sm mt-1">
-              Immutable Asset IDs, version chains with SHA-256 hashes, lineage relationships & reference sets
+              Immutable Asset IDs, version chains with SHA-256 hashes, lineage relationships, QA diagnostics & reference sets
             </p>
           </div>
         </div>
@@ -258,7 +261,19 @@ export default function AdminAssetRegistryPage() {
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
-                                onClick={() => setSelectedAssetForLineage(a.id)}
+                                onClick={() => {
+                                  setSelectedAssetForQA(selectedAssetForQA === a.id ? null : a.id);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 text-xs font-medium transition flex items-center gap-1"
+                                title="Inspect QA Diagnostics"
+                              >
+                                <Award className="w-3 h-3 text-amber-400" />
+                                QA
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedAssetForLineage(selectedAssetForLineage === a.id ? null : a.id);
+                                }}
                                 className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-medium transition flex items-center gap-1"
                                 title="Inspect Lineage Graph"
                               >
@@ -281,9 +296,16 @@ export default function AdminAssetRegistryPage() {
               )}
             </div>
 
+            {/* QA Diagnostics Panel Drawer */}
+            {selectedAssetForQA && (
+              <div className="pt-4 animate-in fade-in duration-200">
+                <QADiagnosticCard assetId={selectedAssetForQA} qaProfileId="QA-PROFILE-CATALOG-001" />
+              </div>
+            )}
+
             {/* Lineage Graph Drawer / View */}
             {selectedAssetForLineage && (
-              <div className="pt-4">
+              <div className="pt-4 animate-in fade-in duration-200">
                 <AssetLineageGraph assetId={selectedAssetForLineage} />
               </div>
             )}
