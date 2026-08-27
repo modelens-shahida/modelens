@@ -99,10 +99,48 @@ export default function CatalogStudioPage() {
   const [skuStatuses, setSkuStatuses] = useState({});
   const [elapsedTime, setElapsedTime] = useState(0);
   const [outputImages, setOutputImages] = useState([]);
+  const [exportingZip, setExportingZip] = useState(false);
   const fileInputRef = useRef(null);
   const customModelRef = useRef(null);
   const pollRef = useRef(null);
   const timerRef = useRef(null);
+
+  const handleExportZip = async () => {
+    const jobId = jobStatus?.id || jobStatus?.job_id;
+    if (!jobId) {
+      toast.error("No active completed job to export");
+      return;
+    }
+    setExportingZip(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/catalog-jobs/${jobId}/export-zip`, {
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to export catalog ZIP");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `catalog_job_${jobId}_export.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("Catalog ZIP bundle downloaded with manifest.json!");
+    } catch (err) {
+      console.error("Export ZIP failed:", err);
+      toast.error("Export failed. Ensure job items have completed.");
+    } finally {
+      setExportingZip(false);
+    }
+  };
 
   const handleProductFiles = (newFiles) => {
     const combined = [...productFiles, ...Array.from(newFiles)].slice(0, 50);
@@ -538,13 +576,19 @@ export default function CatalogStudioPage() {
                         <h3 className="text-sm font-semibold text-white">Catalog Output Gallery</h3>
                         <p className="text-[11px] text-zinc-400">Validated on-model deliverables</p>
                       </div>
-                      <a
-                        href="#"
-                        download
-                        className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-xl font-medium transition shadow"
+                      <button
+                        onClick={handleExportZip}
+                        disabled={exportingZip}
+                        className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl font-medium transition shadow-lg shadow-purple-600/20"
+                        title="Download full catalog deliverables bundle with manifest.json"
                       >
-                        <Download className="w-3.5 h-3.5" /> Download ZIP
-                      </a>
+                        {exportingZip ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        {exportingZip ? "Packaging ZIP..." : "Export ZIP (Bundle + Manifest)"}
+                      </button>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
