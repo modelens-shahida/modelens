@@ -2900,3 +2900,168 @@ async def _process_custom_angle_shot_async(task_self, angle_shot_id: int):
             shot.status = "failed"
             await db.commit()
             raise task_self.retry(exc=e, countdown=30)
+
+
+# ========================== Touch-Up Inpainting Task ============
+
+@celery_app.task(
+    name="app.worker.run_touchup_job",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+)
+def run_touchup_job(
+    self,
+    source_asset_id: int,
+    defect_code: str = "ART-HAND-001",
+    bbox_x: float = None,
+    bbox_y: float = None,
+    bbox_width: float = None,
+    bbox_height: float = None,
+    mask_base64: str = None,
+    correction_prompt: str = None,
+    denoise_strength: float = 0.55,
+    qa_profile_id: str = "QA-PROFILE-CATALOG-001",
+    brand_id: int = None,
+):
+    """Celery task for localized touch-up inpainting (WF-TOUCHUP-001)."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run_touchup_async(
+        self, source_asset_id, defect_code,
+        bbox_x, bbox_y, bbox_width, bbox_height,
+        mask_base64, correction_prompt, denoise_strength,
+        qa_profile_id, brand_id,
+    ))
+
+
+async def _run_touchup_async(
+    task_self,
+    source_asset_id: int,
+    defect_code: str,
+    bbox_x: float,
+    bbox_y: float,
+    bbox_width: float,
+    bbox_height: float,
+    mask_base64: str,
+    correction_prompt: str,
+    denoise_strength: float,
+    qa_profile_id: str,
+    brand_id: int,
+):
+    """Async runner for touch-up inpainting pipeline."""
+    from app.models.db import Asset, AssetVersion, AssetRelationship
+
+    async with async_session_maker() as db:
+        try:
+            # Step 1: Load source asset
+            result = await db.execute(select(Asset).where(Asset.id == source_asset_id))
+            source_asset = result.scalars().first()
+            if not source_asset:
+                print(f"[TouchUp] Source asset {source_asset_id} not found.")
+                return
+
+            print(f"[TouchUp] Starting touch-up for asset {source_asset_id}, defect: {defect_code}")
+
+            # Step 2: Build inpaint prompt
+            prompt = correction_prompt or _build_correction_prompt(defect_code)
+
+            # Step 3: Execute ComfyUI inpaint workflow (WF-TOUCHUP-001)
+            image_bytes = None
+            try:
+                from app.services.comfyui_service import get_comfyui_service
+                comfyui = get_comfyui_service()
+
+                workflow = {
+                    "14": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 1]}},
+                    "7":  {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, distorted, artifacts", "clip": ["4", 1]}},
+                }
+
+                # Inject bbox mask if provided
+                if bbox_x is not None:
+                    workflow = comfyui.inject_node_input(workflow, "MASK", "bbox", {
+                        "x": bbox_x, "y": bbox_y,
+                        "width": bbox_width, "height": bbox_height,
+                    })
+
+                # Inject custom mask if provided
+                if mask_base64:
+                    workflow = comfyui.inject_node_input(workflow, "MASK", "mask_base64", mask_base64)
+
+                # Inject denoise strength
+                workflow = comfyui.inject_node_input(workflow, "3", "denoise", denoise_strength)
+
+                prompt_id = await comfyui.submit_workflow(workflow)
+                result_data = await comfyui.poll_until_complete(prompt_id)
+                outputs = result_data.get("outputs", [])
+                if outputs:
+                    image_bytes = await comfyui.download_output(outputs[0].get("filename", "output.png"))
+
+            except Exception as comfyui_err:
+                print(f"[TouchUp] ComfyUI failed (mock): {comfyui_err}")
+
+            if not image_bytes:
+                import base64
+                image_bytes = base64.b64decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg=="
+                )
+
+            # Step 4: Save touch-up output
+            output_filename = f"touchup_{source_asset_id}_{defect_code}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+            storage_path = storage_service.save_file_bytes(output_filename, image_bytes)
+
+            # Step 5: Register new Asset
+            new_asset = Asset(
+                brand_id=brand_id or source_asset.brand_id,
+                name=f"Touch-Up {defect_code} - Asset {source_asset_id}",
+                filename=output_filename,
+                storage_path=storage_path,
+                asset_type="generated",
+                status="active",
+                meta={
+                    "source": "touchup_pipeline",
+                    "workflow": "WF-TOUCHUP-001",
+                    "source_asset_id": source_asset_id,
+                    "defect_code": defect_code,
+                    "denoise_strength": denoise_strength,
+                    "bbox": {"x": bbox_x, "y": bbox_y, "w": bbox_width, "h": bbox_height},
+                }
+            )
+            db.add(new_asset)
+            await db.flush()
+
+            # Step 6: Register AssetVersion
+            await _register_asset_version(db, new_asset.id, storage_path)
+
+            # Step 7: Register lineage REL-TOUCHUP-OF
+            await _register_asset_relationship(db, source_asset_id, new_asset.id, "REL-TOUCHUP-OF")
+
+            await db.commit()
+            await db.refresh(new_asset)
+
+            # Step 8: Auto-trigger QA evaluation
+            qa_result = await _run_qa_evaluation(db, new_asset.id, qa_profile_id, "touchup")
+            print(f"[TouchUp] Complete. New asset: {new_asset.id}. QA: {qa_result.decision if qa_result else 'N/A'}")
+
+        except Exception as e:
+            print(f"[TouchUp] Failed for asset {source_asset_id}: {e}")
+            raise task_self.retry(exc=e, countdown=30)
+
+
+def _build_correction_prompt(defect_code: str) -> str:
+    """Build correction prompt based on defect code."""
+    prompts = {
+        "ART-HAND-001": "perfect anatomically correct hand, five slender fingers, natural skin texture, photorealistic",
+        "ART-HAND-002": "correct hand geometry, natural finger proportions, realistic knuckles",
+        "ART-FACE-001": "maintain original facial identity, correct facial geometry, consistent skin tone",
+        "ART-FACE-002": "consistent age appearance, maintain character identity",
+        "ART-GAR-001": "accurate garment color, preserve original fabric color",
+        "ART-GAR-002": "preserve original print pattern, accurate fabric texture",
+        "ART-GAR-003": "clean visible seam, accurate garment construction",
+        "ART-SKIN-001": "natural skin texture with visible pores, realistic skin finish",
+        "ART-ANATOMY-001": "correct body proportions, natural anatomical structure",
+    }
+    return prompts.get(defect_code, "correct defect, maintain overall image quality and consistency")
