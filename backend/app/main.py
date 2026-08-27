@@ -36,6 +36,7 @@ from app.routers.campaign_templates import router as campaign_templates_router
 from app.routers.ghost_jobs import router as ghost_jobs_router
 from app.routers.sketch_jobs import router as sketch_jobs_router
 from app.routers.catalog_jobs import router as catalog_jobs_router
+from app.routers.catalog_export import router as catalog_export_router
 from app.routers.taxonomy import router as taxonomy_router
 from app.routers.asset_registry import router as asset_registry_router
 from app.routers.taxonomy_resolver import router as taxonomy_resolver_router
@@ -203,6 +204,7 @@ app.include_router(campaign_templates_router)
 app.include_router(ghost_jobs_router)
 app.include_router(sketch_jobs_router)
 app.include_router(catalog_jobs_router)
+app.include_router(catalog_export_router)
 app.include_router(taxonomy_router)
 app.include_router(asset_registry_router)
 app.include_router(taxonomy_resolver_router)
