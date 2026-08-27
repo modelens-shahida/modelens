@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 import { Layers, Plus, ChevronRight, Download, RefreshCw, Loader2, Image, Wand2, UserCheck, Crop, ArrowUp, X } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import { ShieldCheck } from "lucide-react";
 
 const ASPECT_RATIOS = ["1:1", "3:4", "4:5", "9:16", "16:9", "21:9"];
 const RESOLUTIONS = ["1K", "2K", "4K"];
@@ -230,6 +232,16 @@ export default function FluidStudioPage() {
                   <select value={newResolution} onChange={(e) => setNewResolution(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none">
                     {RESOLUTIONS.map(r => <option key={r}>{r}</option>)}
                   </select>
+                </div>
+                <div className="pt-2">
+                  <TaxonomyResolverPreview
+                    taxonomyIds={{
+                      environment: "ENV-STU-0001",
+                      camera: "CAM-LENS-50MM-001",
+                    }}
+                    workflowId="WF-FLUID-001"
+                    generationMode="studio_quality"
+                  />
                 </div>
                 <button onClick={handleCreateSession} disabled={creating} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-1.5 rounded-lg text-xs font-medium transition">
                   {creating ? "Creating..." : "Create"}

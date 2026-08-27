@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { User, Plus, X, Loader2, Folder, Sparkles, AlertCircle, Image as ImageIcon, Database, Copy, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
+import Link from "next/link";
 
 export default function CharactersPage() {
   const { user } = useAuth();
@@ -251,6 +252,32 @@ export default function CharactersPage() {
             New Character
           </button>
         </div>
+      </div>
+
+      {/* Golden Character Hub Callout */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/40 via-zinc-900 to-zinc-950 border border-purple-800/40 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              Golden Character Standards Active
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800">
+                EE-F-002 Certified
+              </span>
+            </h3>
+            <p className="text-xs text-zinc-400">
+              Manage canonical viewpoints, multi-angle reference sets (`REFSET-*`), and coverage validation gates.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/dashboard/admin/characters"
+          className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition flex items-center gap-1 shadow-lg shadow-purple-600/20 shrink-0"
+        >
+          View Golden Character Hub →
+        </Link>
       </div>
 
       {/* Grid listing */}
