@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { Plus, Loader2, CheckCircle2, Clock, XCircle, AlertCircle, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
 import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
+import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
+import { Sparkles } from "lucide-react";
 
 const STATUS_CONFIG = {
   pending: { label: "Pending", color: "bg-amber-900/40 text-amber-400 border-amber-700", icon: Clock },
@@ -34,6 +36,7 @@ export default function FixRequestsPage() {
   const [reviewRequest, setReviewRequest] = useState(null);
   const [reviewForm, setReviewForm] = useState({ status: "", reviewer_notes: "", updated_asset_id: "" });
   const [reviewing, setReviewing] = useState(false);
+  const [showRetouchModal, setShowRetouchModal] = useState(false);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -280,7 +283,17 @@ export default function FixRequestsPage() {
             <p className="text-xs text-zinc-400 mb-4 bg-zinc-800 rounded-xl px-3 py-2">{reviewRequest.requester_notes}</p>
             <div className="space-y-4">
               {reviewRequest?.original_asset_id && (
-                <div className="mb-3">
+                <div className="mb-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-300">QA Diagnostics & Retouch</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRetouchModal(true)}
+                      className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition flex items-center gap-1 shadow-md shadow-purple-600/20"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> Launch Canvas Retouch
+                    </button>
+                  </div>
                   <QADiagnosticCard assetId={reviewRequest.original_asset_id} />
                 </div>
               )}
@@ -330,6 +343,19 @@ export default function FixRequestsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Canvas Retouch Modal */}
+      {showRetouchModal && reviewRequest?.original_asset_id && (
+        <CanvasRetouchModal
+          isOpen={showRetouchModal}
+          onClose={() => setShowRetouchModal(false)}
+          asset={{ id: reviewRequest.original_asset_id, storage_uri: reviewRequest.asset_thumbnail_url }}
+          initialDefectCode="ART-HAND-001"
+          onSuccess={() => {
+            fetchRequests();
+          }}
+        />
       )}
     </div>
   );
