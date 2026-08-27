@@ -14,10 +14,12 @@ import {
   UserCheck, 
   Loader2, 
   RefreshCw,
-  Info
+  Info,
+  Sparkles
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
+import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
 
 const DECISION_CONFIG = {
   "QA-PASS": { label: "QA Passed", color: "bg-emerald-950/80 text-emerald-300 border-emerald-700", icon: CheckCircle2 },
@@ -43,6 +45,8 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
   const [reviewerNotes, setReviewerNotes] = useState("");
   const [overrideHardGate, setOverrideHardGate] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [showRetouchModal, setShowRetouchModal] = useState(false);
+  const [selectedDefectForRetouch, setSelectedDefectForRetouch] = useState("ART-HAND-001");
 
   useEffect(() => {
     if (assetId) {
@@ -243,9 +247,20 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
                         <span className="font-mono text-zinc-200 font-bold">{art.artifact_code}</span>
                         {art.description && <span className="text-zinc-400 text-[11px]">— {art.description}</span>}
                       </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border uppercase ${sev.color}`}>
-                        {sev.label}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border uppercase ${sev.color}`}>
+                          {sev.label}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setSelectedDefectForRetouch(art.artifact_code);
+                            setShowRetouchModal(true);
+                          }}
+                          className="px-2 py-0.5 rounded bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800 text-[10px] font-bold font-mono transition flex items-center gap-1"
+                        >
+                          <Sparkles className="w-2.5 h-2.5" /> Inpaint
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -253,6 +268,19 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
             </div>
           )}
         </div>
+      )}
+
+      {/* Canvas Retouch Modal */}
+      {showRetouchModal && (
+        <CanvasRetouchModal
+          isOpen={showRetouchModal}
+          onClose={() => setShowRetouchModal(false)}
+          asset={{ id: assetId, storage_uri: evaluation?.storage_uri }}
+          initialDefectCode={selectedDefectForRetouch}
+          onSuccess={() => {
+            fetchLatestEvaluation();
+          }}
+        />
       )}
 
       {/* Human Review Modal */}

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { qaApi } from "@/lib/qaApi";
 import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
+import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
 import { 
   Award, 
   ShieldCheck, 
@@ -44,6 +45,7 @@ export default function AdminQAReviewQueuePage() {
   const [referenceAsset, setReferenceAsset] = useState(null);
   const [evaluation, setEvaluation] = useState(null);
   const [evalLoading, setEvalLoading] = useState(false);
+  const [showRetouchModal, setShowRetouchModal] = useState(false);
 
   // Inspector Zoom / Split mode
   const [inspectorMode, setInspectorMode] = useState("split"); // "split" | "overlay"
@@ -287,7 +289,7 @@ export default function AdminQAReviewQueuePage() {
                         <Check className="w-3.5 h-3.5" /> Approve Pass
                       </button>
                       <button
-                        onClick={() => handleQuickDecision("QA-AUTO-CORRECT")}
+                        onClick={() => setShowRetouchModal(true)}
                         className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition flex items-center gap-1 shadow-lg shadow-purple-500/20"
                       >
                         <Wrench className="w-3.5 h-3.5" /> Touch-Up Route
@@ -369,6 +371,20 @@ export default function AdminQAReviewQueuePage() {
             )}
           </div>
         </div>
+
+        {/* Canvas Retouch Modal */}
+        {showRetouchModal && selectedAsset && (
+          <CanvasRetouchModal
+            isOpen={showRetouchModal}
+            onClose={() => setShowRetouchModal(false)}
+            asset={selectedAsset}
+            initialDefectCode="ART-HAND-001"
+            onSuccess={() => {
+              handleSelectAsset(selectedAsset);
+              fetchReviewQueue();
+            }}
+          />
+        )}
       </div>
     </div>
   );
