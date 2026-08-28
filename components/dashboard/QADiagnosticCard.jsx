@@ -20,6 +20,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
+import { useWebSocket } from "@/lib/useWebSocket";
+import { useAuth } from "@/lib/auth-context";
 
 const DECISION_CONFIG = {
   "QA-PASS": { label: "QA Passed", color: "bg-emerald-950/80 text-emerald-300 border-emerald-700", icon: CheckCircle2 },
@@ -37,9 +39,11 @@ const SEVERITY_CONFIG = {
 };
 
 export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CATALOG-001", className = "" }) {
+  const { user } = useAuth();
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [evaluating, setEvaluating] = useState(false);
+  const [activeTelemetryDimension, setActiveTelemetryDimension] = useState(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewDecision, setReviewDecision] = useState("QA-PASS");
   const [reviewerNotes, setReviewerNotes] = useState("");
@@ -47,6 +51,36 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
   const [submittingReview, setSubmittingReview] = useState(false);
   const [showRetouchModal, setShowRetouchModal] = useState(false);
   const [selectedDefectForRetouch, setSelectedDefectForRetouch] = useState("ART-HAND-001");
+
+  // WebSocket Live Telemetry Listener
+  useWebSocket({
+    token: typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    brandId: user?.brand_id || 1,
+    onEvent: (event) => {
+      if (!event?.type?.startsWith("qa.")) return;
+
+      if (event.data?.asset_id && String(event.data.asset_id) !== String(assetId)) {
+        return;
+      }
+
+      if (event.type.startsWith("qa.evaluating_")) {
+        const dim = event.data?.dimension;
+        setActiveTelemetryDimension(dim);
+        if (event.data?.score !== undefined) {
+          setEvaluation((prev) => ({
+            ...prev,
+            dimension_scores: {
+              ...(prev?.dimension_scores || {}),
+              [dim]: event.data.score,
+            },
+          }));
+        }
+      } else if (event.type === "qa.decision_ready") {
+        setActiveTelemetryDimension(null);
+        fetchLatestEvaluation();
+      }
+    },
+  });
 
   useEffect(() => {
     if (assetId) {
@@ -211,17 +245,30 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
               {evaluation.dimension_scores &&
                 Object.entries(evaluation.dimension_scores).map(([dim, score]) => {
                   const isPass = score >= 90;
+                  const isEvaluating = activeTelemetryDimension === dim;
                   return (
-                    <div key={dim} className="p-3 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-1.5">
+                    <div
+                      key={dim}
+                      className={`p-3 rounded-xl border space-y-1.5 transition-all duration-300 ${
+                        isEvaluating
+                          ? "bg-purple-950/40 border-purple-500 shadow-lg shadow-purple-500/20 animate-pulse"
+                          : "bg-zinc-900/40 border-zinc-800/80"
+                      }`}
+                    >
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-[11px] font-mono capitalize text-zinc-300 font-medium">{dim}</span>
-                        <span className={`font-mono font-bold ${isPass ? "text-emerald-400" : "text-amber-400"}`}>
-                          {score}%
+                        <span className="text-[11px] font-mono capitalize text-zinc-300 font-medium flex items-center gap-1">
+                          {dim}
+                          {isEvaluating && <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping" />}
+                        </span>
+                        <span className={`font-mono font-bold ${isEvaluating ? "text-purple-400" : isPass ? "text-emerald-400" : "text-amber-400"}`}>
+                          {isEvaluating ? "Analyzing..." : `${score}%`}
                         </span>
                       </div>
                       <div className="w-full bg-zinc-950 rounded-full h-1.5 overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${isPass ? "bg-emerald-500" : "bg-amber-500"}`}
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isEvaluating ? "bg-gradient-to-r from-purple-500 to-indigo-400 animate-pulse" : isPass ? "bg-emerald-500" : "bg-amber-500"
+                          }`}
                           style={{ width: `${Math.min(score, 100)}%` }}
                         />
                       </div>
