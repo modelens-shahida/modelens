@@ -3077,3 +3077,162 @@ def _build_correction_prompt(defect_code: str) -> str:
         "ART-ANATOMY-001": "correct body proportions, natural anatomical structure",
     }
     return prompts.get(defect_code, "correct defect, maintain overall image quality and consistency")
+
+
+# ========================== Batch Concurrency Tasks =============
+
+@celery_app.task(
+    name="app.worker.process_catalog_item_single",
+    bind=True,
+    max_retries=2,
+    queue="bulk_batch",
+)
+def process_catalog_item_single(self, item_id: int, job_id: int):
+    """Process a single catalog item with priority queue support."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_process_single_catalog_item_async(self, item_id, job_id))
+
+
+async def _process_single_catalog_item_async(task_self, item_id: int, job_id: int):
+    """Async runner for single catalog item processing."""
+    from app.models.db import CatalogJobItem, CatalogJob, Asset
+    from app.services.batch_concurrency import (
+        get_cached_mask, set_cached_mask,
+        get_cached_character_embedding, publish_batch_telemetry
+    )
+
+    async with async_session_maker() as db:
+        item_result = await db.execute(select(CatalogJobItem).where(CatalogJobItem.id == item_id))
+        item = item_result.scalars().first()
+        if not item:
+            return
+
+        job_result = await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))
+        job = job_result.scalars().first()
+        if not job:
+            return
+
+        start_time = datetime.utcnow()
+
+        try:
+            item.status = "generating"
+            await db.commit()
+
+            # Check Redis cache for pre-segmented mask
+            cached_mask = None
+            if item.product_image_path:
+                cached_mask = await get_cached_mask(None, item.id)
+                if cached_mask:
+                    print(f"[Batch] Using cached mask for item {item_id}")
+
+            # FASHN generation (mock)
+            output_url = f"https://cdn.example.com/catalog/batch_{item_id}.png"
+            provider_job_id = f"batch_mock_{item_id}"
+
+            # Cache mask for future use
+            if not cached_mask:
+                await set_cached_mask(None, item.id, b"mock_mask_data")
+
+            # Register output
+            new_asset = Asset(
+                brand_id=job.brand_id,
+                name=f"Batch Catalog - {item.sku_tag or item.id}",
+                filename=f"catalog_batch_{item_id}.png",
+                storage_path=output_url,
+                asset_type="generated",
+                status="active",
+                meta={
+                    "source": "catalog_batch",
+                    "job_id": job_id,
+                    "item_id": item_id,
+                    "sku_tag": item.sku_tag,
+                }
+            )
+            db.add(new_asset)
+            await db.flush()
+
+            # Register lineage
+            await _register_asset_version(db, new_asset.id, output_url)
+
+            item.status = "qa_passed"
+            item.output_url = output_url
+            item.quality_score = 0.93
+            item.provider_job_id = provider_job_id
+            job.completed_items += 1
+            job.credits_consumed += 5 if job.generation_mode == "studio_quality" else 2
+
+            await db.commit()
+
+            # Publish batch telemetry
+            await publish_batch_telemetry(
+                redis_client=None,
+                brand_id=job.brand_id,
+                job_id=job_id,
+                total_skus=job.total_items,
+                completed_skus=job.completed_items,
+                failed_skus=job.failed_items,
+                active_workers=1,
+                start_time=start_time,
+            )
+
+        except Exception as e:
+            print(f"[Batch] Item {item_id} failed: {e}")
+            item.status = "failed"
+            item.error_message = str(e)[:200]
+            job.failed_items += 1
+            await db.commit()
+            raise task_self.retry(exc=e, countdown=30)
+
+
+@celery_app.task(
+    name="app.worker.on_batch_complete",
+    bind=True,
+    queue="high_priority",
+)
+def on_batch_complete(self, results, job_id: int, brand_id: int, start_time_iso: str):
+    """Callback task triggered when all batch items complete."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_on_batch_complete_async(job_id, brand_id, start_time_iso))
+
+
+async def _on_batch_complete_async(job_id: int, brand_id: int, start_time_iso: str):
+    """Handle batch completion — update job status and send summary."""
+    from app.models.db import CatalogJob
+    from app.services.batch_concurrency import publish_batch_complete
+    from datetime import datetime
+
+    async with async_session_maker() as db:
+        result = await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))
+        job = result.scalars().first()
+        if not job:
+            return
+
+        start_time = datetime.fromisoformat(start_time_iso)
+        duration = (datetime.utcnow() - start_time).total_seconds()
+
+        if job.failed_items == 0:
+            job.status = "completed"
+        elif job.completed_items == 0:
+            job.status = "failed"
+        else:
+            job.status = "partially_completed"
+
+        await db.commit()
+
+        await publish_batch_complete(
+            redis_client=None,
+            brand_id=brand_id,
+            job_id=job_id,
+            total_skus=job.total_items,
+            completed_skus=job.completed_items,
+            failed_skus=job.failed_items,
+            duration_seconds=duration,
+        )
