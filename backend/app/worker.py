@@ -2213,8 +2213,20 @@ async def _process_ghost_job_async(task_self, job_id: int):
                     if source_asset.asset_id:
                         await _register_asset_relationship(db, source_asset.asset_id, new_asset.id, "REL-DERIVED-FROM")
 
-            # Run QA evaluation
-            qa_result = await _run_qa_evaluation(db, new_asset.id, "QA-PROFILE-GHOST-001", "ghost", job.generation_mode or "studio_quality")
+            # Run QA evaluation with telemetry
+            try:
+                from app.services.qa_telemetry import stream_qa_evaluation
+                qa_result = await stream_qa_evaluation(
+                    redis_client=None,
+                    job_id=job_id,
+                    brand_id=job.brand_id,
+                    asset_id=new_asset.id,
+                    qa_profile_id="QA-PROFILE-GHOST-001",
+                    generation_mode=job.generation_mode or "studio_quality",
+                )
+            except Exception:
+                qa_result = await _run_qa_evaluation(db, new_asset.id, "QA-PROFILE-GHOST-001", "ghost", job.generation_mode or "studio_quality")
+
             if qa_result and qa_result.decision == "QA-AUTO-CORRECT":
                 job.status = "qa_review"
             else:
