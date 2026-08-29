@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { qaApi } from "@/lib/qaApi";
 import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
 import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
+import C2PAProvenanceBadge from "@/components/dashboard/C2PAProvenanceBadge";
 import { 
   Award, 
   ShieldCheck, 
@@ -282,6 +283,11 @@ export default function AdminQAReviewQueuePage() {
 
                     {/* Quick Review Actions */}
                     <div className="flex items-center gap-2">
+                      <C2PAProvenanceBadge
+                        assetId={selectedAsset.id}
+                        assetName={selectedAsset.name}
+                        variant="pill"
+                      />
                       <button
                         onClick={() => handleQuickDecision("QA-PASS", true)}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1 shadow-lg shadow-emerald-500/20"

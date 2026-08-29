@@ -20,6 +20,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
+import C2PAProvenanceBadge from "@/components/dashboard/C2PAProvenanceBadge";
 import { useWebSocket } from "@/lib/useWebSocket";
 import { useAuth } from "@/lib/auth-context";
 
@@ -166,6 +167,8 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
         </div>
 
         <div className="flex items-center gap-2">
+          {assetId && <C2PAProvenanceBadge assetId={assetId} variant="pill" />}
+
           <button
             onClick={runEvaluation}
             disabled={evaluating}
