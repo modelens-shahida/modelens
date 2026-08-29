@@ -8,6 +8,7 @@ import AssetLineageGraph from "@/components/dashboard/AssetLineageGraph";
 import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
 import CharacterReferenceSetManager from "@/components/dashboard/CharacterReferenceSetManager";
 import AutoFilenameGenerator from "@/components/dashboard/AutoFilenameGenerator";
+import C2PAProvenanceModal from "@/components/dashboard/C2PAProvenanceModal";
 import { 
   Folder, 
   Search, 
@@ -24,7 +25,8 @@ import {
   Calendar,
   ExternalLink,
   Award,
-  ChevronRight
+  ChevronRight,
+  Lock
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -49,6 +51,7 @@ export default function AdminAssetRegistryPage() {
   const [selectedAssetForVersion, setSelectedAssetForVersion] = useState(null);
   const [selectedAssetForLineage, setSelectedAssetForLineage] = useState(null);
   const [selectedAssetForQA, setSelectedAssetForQA] = useState(null);
+  const [selectedAssetForC2PA, setSelectedAssetForC2PA] = useState(null);
 
   useEffect(() => {
     fetchAssets();
@@ -262,6 +265,16 @@ export default function AdminAssetRegistryPage() {
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => {
+                                  setSelectedAssetForC2PA(a);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-emerald-300 border border-zinc-800 text-xs font-medium transition flex items-center gap-1"
+                                title="Inspect C2PA Content Credentials"
+                              >
+                                <Lock className="w-3 h-3 text-emerald-400" />
+                                C2PA
+                              </button>
+                              <button
+                                onClick={() => {
                                   setSelectedAssetForQA(selectedAssetForQA === a.id ? null : a.id);
                                 }}
                                 className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 text-xs font-medium transition flex items-center gap-1"
@@ -332,6 +345,16 @@ export default function AdminAssetRegistryPage() {
           isOpen={!!selectedAssetForVersion}
           onClose={() => setSelectedAssetForVersion(null)}
         />
+
+        {/* C2PA Provenance Modal */}
+        {selectedAssetForC2PA && (
+          <C2PAProvenanceModal
+            isOpen={Boolean(selectedAssetForC2PA)}
+            onClose={() => setSelectedAssetForC2PA(null)}
+            assetId={selectedAssetForC2PA.id}
+            assetName={selectedAssetForC2PA.name}
+          />
+        )}
       </div>
     </div>
   );

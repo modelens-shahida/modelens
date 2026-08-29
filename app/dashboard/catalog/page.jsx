@@ -28,6 +28,8 @@ import toast from "react-hot-toast";
 import Link from "next/link";
 import { useWebSocket } from "@/lib/useWebSocket";
 import { useAuth } from "@/lib/auth-context";
+import C2PAProvenanceModal from "@/components/dashboard/C2PAProvenanceModal";
+import { Lock } from "lucide-react";
 
 const MODEL_IDENTITIES = [
   { id: "EE-F-002", name: "Eliska Novak (EE-F-002 · Golden Master)", recommended: true },
@@ -107,6 +109,7 @@ export default function CatalogStudioPage() {
   const [outputImages, setOutputImages] = useState([]);
   const [exportingZip, setExportingZip] = useState(false);
   const [batchTelemetry, setBatchTelemetry] = useState(null);
+  const [selectedC2PAAsset, setSelectedC2PAAsset] = useState(null);
   const fileInputRef = useRef(null);
   const customModelRef = useRef(null);
   const pollRef = useRef(null);
@@ -659,13 +662,23 @@ export default function CatalogStudioPage() {
                           </div>
                           <div className="p-2 bg-zinc-950 flex items-center justify-between text-[11px] font-mono border-t border-zinc-800">
                             <span className="text-zinc-400 truncate">SKU-{i + 1}</span>
-                            <Link
-                              href={`/dashboard/fix-requests?asset_id=${img.asset_id || ""}`}
-                              className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
-                              title="Request Local Touch-up"
-                            >
-                              <Wrench className="w-3 h-3" /> Touch-up
-                            </Link>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedC2PAAsset({ id: img.asset_id || (i + 1), name: `SKU-${i + 1}` })}
+                                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-0.5"
+                                title="View C2PA Content Credentials"
+                              >
+                                <Lock className="w-3 h-3" /> C2PA
+                              </button>
+                              <Link
+                                href={`/dashboard/fix-requests?asset_id=${img.asset_id || ""}`}
+                                className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                                title="Request Local Touch-up"
+                              >
+                                <Wrench className="w-3 h-3" /> Touch-up
+                              </Link>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -696,6 +709,16 @@ export default function CatalogStudioPage() {
           </div>
         </div>
       </div>
+
+      {/* C2PA Content Credentials Modal */}
+      {selectedC2PAAsset && (
+        <C2PAProvenanceModal
+          isOpen={Boolean(selectedC2PAAsset)}
+          onClose={() => setSelectedC2PAAsset(null)}
+          assetId={selectedC2PAAsset.id}
+          assetName={selectedC2PAAsset.name}
+        />
+      )}
     </div>
   );
 }
