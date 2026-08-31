@@ -9,9 +9,9 @@ import {
   Loader2, Edit3, Check, Webhook, Activity, Trash2, Brain,
   Key, RefreshCw, Sliders, Eye, FileText, Download
 } from "lucide-react";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
+import AuditLogViewer from "@/components/dashboard/AuditLogViewer";
 
 export default function BrandDetailPage() {
   const { id } = useParams();
@@ -926,81 +926,11 @@ export default function BrandDetailPage() {
 
       {/* Audit Logs Tab */}
       {activeTab === "audit-logs" && canManage && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-200">Activity Timeline</h3>
-              <p className="text-xs text-zinc-500">Security and audit trail of operations inside this workspace.</p>
-            </div>
-            {auditLogsLoading && (
-              <Loader2 className="animate-spin text-purple-500" size={16} />
-            )}
-          </div>
-
-          <div className="relative border-l border-zinc-800 ml-3.5 space-y-6 pt-2">
-            {auditLogs.map((log) => {
-              const actionLabel = log.action
-                .replace(/_/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase());
-
-              // Premium timeline icons mapping
-              const getActionIcon = (action) => {
-                const act = action.toLowerCase();
-                if (act.includes("member")) return <Users size={12} className="text-blue-400" />;
-                if (act.includes("webhook")) return <Webhook size={12} className="text-emerald-400" />;
-                if (act.includes("api_key")) return <Key size={12} className="text-amber-400" />;
-                if (act.includes("asset")) return <FileText size={12} className="text-purple-400" />;
-                if (act.includes("settings")) return <Settings size={12} className="text-zinc-400" />;
-                return <Activity size={12} className="text-purple-400" />;
-              };
-
-              return (
-                <div key={log.id} className="ml-6 relative">
-                  <div className="absolute -left-9 top-1 w-6 h-6 rounded-full bg-zinc-950 border border-zinc-800 flex items-center justify-center shadow-lg">
-                    {getActionIcon(log.action)}
-                  </div>
-                  <div className="bg-zinc-900/30 border border-zinc-900 rounded-xl p-4 space-y-2 backdrop-blur-md">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-zinc-250">{actionLabel}</span>
-                      <span className="text-[10px] text-zinc-500">{new Date(log.created_at).toLocaleString()}</span>
-                    </div>
-                    {log.details && Object.keys(log.details).length > 0 && (
-                      <div className="text-xs text-zinc-400 space-y-1 bg-zinc-950/20 p-2.5 rounded-lg border border-zinc-900/60 font-sans">
-                        {Object.entries(log.details).map(([key, val]) => (
-                          <div key={key} className="flex gap-2">
-                            <span className="text-zinc-500">{key.replace(/_/g, " ")}:</span>
-                            <span className="text-zinc-300 font-medium">{String(val)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {log.client_ip && (
-                      <div className="text-[10px] text-zinc-600 flex items-center gap-1">
-                        <span>IP Address:</span>
-                        <span className="font-mono">{log.client_ip}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {auditLogsHasMore && !auditLogsLoading && auditLogs.length > 0 && (
-            <button
-              onClick={() => fetchAuditLogs(auditLogsOffset)}
-              className="w-full py-2.5 border border-zinc-850 hover:border-zinc-800 rounded-xl text-xs text-zinc-400 hover:text-white transition-all cursor-pointer font-semibold"
-            >
-              Load More Activity
-            </button>
-          )}
-
-          {auditLogs.length === 0 && !auditLogsLoading && (
-            <div className="text-zinc-500 text-xs text-center py-12 bg-zinc-900/10 border border-zinc-900 rounded-2xl">
-              <Activity className="mx-auto text-zinc-700 mb-3" size={32} />
-              <p>No activity logs found for this brand workspace.</p>
-            </div>
-          )}
+        <div className="pt-2">
+          <AuditLogViewer 
+            brandId={id} 
+            title={`${brand?.name || "Brand"} Governance Audit Trail`} 
+          />
         </div>
       )}
 

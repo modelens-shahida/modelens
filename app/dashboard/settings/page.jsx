@@ -1,5 +1,5 @@
 "use client";
-import AuditLogsList from "@/components/dashboard/AuditLogsList";
+import AuditLogViewer from "@/components/dashboard/AuditLogViewer";
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { notificationsApi } from "@/lib/notifications";
@@ -334,14 +334,10 @@ export default function SettingsPage() {
         {/* Brand Audit Logs Card */}
         {selectedBrandId && (
           <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Shield className="w-5 h-5 text-purple-400" />
-              <div>
-                <h2 className="text-base font-semibold text-white">Brand Audit Logs</h2>
-                <p className="text-xs text-zinc-400 mt-0.5">Track asset uploads, deletions, credit transactions, and user invitations</p>
-              </div>
-            </div>
-            <AuditLogsList brandId={selectedBrandId} />
+            <AuditLogViewer 
+              brandId={selectedBrandId} 
+              title="Brand Governance Audit Logs" 
+            />
           </div>
         )}
       </div>
