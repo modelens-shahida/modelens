@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 import AuditLogViewer from "@/components/dashboard/AuditLogViewer";
+import BrandTeamPermissionsManager from "@/components/dashboard/BrandTeamPermissionsManager";
 
 export default function BrandDetailPage() {
   const { id } = useParams();
@@ -583,107 +584,8 @@ export default function BrandDetailPage() {
       {/* Tab Contents */}
       <div className="pt-2">
         {activeTab === "members" && (
-          <div className="bg-zinc-900/10 border border-zinc-900 rounded-2xl overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-zinc-900 bg-zinc-950/40 text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">User</th>
-                  <th className="px-6 py-4">Role</th>
-                  <th className="px-6 py-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-900/60 text-xs">
-                {/* Brand Creator/Owner row (Implicitly owner, not in members table) */}
-                <tr className="hover:bg-zinc-900/20 transition-all">
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-zinc-200">Brand Owner (Creator)</span>
-                      <span className="text-[10px] text-zinc-500">ID: {brand?.owner_id}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full bg-purple-950/40 border-purple-800/30 text-purple-400">
-                      owner
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-zinc-400">Active</td>
-                </tr>
-
-                {/* Other members */}
-                {members.map((member) => (
-                  <tr key={member.id} className="hover:bg-zinc-900/20 transition-all">
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-zinc-200">{member.user_email}</span>
-                        <span className="text-[10px] text-zinc-500">User ID: {member.user_id}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {canManage && member.user_id !== brand?.owner_id && member.user_id !== user?.id ? (
-                        <select
-                          value={member.role}
-                          onChange={(e) => handleUpdateRole(member.user_id, e.target.value)}
-                          className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none cursor-pointer"
-                        >
-                          <option value="viewer">Viewer</option>
-                          <option value="editor">Editor</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      ) : (
-                        <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(member.role)}`}>
-                          {member.role}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-zinc-400">
-                      <div className="flex items-center justify-between">
-                        <span>Active</span>
-                        {canManage && member.user_id !== brand?.owner_id && member.user_id !== user?.id && (
-                          <button
-                            onClick={() => handleRemoveMember(member.user_id)}
-                            className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-950/20"
-                            title="Remove Member"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* Pending invites */}
-                {pendingInvites.map((invite) => (
-                  <tr key={`invite-${invite.id}`} className="hover:bg-zinc-900/10 transition-all opacity-80">
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-zinc-300">{invite.email} (Pending)</span>
-                        <span className="text-[10px] text-zinc-500">Expires: {new Date(invite.expires_at).toLocaleDateString()}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-[10px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getRoleBadge(invite.role)}`}>
-                        {invite.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-amber-550 font-semibold">Invited</span>
-                        {canManage && (
-                          <button
-                            onClick={() => handleRevokeInvite(invite.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-950/20 cursor-pointer"
-                            title="Revoke Invitation"
-                          >
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="pt-2">
+            <BrandTeamPermissionsManager brandId={id} canManage={canManage} />
           </div>
         )}
 
