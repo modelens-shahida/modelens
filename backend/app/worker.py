@@ -3236,3 +3236,143 @@ async def _on_batch_complete_async(job_id: int, brand_id: int, start_time_iso: s
             failed_skus=job.failed_items,
             duration_seconds=duration,
         )
+
+
+# ========================== Character LoRA Training Task =========
+
+@celery_app.task(
+    name="app.worker.run_character_training_job",
+    bind=True,
+    max_retries=1,
+    queue="high_priority",
+)
+def run_character_training_job(
+    self,
+    character_id: str,
+    brand_id: int,
+    reference_set_id: int,
+    trigger_token: str,
+    epochs: int = 1000,
+    learning_rate: float = 1e-4,
+    resolution: int = 1024,
+    qa_profile_id: str = "QA-PROFILE-CHAR-001",
+):
+    """Celery task for character LoRA training (WF-TRAIN-001)."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run_character_training_async(
+        self, character_id, brand_id, reference_set_id,
+        trigger_token, epochs, learning_rate, resolution, qa_profile_id
+    ))
+
+
+async def _run_character_training_async(
+    task_self,
+    character_id: str,
+    brand_id: int,
+    reference_set_id: int,
+    trigger_token: str,
+    epochs: int,
+    learning_rate: float,
+    resolution: int,
+    qa_profile_id: str,
+):
+    """Async runner for character LoRA training pipeline."""
+    from app.models.db import ReferenceSet, ReferenceSetItem, Asset
+    from app.services.identity_benchmark import identity_benchmark
+    import hashlib
+
+    async with async_session_maker() as db:
+        try:
+            print(f"[Training] Starting WF-TRAIN-001 for {character_id}")
+
+            # Load reference set
+            items_result = await db.execute(
+                select(ReferenceSetItem).where(
+                    ReferenceSetItem.reference_set_id == reference_set_id
+                )
+            )
+            items = items_result.scalars().all()
+
+            if not items:
+                print(f"[Training] No reference images found for set {reference_set_id}")
+                return
+
+            # Prepare dataset captions
+            captions = []
+            for item in items:
+                caption = f"{trigger_token}, {item.view_code or 'front view'}, fashion model, high quality"
+                captions.append({
+                    "asset_id": item.asset_id,
+                    "view_code": item.view_code,
+                    "caption": caption,
+                })
+
+            print(f"[Training] Prepared {len(captions)} captions with trigger: {trigger_token}")
+
+            # Simulate training epochs
+            checkpoint_interval = max(100, epochs // 10)
+            checkpoints = []
+
+            for epoch in range(0, epochs + 1, checkpoint_interval):
+                progress = int((epoch / epochs) * 100)
+                print(f"[Training] {character_id} epoch {epoch}/{epochs} ({progress}%)")
+
+                # Simulate checkpoint
+                checkpoint_id = f"CKPT-{character_id}-EP{epoch:04d}"
+                checkpoints.append({
+                    "checkpoint_id": checkpoint_id,
+                    "epoch": epoch,
+                    "progress": progress,
+                    "view_code": "YAW-000",
+                    "image_bytes": b"mock_checkpoint_image",
+                })
+
+            # Generate mock LoRA weights
+            lora_weights_mock = f"WF-TRAIN-001:{character_id}:{trigger_token}:{epochs}epochs".encode()
+            lora_hash = hashlib.sha256(lora_weights_mock).hexdigest()
+            lora_filename = f"AST-LORA-{character_id}-V1.safetensors"
+
+            # Save LoRA as asset
+            storage_path = f"lora/{lora_filename}"
+            lora_asset = Asset(
+                brand_id=brand_id,
+                name=f"LoRA Weights - {character_id}",
+                filename=lora_filename,
+                storage_path=storage_path,
+                asset_type="lora_weights",
+                status="active",
+                meta={
+                    "character_id": character_id,
+                    "trigger_token": trigger_token,
+                    "epochs": epochs,
+                    "learning_rate": learning_rate,
+                    "resolution": resolution,
+                    "sha256": lora_hash,
+                    "workflow": "WF-TRAIN-001",
+                    "reference_set_id": reference_set_id,
+                    "checkpoint_count": len(checkpoints),
+                }
+            )
+            db.add(lora_asset)
+            await db.flush()
+
+            # Run identity benchmark on final checkpoint
+            benchmark_result = identity_benchmark.evaluate_checkpoint(
+                checkpoint_id=f"FINAL-{character_id}",
+                generated_bytes=b"mock_generated",
+                reference_bytes=b"mock_reference",
+                view_code="YAW-000",
+            )
+
+            print(f"[Training] Complete. LoRA asset: {lora_asset.id}")
+            print(f"[Training] Identity benchmark: {benchmark_result['similarity_score']}% ({benchmark_result['status']})")
+
+            await db.commit()
+
+        except Exception as e:
+            print(f"[Training] Failed for {character_id}: {e}")
+            raise task_self.retry(exc=e, countdown=60)

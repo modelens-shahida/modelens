@@ -43,6 +43,7 @@ from app.routers.taxonomy_resolver import router as taxonomy_resolver_router
 from app.routers.qa import router as qa_router
 from app.routers.c2pa import router as c2pa_router
 from app.routers.audit import router as audit_router
+from app.routers.characters import router as characters_router
 from app.routers.templates_proxy import router as templates_proxy_router
 from app.routers.internal_callbacks import router as internal_callbacks_router
 from app.routers.angle_shots import router as angle_shots_router
@@ -213,6 +214,7 @@ app.include_router(taxonomy_resolver_router)
 app.include_router(qa_router)
 app.include_router(c2pa_router)
 app.include_router(audit_router)
+app.include_router(characters_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
 # app.include_router(angle_shots_router)
