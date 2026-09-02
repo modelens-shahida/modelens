@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { Film, Plus, Loader2, Play, Download, Clock, CheckCircle2, XCircle, Video, Music, Image } from "lucide-react";
 import toast from "react-hot-toast";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import MotionPresetSelector from "@/components/dashboard/MotionPresetSelector";
 
 const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:5", "3:4"];
 const MOTION_PRESETS = ["SUBTLE_FASHION", "RUNWAY_WALK", "ORBIT", "PUSH_IN", "PAN", "HANDHELD"];
@@ -313,11 +314,8 @@ export default function MoveStudioPage() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <Film className="w-16 h-16 text-zinc-700 mx-auto mb-3" />
-                <p className="text-zinc-500">Select or create a project</p>
-              </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <MotionPresetSelector brandId={selectedBrandId} />
             </div>
           )}
         </div>
