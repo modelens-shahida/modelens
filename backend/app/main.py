@@ -18,6 +18,7 @@ from app.routers.brands import router as brands_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.jobs import router as jobs_router
 from app.routers.characters import router as characters_router
+from app.routers.video_projects import router as video_projects_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
 from app.routers.search import router as search_router
@@ -44,6 +45,7 @@ from app.routers.qa import router as qa_router
 from app.routers.c2pa import router as c2pa_router
 from app.routers.audit import router as audit_router
 from app.routers.characters import router as characters_router
+from app.routers.video_projects import router as video_projects_router
 from app.routers.templates_proxy import router as templates_proxy_router
 from app.routers.internal_callbacks import router as internal_callbacks_router
 from app.routers.angle_shots import router as angle_shots_router
@@ -189,6 +191,7 @@ app.include_router(brands_router)
 app.include_router(campaigns_router)
 app.include_router(jobs_router)
 app.include_router(characters_router)
+app.include_router(video_projects_router)
 app.include_router(prompts_router)
 app.include_router(themes_router)
 app.include_router(search_router)
@@ -215,6 +218,7 @@ app.include_router(qa_router)
 app.include_router(c2pa_router)
 app.include_router(audit_router)
 app.include_router(characters_router)
+app.include_router(video_projects_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
 # app.include_router(angle_shots_router)

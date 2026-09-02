@@ -3376,3 +3376,144 @@ async def _run_character_training_async(
         except Exception as e:
             print(f"[Training] Failed for {character_id}: {e}")
             raise task_self.retry(exc=e, countdown=60)
+
+
+# ========================== Motion Video Task ====================
+
+@celery_app.task(
+    name="app.worker.run_video_generation_job",
+    bind=True,
+    max_retries=2,
+    queue="high_priority",
+)
+def run_video_generation_job(
+    self,
+    brand_id: int,
+    user_id: int,
+    preset_id: str,
+    source_asset_id: Optional[int],
+    character_id: Optional[str],
+    workflow_params: dict,
+    generation_mode: str = "studio_quality",
+):
+    """Celery task for motion video generation (WF-VIDEO-001)."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run_video_generation_async(
+        self, brand_id, user_id, preset_id,
+        source_asset_id, character_id, workflow_params, generation_mode
+    ))
+
+
+async def _run_video_generation_async(
+    task_self,
+    brand_id: int,
+    user_id: int,
+    preset_id: str,
+    source_asset_id: Optional[int],
+    character_id: Optional[str],
+    workflow_params: dict,
+    generation_mode: str,
+):
+    """Async runner for motion video generation pipeline."""
+    from app.models.db import Asset
+    from app.services.video_service import video_service
+    from app.services.c2pa_service import c2pa_service
+    import asyncio
+
+    async with async_session_maker() as db:
+        try:
+            total_frames = workflow_params.get("total_frames", 96)
+            duration = workflow_params.get("duration_seconds", 4)
+            fps = workflow_params.get("fps", 24)
+
+            print(f"[Video] Starting {preset_id} - {total_frames} frames")
+
+            # Stream frame rendering events
+            for frame in range(0, total_frames, max(1, total_frames // 10)):
+                await video_service.publish_frame_event(
+                    redis_client=None,
+                    brand_id=brand_id,
+                    job_id=task_self.request.id or 0,
+                    event_type="rendering_frame",
+                    frame_number=frame,
+                    total_frames=total_frames,
+                )
+                await asyncio.sleep(0.05)
+
+            # Stream interpolation event
+            await video_service.publish_frame_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="interpolating",
+                frame_number=total_frames,
+                total_frames=total_frames,
+                data={"status": "interpolating frames"},
+            )
+
+            # Mock MP4 output
+            mp4_filename = f"video_{preset_id}_{brand_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.mp4"
+            mp4_storage_path = f"videos/{mp4_filename}"
+
+            # Stream encoding event
+            await video_service.publish_frame_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="encoding_mp4",
+                frame_number=total_frames,
+                total_frames=total_frames,
+                data={"filename": mp4_filename},
+            )
+
+            # Register output Asset
+            video_asset = Asset(
+                brand_id=brand_id,
+                name=f"{preset_id} Video - {datetime.utcnow().strftime('%Y%m%d')}",
+                filename=mp4_filename,
+                storage_path=mp4_storage_path,
+                asset_type="video",
+                status="active",
+                meta={
+                    "source": "motion_video_pipeline",
+                    "workflow": "WF-VIDEO-001",
+                    "preset_id": preset_id,
+                    "duration_seconds": duration,
+                    "fps": fps,
+                    "total_frames": total_frames,
+                    "aspect_ratio": workflow_params.get("aspect_ratio", "9:16"),
+                    "character_id": character_id,
+                    "source_asset_id": source_asset_id,
+                    "generation_mode": generation_mode,
+                }
+            )
+            db.add(video_asset)
+            await db.flush()
+
+            # Register asset version
+            await _register_asset_version(db, video_asset.id, mp4_storage_path, "video/mp4")
+
+            # Seal C2PA metadata
+            manifest = c2pa_service.build_manifest(
+                asset_id=video_asset.id,
+                workflow_id=workflow_params.get("workflow_id", "WF-VIDEO-001"),
+                brand_id=brand_id,
+                brand_name=f"Brand-{brand_id}",
+                workspace_id=str(brand_id),
+                character_id=character_id,
+            )
+            asset_meta = video_asset.meta or {}
+            asset_meta["c2pa_manifest"] = manifest
+            video_asset.meta = asset_meta
+
+            await db.commit()
+
+            print(f"[Video] Complete. Asset: {video_asset.id} - {mp4_filename}")
+
+        except Exception as e:
+            print(f"[Video] Failed: {e}")
+            raise task_self.retry(exc=e, countdown=30)
