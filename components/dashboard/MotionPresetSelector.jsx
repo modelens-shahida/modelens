@@ -17,7 +17,9 @@ import {
   Maximize2,
   Video,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Package,
+  Eye
 } from "lucide-react";
 import { videoApi } from "@/lib/videoApi";
 import C2PAProvenanceBadge from "@/components/dashboard/C2PAProvenanceBadge";
@@ -39,6 +41,7 @@ const DEFAULT_PRESETS = [
     aspect_ratios: ["9:16", "4:5", "1:1", "16:9"],
     fps: 24,
     stability_engine: "FootPlant-V2",
+    preview_gradient: "from-blue-600/30 to-indigo-900/40",
   },
   {
     preset_id: "MOT-TURN",
@@ -48,6 +51,7 @@ const DEFAULT_PRESETS = [
     aspect_ratios: ["9:16", "4:5", "1:1"],
     fps: 24,
     stability_engine: "DrapePhysics-V1",
+    preview_gradient: "from-purple-600/30 to-pink-900/40",
   },
   {
     preset_id: "MOT-FAB",
@@ -57,6 +61,7 @@ const DEFAULT_PRESETS = [
     aspect_ratios: ["9:16", "4:5", "1:1", "16:9"],
     fps: 30,
     stability_engine: "MicroCrease-Flow",
+    preview_gradient: "from-emerald-600/30 to-teal-900/40",
   },
   {
     preset_id: "MOT-ORBIT",
@@ -66,6 +71,7 @@ const DEFAULT_PRESETS = [
     aspect_ratios: ["9:16", "16:9"],
     fps: 24,
     stability_engine: "IdentityLock-ArcFace",
+    preview_gradient: "from-amber-600/30 to-orange-900/40",
   },
 ];
 
@@ -80,13 +86,13 @@ export default function MotionPresetSelector({
   const [selectedPresetId, setSelectedPresetId] = useState("MOT-WALK");
   const [duration, setDuration] = useState(4);
   const [aspectRatio, setAspectRatio] = useState("9:16");
-  const [loading, setLoading] = useState(false);
   const [rendering, setRendering] = useState(false);
 
   // Live Rendering Telemetry state
   const [renderStep, setRenderStep] = useState(0); // 0: idle, 1: rendering frames, 2: interpolating, 3: encoding, 4: complete
   const [currentFrame, setCurrentFrame] = useState(0);
   const [totalFrames, setTotalFrames] = useState(96);
+  const [frameThumbnails, setFrameThumbnails] = useState([]);
   const [renderedVideoUrl, setRenderedVideoUrl] = useState(null);
 
   useEffect(() => {
@@ -110,18 +116,25 @@ export default function MotionPresetSelector({
     setRendering(true);
     setRenderStep(1);
     setCurrentFrame(0);
+    setFrameThumbnails([]);
+    setRenderedVideoUrl(null);
     const calculatedFrames = duration * (selectedPreset?.fps || 24);
     setTotalFrames(calculatedFrames);
 
     try {
-      // Simulate live frame-by-frame progress telemetry
+      // Simulate live frame-by-frame progress telemetry with streaming thumbnail sequence
       const interval = setInterval(() => {
         setCurrentFrame(f => {
-          if (f >= calculatedFrames) {
+          const next = f + 8;
+          if (next <= calculatedFrames) {
+            setFrameThumbnails(thumbs => [...thumbs.slice(-5), `Frame #${next}`]);
+          }
+
+          if (next >= calculatedFrames) {
             clearInterval(interval);
-            setRenderStep(2); // Interpolating
+            setRenderStep(2); // Interpolating optical flow
             setTimeout(() => {
-              setRenderStep(3); // Encoding MP4
+              setRenderStep(3); // Encoding MP4 & sealing C2PA
               setTimeout(() => {
                 setRenderStep(4); // Complete
                 setRenderedVideoUrl("https://assets.mixkit.co/videos/preview/mixkit-fashion-model-in-a-neon-illuminated-city-43282-large.mp4");
@@ -131,9 +144,9 @@ export default function MotionPresetSelector({
             }, 1000);
             return calculatedFrames;
           }
-          return f + 8;
+          return next;
         });
-      }, 200);
+      }, 250);
 
       const res = await videoApi.createJob({
         preset_id: selectedPresetId,
@@ -148,7 +161,7 @@ export default function MotionPresetSelector({
       if (onJobCreated) onJobCreated(res);
     } catch (err) {
       console.error("Video generation job error:", err);
-      // Fallback preview
+      // Fallback preview for offline environments
       setTimeout(() => {
         setRenderStep(4);
         setRenderedVideoUrl("https://assets.mixkit.co/videos/preview/mixkit-fashion-model-in-a-neon-illuminated-city-43282-large.mp4");
@@ -156,6 +169,10 @@ export default function MotionPresetSelector({
         toast.success("Motion Video preview generated!");
       }, 3000);
     }
+  };
+
+  const handleDownloadBundle = () => {
+    toast.success("Downloading 4K MP4 + C2PA Manifest bundle!");
   };
 
   return (
@@ -182,18 +199,18 @@ export default function MotionPresetSelector({
         <button
           onClick={handleStartRender}
           disabled={rendering}
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/25"
+          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/25 cursor-pointer"
         >
           {rendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-white" />}
           {rendering ? "Synthesizing Motion..." : "Generate Motion Video (WF-VIDEO-001)"}
         </button>
       </div>
 
-      {/* Preset Selection Cards */}
+      {/* Preset Selection Cards with Animated Gradients */}
       <div className="space-y-3">
         <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
           <Sliders className="w-4 h-4 text-purple-400" />
-          Select Motion Guidance Preset
+          Interactive Motion Guidance Presets
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -213,25 +230,28 @@ export default function MotionPresetSelector({
                     setAspectRatio(preset.aspect_ratios[0]);
                   }
                 }}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 relative group ${
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 relative group overflow-hidden ${
                   isSelected
-                    ? "bg-gradient-to-b from-indigo-950/60 to-zinc-900 border-indigo-500 shadow-lg shadow-indigo-950/40"
-                    : "bg-zinc-900/40 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/60"
+                    ? "bg-gradient-to-b from-indigo-950/80 to-zinc-900 border-indigo-500 shadow-xl shadow-indigo-950/50 ring-1 ring-indigo-500/50"
+                    : "bg-zinc-900/40 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/70"
                 }`}
               >
-                <div className="flex items-center justify-between">
+                {/* Background animated highlight */}
+                <div className={`absolute -right-8 -top-8 w-24 h-24 rounded-full bg-gradient-to-br ${preset.preview_gradient || 'from-purple-500/20 to-transparent'} blur-xl opacity-60 group-hover:scale-125 transition-transform duration-500`} />
+
+                <div className="flex items-center justify-between relative z-10">
                   <div className={`p-2 rounded-xl border ${isSelected ? "bg-indigo-600 text-white border-indigo-400" : "bg-zinc-900 text-zinc-400 border-zinc-800"}`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <span className="font-mono text-[11px] font-bold text-indigo-400">{preset.preset_id}</span>
                 </div>
 
-                <div>
+                <div className="relative z-10">
                   <h5 className="text-xs font-bold text-white">{preset.name}</h5>
                   <p className="text-[10px] text-zinc-400 mt-1 line-clamp-2 leading-relaxed">{preset.description}</p>
                 </div>
 
-                <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px] font-mono text-zinc-500">
+                <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px] font-mono text-zinc-500 relative z-10">
                   <span>{preset.fps} FPS</span>
                   <span className="text-purple-400 font-semibold">{preset.stability_engine || "Physics-V1"}</span>
                 </div>
@@ -255,7 +275,7 @@ export default function MotionPresetSelector({
                 key={d}
                 type="button"
                 onClick={() => setDuration(d)}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
                   duration === d
                     ? "bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/20"
                     : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
@@ -279,7 +299,7 @@ export default function MotionPresetSelector({
                 key={ar}
                 type="button"
                 onClick={() => setAspectRatio(ar)}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
                   aspectRatio === ar
                     ? "bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/20"
                     : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
@@ -292,9 +312,9 @@ export default function MotionPresetSelector({
         </div>
       </div>
 
-      {/* Live Video Rendering Progress Bar */}
+      {/* Live Video Rendering Progress Bar with Thumbnail Stream */}
       {rendering && (
-        <div className="p-5 rounded-2xl bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-zinc-950 border border-indigo-800/60 space-y-3 font-mono text-xs animate-in fade-in">
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-purple-950/50 to-zinc-950 border border-indigo-800/60 space-y-4 font-mono text-xs animate-in fade-in">
           <div className="flex items-center justify-between text-indigo-300">
             <span className="flex items-center gap-2 font-bold">
               <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
@@ -314,18 +334,35 @@ export default function MotionPresetSelector({
             />
           </div>
 
-          <div className="flex items-center justify-between text-[10px] text-zinc-400">
+          {/* Live Thumbnail Stream Strip */}
+          <div className="space-y-1.5 pt-1">
+            <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">
+              Live Frame Synthesis Stream
+            </span>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {frameThumbnails.map((thumb, idx) => (
+                <div 
+                  key={idx}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-800/60 text-purple-300 text-[10px] font-mono shrink-0 animate-in fade-in zoom-in-95"
+                >
+                  🎞️ {thumb}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-zinc-400 border-t border-zinc-800/60 pt-2">
             <span>Model: {characterId}</span>
             <span>Preset: {selectedPresetId} ({duration}s @ {selectedPreset.fps}fps)</span>
-            <span className="text-emerald-400">Foot-Plant Lock Active</span>
+            <span className="text-emerald-400 font-semibold">Foot-Plant Lock Active</span>
           </div>
         </div>
       )}
 
-      {/* Rendered Video Player & Output Card */}
+      {/* 1-Click MP4 Deliverable Player & Export Downloader */}
       {renderedVideoUrl && !rendering && (
         <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <h4 className="text-xs font-bold text-white font-mono">
@@ -335,19 +372,27 @@ export default function MotionPresetSelector({
 
             <div className="flex items-center gap-2">
               <C2PAProvenanceBadge variant="badge" />
+              
+              <button
+                onClick={handleDownloadBundle}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border border-zinc-700"
+              >
+                <Package className="w-3.5 h-3.5 text-purple-400" /> Export Bundle
+              </button>
+
               <a
                 href={renderedVideoUrl}
                 download
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-lg shadow-indigo-600/20"
               >
                 <Download className="w-3.5 h-3.5" /> Download MP4
               </a>
             </div>
           </div>
 
-          <div className="relative rounded-xl overflow-hidden aspect-video bg-black max-w-xl mx-auto border border-zinc-800 shadow-2xl">
+          <div className="relative rounded-2xl overflow-hidden aspect-video bg-black max-w-xl mx-auto border border-zinc-800 shadow-2xl">
             <video
               src={renderedVideoUrl}
               autoPlay
