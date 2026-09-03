@@ -3517,3 +3517,137 @@ async def _run_video_generation_async(
         except Exception as e:
             print(f"[Video] Failed: {e}")
             raise task_self.retry(exc=e, countdown=30)
+
+
+# ========================== Fluid Studio Task ===================
+
+@celery_app.task(
+    name="app.worker.run_fluid_generation_job",
+    bind=True,
+    max_retries=2,
+    queue="high_priority",
+)
+def run_fluid_generation_job(
+    self,
+    brand_id: int,
+    user_id: int,
+    preset_id: str,
+    source_asset_id: Optional[int],
+    character_id: Optional[str],
+    workflow_params: dict,
+    generation_mode: str = "studio_quality",
+    prompt: Optional[str] = None,
+):
+    """Celery task for Fluid Studio generation (WF-FLUID-001)."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run_fluid_generation_async(
+        self, brand_id, user_id, preset_id,
+        source_asset_id, character_id, workflow_params,
+        generation_mode, prompt
+    ))
+
+
+async def _run_fluid_generation_async(
+    task_self,
+    brand_id: int,
+    user_id: int,
+    preset_id: str,
+    source_asset_id: Optional[int],
+    character_id: Optional[str],
+    workflow_params: dict,
+    generation_mode: str,
+    prompt: Optional[str],
+):
+    """Async runner for Fluid Studio generation pipeline."""
+    from app.models.db import Asset
+    from app.services.fluid_service import fluid_service
+    from app.services.c2pa_service import c2pa_service
+
+    async with async_session_maker() as db:
+        try:
+            print(f"[Fluid] Starting WF-FLUID-001 preset={preset_id}")
+
+            # Step 1: Compositing layers
+            await fluid_service.publish_fluid_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="compositing_layers",
+                data={"preset_id": preset_id, "status": "compositing"},
+            )
+
+            # Step 2: Rendering lighting
+            await fluid_service.publish_fluid_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="rendering_lighting",
+                data={
+                    "preset_id": preset_id,
+                    "focal_length": workflow_params.get("focal_length_mm"),
+                    "aperture": workflow_params.get("aperture"),
+                    "status": "rendering",
+                },
+            )
+
+            # Step 3: Enhancing skin
+            await fluid_service.publish_fluid_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="enhancing_skin",
+                data={"status": "enhancing"},
+            )
+
+            # Mock output
+            output_filename = f"fluid_{preset_id}_{brand_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+            storage_path = f"fluid/{output_filename}"
+
+            # Register output Asset
+            fluid_asset = Asset(
+                brand_id=brand_id,
+                name=f"Fluid {preset_id} - {datetime.utcnow().strftime('%Y%m%d')}",
+                filename=output_filename,
+                storage_path=storage_path,
+                asset_type="generated",
+                status="active",
+                meta={
+                    "source": "fluid_studio",
+                    "workflow": "WF-FLUID-001",
+                    "preset_id": preset_id,
+                    "taxonomy_id": workflow_params.get("taxonomy_id"),
+                    "focal_length_mm": workflow_params.get("focal_length_mm"),
+                    "aperture": workflow_params.get("aperture"),
+                    "depth_of_field": workflow_params.get("depth_of_field"),
+                    "character_id": character_id,
+                    "generation_mode": generation_mode,
+                    "prompt": prompt,
+                }
+            )
+            db.add(fluid_asset)
+            await db.flush()
+
+            # Register asset version
+            await _register_asset_version(db, fluid_asset.id, storage_path)
+
+            # Seal C2PA
+            manifest = c2pa_service.build_manifest(
+                asset_id=fluid_asset.id,
+                workflow_id="WF-FLUID-001",
+                brand_id=brand_id,
+                brand_name=f"Brand-{brand_id}",
+                workspace_id=str(brand_id),
+                character_id=character_id,
+            )
+            fluid_asset.meta["c2pa_manifest"] = manifest
+            await db.commit()
+
+            print(f"[Fluid] Complete. Asset: {fluid_asset.id}")
+
+        except Exception as e:
+            print(f"[Fluid] Failed: {e}")
+            raise task_self.retry(exc=e, countdown=30)
