@@ -17,7 +17,11 @@ import {
   Flame,
   ShieldCheck,
   Compass,
-  Play
+  Play,
+  Move,
+  Lock,
+  EyeOff,
+  Image as ImageIcon
 } from "lucide-react";
 import { fluidApi } from "@/lib/fluidApi";
 import C2PAProvenanceBadge from "@/components/dashboard/C2PAProvenanceBadge";
@@ -98,6 +102,13 @@ const FOCAL_LENGTHS = [
 
 const APERTURES = [1.4, 1.8, 2.8, 4.0, 5.6, 8.0];
 
+const INITIAL_LAYERS = [
+  { id: "layer-lighting", name: "Lighting Dome Overlay", type: "LIGHTING", opacity: 100, visible: true, locked: false },
+  { id: "layer-garment", name: "Garment & Fabric Mesh", type: "GARMENT", opacity: 100, visible: true, locked: false },
+  { id: "layer-model", name: "Model Character (EE-F-002)", type: "MODEL", opacity: 100, visible: true, locked: true },
+  { id: "layer-bg", name: "Editorial Background Studio", type: "BACKGROUND", opacity: 100, visible: true, locked: true },
+];
+
 export default function LightingDomeSelector({ 
   brandId = 1,
   characterId = "EE-F-002",
@@ -109,6 +120,7 @@ export default function LightingDomeSelector({
   const [selectedPresetId, setSelectedPresetId] = useState("STUDIO_SOFT_DIFFUSE");
   const [focalLength, setFocalLength] = useState(85);
   const [aperture, setAperture] = useState(2.8);
+  const [layers, setLayers] = useState(INITIAL_LAYERS);
   const [prompt, setPrompt] = useState("");
   const [rendering, setRendering] = useState(false);
 
@@ -132,6 +144,14 @@ export default function LightingDomeSelector({
   };
 
   const selectedPreset = presets.find(p => p.preset_id === selectedPresetId) || presets[0];
+
+  const toggleLayerVisibility = (id) => {
+    setLayers(layers.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
+  };
+
+  const toggleLayerLock = (id) => {
+    setLayers(layers.map(l => l.id === id ? { ...l, locked: !l.locked } : l));
+  };
 
   const handleStartRender = async () => {
     setRendering(true);
@@ -186,13 +206,13 @@ export default function LightingDomeSelector({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-white">3D Lighting Dome & Optical Studio</h3>
+              <h3 className="text-base font-bold text-white">3D Lighting Dome & Multi-Layer Canvas</h3>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800 font-bold">
                 Section 12 Editorial
               </span>
             </div>
             <p className="text-xs text-zinc-400">
-              Condition fashion renders with physical 3-point light rigs, camera focal lengths, and aperture bokeh.
+              Condition fashion renders with physical 3-point light rigs, camera focal lengths, and layer composition.
             </p>
           </div>
         </div>
@@ -262,63 +282,106 @@ export default function LightingDomeSelector({
         </div>
       </div>
 
-      {/* Optical Camera & Lens Simulator Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 text-xs font-mono">
-        {/* Focal Lengths */}
-        <div className="space-y-2">
-          <label className="text-zinc-300 font-semibold flex items-center gap-1.5 uppercase text-[11px]">
-            <Camera className="w-3.5 h-3.5 text-amber-400" />
-            Camera Lens Focal Length
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {FOCAL_LENGTHS.map((f) => (
-              <button
-                key={f.mm}
-                type="button"
-                onClick={() => setFocalLength(f.mm)}
-                className={`py-2 px-3 rounded-xl text-left border transition cursor-pointer ${
-                  focalLength === f.mm
-                    ? "bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-600/20"
-                    : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
-                }`}
-              >
-                <span className="font-bold text-xs block">{f.label}</span>
-                <span className="text-[9px] opacity-80 line-clamp-1">{f.desc}</span>
-              </button>
-            ))}
+      {/* Optical Camera & Multi-Layer Composition Canvas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: Camera & Lens Simulator */}
+        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 space-y-4 text-xs font-mono">
+          <div className="space-y-2">
+            <label className="text-zinc-300 font-semibold flex items-center gap-1.5 uppercase text-[11px]">
+              <Camera className="w-3.5 h-3.5 text-amber-400" />
+              Camera Lens Focal Length
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {FOCAL_LENGTHS.map((f) => (
+                <button
+                  key={f.mm}
+                  type="button"
+                  onClick={() => setFocalLength(f.mm)}
+                  className={`py-2 px-3 rounded-xl text-left border transition cursor-pointer ${
+                    focalLength === f.mm
+                      ? "bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-600/20"
+                      : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
+                  }`}
+                >
+                  <span className="font-bold text-xs block">{f.label}</span>
+                  <span className="text-[9px] opacity-80 line-clamp-1">{f.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+            <div className="flex items-center justify-between">
+              <label className="text-zinc-300 font-semibold flex items-center gap-1.5 uppercase text-[11px]">
+                <Maximize2 className="w-3.5 h-3.5 text-orange-400" />
+                Aperture & Depth of Field
+              </label>
+              <span className="font-bold text-orange-400">f/{aperture}</span>
+            </div>
+
+            <div className="grid grid-cols-6 gap-1.5">
+              {APERTURES.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setAperture(a)}
+                  className={`py-2 rounded-xl text-xs font-bold border transition text-center cursor-pointer ${
+                    aperture === a
+                      ? "bg-orange-600 text-white border-orange-400 shadow-md shadow-orange-600/20"
+                      : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
+                  }`}
+                >
+                  f/{a}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Aperture / Depth of Field Slider */}
-        <div className="space-y-2">
+        {/* Right: Drag-and-Drop Multi-Layer Canvas Hierarchy */}
+        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 space-y-3 text-xs font-mono">
           <div className="flex items-center justify-between">
             <label className="text-zinc-300 font-semibold flex items-center gap-1.5 uppercase text-[11px]">
-              <Maximize2 className="w-3.5 h-3.5 text-orange-400" />
-              Aperture & Bokeh (Depth of Field)
+              <Layers className="w-3.5 h-3.5 text-purple-400" />
+              Multi-Layer Canvas Composition
             </label>
-            <span className="font-bold text-orange-400">f/{aperture}</span>
+            <span className="text-[10px] text-zinc-500">Top to Bottom Hierarchy</span>
           </div>
 
-          <div className="grid grid-cols-6 gap-1.5 pt-1">
-            {APERTURES.map((a) => (
-              <button
-                key={a}
-                type="button"
-                onClick={() => setAperture(a)}
-                className={`py-2 rounded-xl text-xs font-bold border transition text-center cursor-pointer ${
-                  aperture === a
-                    ? "bg-orange-600 text-white border-orange-400 shadow-md shadow-orange-600/20"
-                    : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
+          <div className="space-y-2">
+            {layers.map((layer, idx) => (
+              <div 
+                key={layer.id}
+                className={`p-2.5 rounded-xl border flex items-center justify-between transition ${
+                  layer.visible ? "bg-zinc-900/80 border-zinc-800" : "bg-zinc-950/50 border-zinc-900 opacity-60"
                 }`}
               >
-                f/{a}
-              </button>
+                <div className="flex items-center gap-2">
+                  <Move className="w-3.5 h-3.5 text-zinc-600 cursor-grab" />
+                  <span className="text-zinc-500 text-[10px]">#{idx + 1}</span>
+                  <span className="text-zinc-200 font-semibold">{layer.name}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    {layer.type}
+                  </span>
+                  <button
+                    onClick={() => toggleLayerVisibility(layer.id)}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition"
+                  >
+                    {layer.visible ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-600" />}
+                  </button>
+                  <button
+                    onClick={() => toggleLayerLock(layer.id)}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition"
+                  >
+                    <Lock className={`w-3.5 h-3.5 ${layer.locked ? "text-amber-400" : "text-zinc-600"}`} />
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
-
-          <p className="text-[10px] text-zinc-500 pt-1">
-            {aperture <= 2.8 ? "Shallow depth-of-field with creamy background bokeh." : "Deep depth-of-field keeping entire garment and set sharply in focus."}
-          </p>
         </div>
       </div>
 
@@ -368,7 +431,7 @@ export default function LightingDomeSelector({
                 download
                 target="_blank"
                 rel="noreferrer"
-                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-lg shadow-amber-600/20"
+                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-lg shadow-amber-600/20 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" /> Download Deliverable
               </a>
