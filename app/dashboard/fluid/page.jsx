@@ -5,6 +5,7 @@ import { Layers, Plus, ChevronRight, Download, RefreshCw, Loader2, Image, Wand2,
 import toast from "react-hot-toast";
 import Link from "next/link";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import LightingDomeSelector from "@/components/dashboard/LightingDomeSelector";
 import { ShieldCheck } from "lucide-react";
 
 const ASPECT_RATIOS = ["1:1", "3:4", "4:5", "9:16", "16:9", "21:9"];
@@ -341,11 +342,8 @@ export default function FluidStudioPage() {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <Layers className="w-16 h-16 text-zinc-700 mx-auto mb-3" />
-                  <p className="text-zinc-500">Select or create a session</p>
-                </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <LightingDomeSelector brandId={brands[0]?.id || 1} />
               </div>
             )}
           </div>
