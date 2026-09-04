@@ -4,9 +4,10 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Megaphone, Plus, Trash2, Link2, Unlink, Sparkles, Image as ImageIcon, Loader2, ArrowRight, FolderKanban, Check, X } from "lucide-react";
+import { Megaphone, Plus, Trash2, Link2, Unlink, Sparkles, Image as ImageIcon, Loader2, ArrowRight, FolderKanban, Check, X, Layers } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
+import CampaignOmnichannelStudio from "@/components/dashboard/CampaignOmnichannelStudio";
 
 const defaultThemesToSeed = [
   {
@@ -55,6 +56,7 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeViewTab, setActiveViewTab] = useState("studio");
   const itemsPerPage = 10;
 
   // Campaign details modal / view
@@ -566,20 +568,50 @@ export default function CampaignsPage() {
         </button>
       </div>
 
-      {/* Filters & Brand Selector */}
-      <div className="bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl flex items-center gap-3">
-        <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Filter Brand:</span>
-        <select
-          value={selectedBrandId}
-          onChange={(e) => setSelectedBrandId(e.target.value)}
-          className="bg-zinc-950 border border-zinc-850 text-zinc-200 text-xs px-3 py-2 rounded-lg outline-none cursor-pointer focus:border-purple-500 transition-all"
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-3">
+        <button
+          onClick={() => setActiveViewTab("studio")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeViewTab === "studio"
+              ? "bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+          }`}
         >
-          <option value="">All Brands</option>
-          {brands.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </select>
+          <Sparkles size={14} className="text-amber-400" />
+          Omnichannel Studio (WF-CAMPAIGN-001)
+        </button>
+        <button
+          onClick={() => setActiveViewTab("collections")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeViewTab === "collections"
+              ? "bg-purple-600/15 text-purple-300 border border-purple-500/30 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+          }`}
+        >
+          <FolderKanban size={14} className="text-purple-400" />
+          Campaign Collections & Assets
+        </button>
       </div>
+
+      {activeViewTab === "studio" ? (
+        <CampaignOmnichannelStudio brandId={selectedBrandId || brands[0]?.id || 1} />
+      ) : (
+        <>
+          {/* Filters & Brand Selector */}
+          <div className="bg-zinc-900/20 border border-zinc-900 p-4 rounded-xl flex items-center gap-3">
+            <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Filter Brand:</span>
+            <select
+              value={selectedBrandId}
+              onChange={(e) => setSelectedBrandId(e.target.value)}
+              className="bg-zinc-950 border border-zinc-850 text-zinc-200 text-xs px-3 py-2 rounded-lg outline-none cursor-pointer focus:border-purple-500 transition-all"
+            >
+              <option value="">All Brands</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
 
       {/* Main campaigns workspace grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -1461,6 +1493,8 @@ export default function CampaignsPage() {
           </div>
         </div>
       )}
-</div>
+        </>
+      )}
+    </div>
   );
 }
