@@ -3651,3 +3651,161 @@ async def _run_fluid_generation_async(
         except Exception as e:
             print(f"[Fluid] Failed: {e}")
             raise task_self.retry(exc=e, countdown=30)
+
+
+# ========================== Campaign Studio Task =================
+
+@celery_app.task(
+    name="app.worker.run_campaign_generation_job",
+    bind=True,
+    max_retries=2,
+    queue="bulk_batch",
+)
+def run_campaign_generation_job(
+    self,
+    brand_id: int,
+    user_id: int,
+    campaign_name: str,
+    character_id: Optional[str],
+    source_asset_ids: list,
+    formats: list,
+    lighting_preset_id: Optional[str],
+    generation_mode: str = "studio_quality",
+    prompt: Optional[str] = None,
+):
+    """Celery task for campaign multi-channel generation (WF-CAMPAIGN-001)."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run_campaign_generation_async(
+        self, brand_id, user_id, campaign_name,
+        character_id, source_asset_ids, formats,
+        lighting_preset_id, generation_mode, prompt
+    ))
+
+
+async def _run_campaign_generation_async(
+    task_self,
+    brand_id: int,
+    user_id: int,
+    campaign_name: str,
+    character_id: Optional[str],
+    source_asset_ids: list,
+    formats: list,
+    lighting_preset_id: Optional[str],
+    generation_mode: str,
+    prompt: Optional[str],
+):
+    """Async runner for campaign multi-channel generation."""
+    from app.models.db import Asset
+    from app.services.c2pa_service import c2pa_service
+    import json
+
+    async with async_session_maker() as db:
+        try:
+            total = len(formats)
+            completed = 0
+            created_assets = []
+
+            print(f"[Campaign] Starting {campaign_name} - {total} formats")
+
+            for fmt in formats:
+                format_id = fmt["format_id"]
+                aspect_ratio = fmt["aspect_ratio"]
+                width = fmt["width"]
+                height = fmt["height"]
+
+                # Publish rendering event
+                try:
+                    import redis.asyncio as aioredis
+                    r = aioredis.from_url("redis://localhost:6379")
+                    event = {
+                        "type": "campaign.rendering",
+                        "job_id": str(task_self.request.id or ""),
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "data": {
+                            "format_id": format_id,
+                            "aspect_ratio": aspect_ratio,
+                            "completed": completed,
+                            "total": total,
+                            "progress_pct": int((completed / total) * 100),
+                        }
+                    }
+                    await r.publish(f"brand:{brand_id}:events", json.dumps(event))
+                    await r.aclose()
+                except Exception:
+                    pass
+
+                # Generate output filename
+                output_filename = f"campaign_{campaign_name}_{format_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+                storage_path = f"campaigns/{output_filename}"
+
+                # Register asset
+                asset = Asset(
+                    brand_id=brand_id,
+                    name=f"{campaign_name} - {fmt['label']}",
+                    filename=output_filename,
+                    storage_path=storage_path,
+                    asset_type="generated",
+                    status="active",
+                    meta={
+                        "source": "campaign_studio",
+                        "workflow": "WF-CAMPAIGN-001",
+                        "campaign_name": campaign_name,
+                        "format_id": format_id,
+                        "aspect_ratio": aspect_ratio,
+                        "width": width,
+                        "height": height,
+                        "channel": fmt["label"],
+                        "character_id": character_id,
+                        "lighting_preset_id": lighting_preset_id,
+                        "generation_mode": generation_mode,
+                    }
+                )
+                db.add(asset)
+                await db.flush()
+
+                # Register version + lineage
+                await _register_asset_version(db, asset.id, storage_path)
+
+                # Seal C2PA
+                manifest = c2pa_service.build_manifest(
+                    asset_id=asset.id,
+                    workflow_id="WF-CAMPAIGN-001",
+                    brand_id=brand_id,
+                    brand_name=f"Brand-{brand_id}",
+                    workspace_id=str(brand_id),
+                    character_id=character_id,
+                )
+                asset.meta["c2pa_manifest"] = manifest
+
+                created_assets.append(asset.id)
+                completed += 1
+
+            await db.commit()
+
+            # Publish batch complete
+            try:
+                import redis.asyncio as aioredis
+                r = aioredis.from_url("redis://localhost:6379")
+                event = {
+                    "type": "campaign.batch_complete",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "data": {
+                        "campaign_name": campaign_name,
+                        "total_assets": len(created_assets),
+                        "asset_ids": created_assets,
+                    }
+                }
+                await r.publish(f"brand:{brand_id}:events", json.dumps(event))
+                await r.aclose()
+            except Exception:
+                pass
+
+            print(f"[Campaign] Complete. {completed}/{total} assets generated.")
+
+        except Exception as e:
+            print(f"[Campaign] Failed: {e}")
+            raise task_self.retry(exc=e, countdown=30)
