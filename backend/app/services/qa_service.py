@@ -244,3 +244,112 @@ class QAService:
 
 # Singleton
 qa_service = QAService()
+
+# ========================== Brand Thresholds ====================
+
+DEFAULT_BRAND_THRESHOLDS = {
+    "overall_pass": 92.0,
+    "garment": 94.0,
+    "identity": 94.0,
+    "anatomy": 90.0,
+    "technical": 95.0,
+    "skin": 80.0,
+    "pose": 80.0,
+    "camera": 80.0,
+    "lighting": 80.0,
+}
+
+
+class BrandThresholdProfile:
+    """Configurable brand-specific QA thresholds."""
+
+    def __init__(self, overrides: dict = None):
+        self.thresholds = {**DEFAULT_BRAND_THRESHOLDS, **(overrides or {})}
+
+    def get(self, dimension: str) -> float:
+        return self.thresholds.get(dimension, 80.0)
+
+    def is_hard_gate(self, dimension: str) -> bool:
+        return dimension in ("garment", "identity", "anatomy", "technical")
+
+
+# ========================== Heatmap Generator ===================
+
+class QAHeatmapGenerator:
+    """
+    Generates defect heatmap data for frontend visualization.
+    Returns normalized grid of defect intensity per region.
+    """
+
+    def generate(
+        self,
+        dimension_scores: dict,
+        artifacts: list,
+        image_width: int = 1080,
+        image_height: int = 1350,
+        grid_cols: int = 8,
+        grid_rows: int = 10,
+    ) -> dict:
+        """Generate heatmap grid from QA scores and artifacts."""
+        import random
+
+        # Initialize grid with low intensity
+        grid = [[0.0] * grid_cols for _ in range(grid_rows)]
+
+        # Map artifacts to grid cells
+        for artifact in artifacts:
+            bbox_x = artifact.get("bbox_x", 0) or 0
+            bbox_y = artifact.get("bbox_y", 0) or 0
+            bbox_w = artifact.get("bbox_width", 0.1) or 0.1
+            bbox_h = artifact.get("bbox_height", 0.1) or 0.1
+            severity = artifact.get("severity", "WARNING")
+
+            intensity = 0.9 if severity == "BLOCK" else 0.6
+
+            # Map bbox to grid
+            col_start = int(bbox_x * grid_cols)
+            col_end = min(grid_cols, int((bbox_x + bbox_w) * grid_cols) + 1)
+            row_start = int(bbox_y * grid_rows)
+            row_end = min(grid_rows, int((bbox_y + bbox_h) * grid_rows) + 1)
+
+            for r in range(row_start, row_end):
+                for c in range(col_start, col_end):
+                    grid[r][c] = max(grid[r][c], intensity)
+
+        # Add dimension-based intensity
+        for dim, score in dimension_scores.items():
+            if score < 85.0:
+                intensity = (85.0 - score) / 85.0
+                # Distribute low scores across relevant regions
+                for r in range(grid_rows):
+                    for c in range(grid_cols):
+                        if grid[r][c] < intensity * 0.4:
+                            grid[r][c] = max(grid[r][c], intensity * 0.3 * random.uniform(0.5, 1.0))
+
+        # Compute hotspots
+        hotspots = []
+        for r in range(grid_rows):
+            for c in range(grid_cols):
+                if grid[r][c] > 0.5:
+                    hotspots.append({
+                        "row": r,
+                        "col": c,
+                        "intensity": round(grid[r][c], 3),
+                        "x_pct": round(c / grid_cols, 3),
+                        "y_pct": round(r / grid_rows, 3),
+                    })
+
+        return {
+            "grid": grid,
+            "grid_cols": grid_cols,
+            "grid_rows": grid_rows,
+            "hotspots": hotspots,
+            "max_intensity": max(max(row) for row in grid),
+            "defect_coverage_pct": round(
+                sum(1 for r in grid for c in r if c > 0.3) / (grid_cols * grid_rows) * 100, 1
+            ),
+        }
+
+
+# Singletons
+heatmap_generator = QAHeatmapGenerator()
