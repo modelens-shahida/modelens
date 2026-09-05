@@ -2,11 +2,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
-import { Plus, Loader2, CheckCircle2, Clock, XCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { Plus, Loader2, CheckCircle2, Clock, XCircle, AlertCircle, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 import QADiagnosticCard from "@/components/dashboard/QADiagnosticCard";
 import CanvasRetouchModal from "@/components/dashboard/CanvasRetouchModal";
-import { Sparkles } from "lucide-react";
+import QADiagnosticInspector from "@/components/dashboard/QADiagnosticInspector";
 
 const STATUS_CONFIG = {
   pending: { label: "Pending", color: "bg-amber-900/40 text-amber-400 border-amber-700", icon: Clock },
@@ -25,6 +25,7 @@ export default function FixRequestsPage() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
+  const [activeMainTab, setActiveMainTab] = useState("inspector");
   const [userRole, setUserRole] = useState("viewer");
 
   // New Request Modal
@@ -160,78 +161,110 @@ export default function FixRequestsPage() {
           </div>
         </div>
 
-        {/* Status Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          {STATUS_TABS.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition ${
-                activeTab === tab
-                  ? "bg-purple-600 text-white"
-                  : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
-              }`}
-            >
-              {tab === "all" ? "All" : tab.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())}
-              {tab !== "all" && (
-                <span className="ml-1.5 text-xs opacity-70">
-                  ({requests.filter(r => r.status === tab).length})
-                </span>
-              )}
-            </button>
-          ))}
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-3 mb-6">
+          <button
+            onClick={() => setActiveMainTab("inspector")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === "inspector"
+                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+            }`}
+          >
+            <ShieldCheck size={14} className="text-emerald-400" />
+            AI QA Diagnostic & Inpainting Studio (WF-QA-001)
+          </button>
+          <button
+            onClick={() => setActiveMainTab("requests")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === "requests"
+                ? "bg-purple-600/15 text-purple-300 border border-purple-500/30 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+            }`}
+          >
+            <AlertCircle size={14} className="text-purple-400" />
+            Fix Requests & Inpainting Queue
+          </button>
         </div>
 
-        {/* Requests List */}
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-          </div>
-        ) : filteredRequests.length === 0 ? (
-          <div className="text-zinc-500 text-sm text-center py-16 border border-zinc-800 rounded-2xl">
-            No fix requests found.
-          </div>
+        {activeMainTab === "inspector" ? (
+          <QADiagnosticInspector brandId={selectedBrand || brands[0]?.id || 1} />
         ) : (
-          <div className="space-y-4">
-            {filteredRequests.map(req => {
-              const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
-              const StatusIcon = statusCfg.icon;
-              return (
-                <div
-                  key={req.id}
-                  className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition cursor-pointer"
-                  onClick={() => canReview && handleOpenReview(req)}
+          <>
+            {/* Status Tabs */}
+            <div className="flex gap-2 mb-6 overflow-x-auto">
+              {STATUS_TABS.map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition ${
+                    activeTab === tab
+                      ? "bg-purple-600 text-white"
+                      : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${statusCfg.color}`}>
-                          <StatusIcon className="w-3 h-3" />
-                          {statusCfg.label}
-                        </span>
-                        <span className="text-xs text-zinc-500">#{req.id}</span>
-                        <span className="text-xs text-zinc-500">{new Date(req.created_at).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-sm text-zinc-300 mb-2">{req.requester_notes}</p>
-                      {req.reviewer_notes && (
-                        <div className="bg-zinc-800/50 rounded-xl px-3 py-2 mt-2">
-                          <p className="text-xs text-zinc-400">
-                            <span className="text-zinc-500">Reviewer: </span>{req.reviewer_notes}
-                          </p>
+                  {tab === "all" ? "All" : tab.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())}
+                  {tab !== "all" && (
+                    <span className="ml-1.5 text-xs opacity-70">
+                      ({requests.filter(r => r.status === tab).length})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Requests List */}
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="text-zinc-500 text-sm text-center py-16 border border-zinc-800 rounded-2xl">
+                No fix requests found.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredRequests.map(req => {
+                  const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
+                  const StatusIcon = statusCfg.icon;
+                  return (
+                    <div
+                      key={req.id}
+                      className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition cursor-pointer"
+                      onClick={() => canReview && handleOpenReview(req)}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${statusCfg.color}`}>
+                              <StatusIcon className="w-3 h-3" />
+                              {statusCfg.label}
+                            </span>
+                            <span className="text-xs text-zinc-500">#{req.id}</span>
+                            <span className="text-xs text-zinc-500">{new Date(req.created_at).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-sm text-zinc-300 mb-2">{req.requester_notes}</p>
+                          {req.reviewer_notes && (
+                            <div className="bg-zinc-800/50 rounded-xl px-3 py-2 mt-2">
+                              <p className="text-xs text-zinc-400">
+                                <span className="text-zinc-500">Reviewer: </span>{req.reviewer_notes}
+                              </p>
+                            </div>
+                          )}
                         </div>
+                        {req.asset_thumbnail_url && (
+                          <img src={req.asset_thumbnail_url} alt="asset" className="w-16 h-16 rounded-xl object-cover border border-zinc-700 shrink-0" />
+                        )}
+                      </div>
+                      {canReview && (
+                        <p className="text-xs text-purple-400 mt-3">Click to review →</p>
                       )}
                     </div>
-                    {req.asset_thumbnail_url && (
-                      <img src={req.asset_thumbnail_url} alt="asset" className="w-16 h-16 rounded-xl object-cover border border-zinc-700 shrink-0" />
-                    )}
-                  </div>
-                  {canReview && (
-                    <p className="text-xs text-purple-400 mt-3">Click to review →</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
