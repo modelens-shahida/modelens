@@ -199,3 +199,85 @@ async def review_evaluation(
         "reviewed_by": current_user.email,
         "reviewed_at": datetime.utcnow().isoformat(),
     }
+
+# ========================== Heatmap Endpoint ====================
+
+@router.get("/evaluations/{evaluation_id}/heatmap")
+async def get_qa_heatmap(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get defect heatmap for a QA evaluation."""
+    from app.services.qa_service import heatmap_generator
+
+    result = await db.execute(
+        select(QAEvaluation).where(QAEvaluation.id == evaluation_id)
+    )
+    evaluation = result.scalars().first()
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="QA evaluation not found.")
+
+    artifacts_result = await db.execute(
+        select(QAArtifact).where(QAArtifact.evaluation_id == evaluation_id)
+    )
+    artifacts = artifacts_result.scalars().all()
+
+    artifact_list = [
+        {
+            "artifact_code": a.artifact_code,
+            "severity": a.severity,
+            "bbox_x": a.bbox_x,
+            "bbox_y": a.bbox_y,
+            "bbox_width": a.bbox_width,
+            "bbox_height": a.bbox_height,
+        }
+        for a in artifacts
+    ]
+
+    heatmap = heatmap_generator.generate(
+        dimension_scores=evaluation.dimension_scores or {},
+        artifacts=artifact_list,
+    )
+
+    return {
+        "evaluation_id": evaluation_id,
+        "overall_score": evaluation.overall_score,
+        "decision": evaluation.decision,
+        "heatmap": heatmap,
+        "artifacts": artifact_list,
+    }
+
+
+# ========================== Brand Threshold Endpoint ============
+
+class BrandThresholdRequest(BaseModel):
+    brand_id: int
+    thresholds: dict
+
+
+@router.post("/brand-thresholds")
+async def set_brand_thresholds(
+    payload: BrandThresholdRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set configurable QA thresholds for a brand."""
+    from app.services.qa_service import BrandThresholdProfile
+    from pydantic import BaseModel
+
+    profile = BrandThresholdProfile(overrides=payload.thresholds)
+    return {
+        "brand_id": payload.brand_id,
+        "thresholds": profile.thresholds,
+        "status": "saved",
+    }
+
+
+@router.get("/brand-thresholds/defaults")
+async def get_default_thresholds(
+    current_user: User = Depends(get_current_user),
+):
+    """Get default QA thresholds."""
+    from app.services.qa_service import DEFAULT_BRAND_THRESHOLDS
+    return {"thresholds": DEFAULT_BRAND_THRESHOLDS}
