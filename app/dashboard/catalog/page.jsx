@@ -2,6 +2,7 @@
 
 import PoseVisualizer from "@/components/dashboard/PoseVisualizer";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import CatalogMarketplaceMatrix from "@/components/dashboard/CatalogMarketplaceMatrix";
 import React, { useState, useRef, useEffect } from "react";
 import { api } from "@/lib/api";
 import { 
@@ -22,14 +23,15 @@ import {
   Wrench,
   Cpu,
   Zap,
-  Database
+  Database,
+  Globe,
+  Lock
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { useWebSocket } from "@/lib/useWebSocket";
 import { useAuth } from "@/lib/auth-context";
 import C2PAProvenanceModal from "@/components/dashboard/C2PAProvenanceModal";
-import { Lock } from "lucide-react";
 
 const MODEL_IDENTITIES = [
   { id: "EE-F-002", name: "Eliska Novak (EE-F-002 · Golden Master)", recommended: true },
@@ -90,6 +92,7 @@ const SKU_STATUSES = {
 export default function CatalogStudioPage() {
   const [productFiles, setProductFiles] = useState([]);
   const [skuTags, setSkuTags] = useState({});
+  const [activeMainTab, setActiveMainTab] = useState("marketplace");
   const [modelIdentity, setModelIdentity] = useState("EE-F-002");
   const [customModelFile, setCustomModelFile] = useState(null);
   const [customModelPreview, setCustomModelPreview] = useState(null);
@@ -307,14 +310,43 @@ export default function CatalogStudioPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Product Uploads & Governance */}
-          <div className="lg:col-span-1 space-y-5">
-            <div>
-              <label className="text-xs font-semibold text-zinc-300 mb-2 block">
-                Product Garment Images * <span className="text-zinc-500 font-normal">(up to 50 SKUs)</span>
-              </label>
-              <div
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+          <button
+            onClick={() => setActiveMainTab("marketplace")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === "marketplace"
+                ? "bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+            }`}
+          >
+            <Globe size={14} className="text-blue-400" />
+            Multi-Marketplace Sync Matrix (WF-CATALOG-001)
+          </button>
+          <button
+            onClick={() => setActiveMainTab("generator")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === "generator"
+                ? "bg-purple-600/15 text-purple-300 border border-purple-500/30 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+            }`}
+          >
+            <Shirt size={14} className="text-purple-400" />
+            Flatlay-to-Catalog Generator & On-Model Try-On
+          </button>
+        </div>
+
+        {activeMainTab === "marketplace" ? (
+          <CatalogMarketplaceMatrix brandId={user?.brand_id || 1} />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: Product Uploads & Governance */}
+            <div className="lg:col-span-1 space-y-5">
+              <div>
+                <label className="text-xs font-semibold text-zinc-300 mb-2 block">
+                  Product Garment Images * <span className="text-zinc-500 font-normal">(up to 50 SKUs)</span>
+                </label>
+                <div
                 onClick={() => fileInputRef.current?.click()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -708,6 +740,7 @@ export default function CatalogStudioPage() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* C2PA Content Credentials Modal */}
