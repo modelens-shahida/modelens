@@ -19,7 +19,8 @@ import {
 import toast from "react-hot-toast";
 import Link from "next/link";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
-import { ShieldCheck } from "lucide-react";
+import Ghost3DVolumetricStudio from "@/components/dashboard/Ghost3DVolumetricStudio";
+import { ShieldCheck, Box, Sparkles } from "lucide-react";
 
 const GARMENT_TYPES = ["dress", "top", "outerwear", "pants", "jumpsuit", "full outfit"];
 const VIEWS = ["front", "back", "detail"];
@@ -62,6 +63,7 @@ const STATUS_STEPS = [
 ];
 
 export default function GhostStudioPage() {
+  const [activeMainTab, setActiveMainTab] = useState("volumetric");
   const [tab, setTab] = useState("single"); // "single" or "batch"
   const [brands, setBrands] = useState([]);
   const [selectedBrandId, setSelectedBrandId] = useState("");
@@ -487,16 +489,48 @@ export default function GhostStudioPage() {
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <Layers className="w-7 h-7 text-purple-400" />
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-400">
+            <Layers className="w-6 h-6" />
+          </div>
           <div>
             <h1 className="text-2xl font-bold">Image-to-Ghost Studio</h1>
-            <p className="text-zinc-400 text-sm">Generate 2K/4K ghost mannequin catalog assets using advanced rendering models</p>
+            <p className="text-zinc-400 text-xs">Generate 2K/4K ghost mannequin catalog assets using advanced 3D volumetric rendering</p>
           </div>
         </div>
 
-        {/* Global Controls & Mode Toggle */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-8 bg-zinc-900/30 border border-zinc-850 p-4 rounded-2xl backdrop-blur-md">
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-3 mb-6">
+          <button
+            onClick={() => setActiveMainTab("volumetric")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === "volumetric"
+                ? "bg-teal-500/15 text-teal-300 border border-teal-500/30 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+            }`}
+          >
+            <Sparkles size={14} className="text-teal-400" />
+            3D Volumetric Studio (WF-GHOST-001)
+          </button>
+          <button
+            onClick={() => setActiveMainTab("flatlay")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === "flatlay"
+                ? "bg-purple-600/15 text-purple-300 border border-purple-500/30 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent"
+            }`}
+          >
+            <Layers size={14} className="text-purple-400" />
+            Flatlay Ghost Pipeline (Single & Batch)
+          </button>
+        </div>
+
+        {activeMainTab === "volumetric" ? (
+          <Ghost3DVolumetricStudio brandId={selectedBrandId || brands[0]?.id || 1} />
+        ) : (
+          <>
+            {/* Global Controls & Mode Toggle */}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-8 bg-zinc-900/30 border border-zinc-850 p-4 rounded-2xl backdrop-blur-md">
           {/* Tab Selector */}
           <div className="flex bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
             <button
@@ -1131,6 +1165,8 @@ export default function GhostStudioPage() {
               </div>
             )}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
