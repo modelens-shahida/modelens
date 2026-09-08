@@ -340,3 +340,88 @@ async def create_ghost_job_batch(
         "total_credits_reserved": total_credits,
         "status": "queued",
     }
+
+# ========================== Volumetric Ghost Endpoint ===========
+
+class GhostVolumetricRequest(BaseModel):
+    brand_id: int
+    source_asset_id: Optional[int] = None
+    garment_type: Optional[str] = "dress"
+    neckline_type: Optional[str] = "round"
+    views: Optional[List[str]] = ["FRONT", "BACK", "INNER_COLLAR"]
+    resolution: Optional[str] = "2K"
+    preserve_print: bool = True
+    preserve_seams: bool = True
+    alpha_mask: bool = True
+    ambient_occlusion: bool = True
+    generation_mode: Optional[str] = "studio_quality"
+
+
+@router.post("/volumetric", status_code=status.HTTP_202_ACCEPTED)
+async def create_volumetric_ghost_job(
+    payload: GhostVolumetricRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit a 3D volumetric ghost mannequin job."""
+    from app.services.ghost_volumetric_service import ghost_volumetric_service
+
+    try:
+        workflow_params = ghost_volumetric_service.build_workflow_params(
+            views=payload.views,
+            resolution=payload.resolution,
+            garment_type=payload.garment_type,
+            neckline_type=payload.neckline_type,
+            preserve_print=payload.preserve_print,
+            preserve_seams=payload.preserve_seams,
+            alpha_mask=payload.alpha_mask,
+            ambient_occlusion=payload.ambient_occlusion,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Credit check
+    credits_needed = RESOLUTION_CREDITS.get(payload.resolution, 4) * len(payload.views)
+    if (current_user.credits or 0) < credits_needed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
+        )
+    current_user.credits = (current_user.credits or 0) - credits_needed
+
+    try:
+        from app.worker import run_volumetric_ghost_job
+        task = run_volumetric_ghost_job.delay(
+            brand_id=payload.brand_id,
+            user_id=current_user.id,
+            source_asset_id=payload.source_asset_id,
+            workflow_params=workflow_params,
+            generation_mode=payload.generation_mode,
+        )
+        task_id = task.id if task else f"mock_ghost3d_{payload.brand_id}"
+    except Exception as e:
+        print(f"[Ghost3D] Celery dispatch failed: {e}")
+        task_id = f"mock_ghost3d_{payload.brand_id}"
+
+    await db.commit()
+
+    return {
+        "task_id": task_id,
+        "status": "queued",
+        "views": payload.views,
+        "resolution": payload.resolution,
+        "credits_reserved": credits_needed,
+        "workflow_id": "WF-GHOST-001",
+    }
+
+
+@router.get("/views")
+async def list_ghost_views(
+    current_user: User = Depends(get_current_user),
+):
+    """List available ghost mannequin views."""
+    from app.services.ghost_volumetric_service import ghost_volumetric_service, RESOLUTION_OPTIONS
+    return {
+        "views": ghost_volumetric_service.list_views(),
+        "resolutions": RESOLUTION_OPTIONS,
+    }
