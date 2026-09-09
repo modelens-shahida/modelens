@@ -3945,3 +3945,140 @@ async def _run_volumetric_ghost_async(
         except Exception as e:
             print(f"[Ghost3D] Failed: {e}")
             raise task_self.retry(exc=e, countdown=30)
+
+
+# ========================== Sketch Studio Task ==================
+
+@celery_app.task(
+    name="app.worker.run_sketch_generation_job",
+    bind=True,
+    max_retries=2,
+    queue="high_priority",
+)
+def run_sketch_generation_job(
+    self,
+    brand_id: int,
+    user_id: int,
+    sketch_asset_id: Optional[int],
+    colorway_id: str,
+    workflow_params: dict,
+    generation_mode: str = "studio_quality",
+):
+    """Celery task for sketch-to-product generation (WF-SKETCH-001)."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run_sketch_generation_async(
+        self, brand_id, user_id, sketch_asset_id,
+        colorway_id, workflow_params, generation_mode
+    ))
+
+
+async def _run_sketch_generation_async(
+    task_self,
+    brand_id: int,
+    user_id: int,
+    sketch_asset_id: Optional[int],
+    colorway_id: str,
+    workflow_params: dict,
+    generation_mode: str,
+):
+    """Async runner for sketch-to-product pipeline."""
+    from app.models.db import Asset
+    from app.services.sketch_service import sketch_service
+    from app.services.c2pa_service import c2pa_service
+
+    async with async_session_maker() as db:
+        try:
+            print(f"[Sketch] Starting WF-SKETCH-001 colorway={colorway_id}")
+
+            # Step 1: Parsing sketch
+            await sketch_service.publish_sketch_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="parsing_sketch",
+                data={
+                    "sketch_mode": workflow_params.get("sketch_mode"),
+                    "controlnet": workflow_params.get("controlnet"),
+                    "status": "parsing",
+                },
+            )
+
+            # Step 2: Applying fabric
+            await sketch_service.publish_sketch_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="applying_fabric",
+                data={
+                    "fabric_id": workflow_params.get("fabric_id"),
+                    "drape": workflow_params.get("fabric_drape"),
+                    "colorway": colorway_id,
+                    "pantone": workflow_params.get("pantone_code"),
+                    "status": "texturing",
+                },
+            )
+
+            # Step 3: Rendering product
+            await sketch_service.publish_sketch_event(
+                redis_client=None,
+                brand_id=brand_id,
+                job_id=task_self.request.id or 0,
+                event_type="rendering_product",
+                data={"status": "rendering", "generation_mode": generation_mode},
+            )
+
+            # Output filename
+            output_filename = f"sketch_{colorway_id}_{brand_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+            storage_path = f"sketch/{output_filename}"
+
+            # Register asset
+            asset = Asset(
+                brand_id=brand_id,
+                name=f"Sketch Product - {colorway_id}",
+                filename=output_filename,
+                storage_path=storage_path,
+                asset_type="generated",
+                status="active",
+                meta={
+                    "source": "sketch_studio",
+                    "workflow": "WF-SKETCH-001",
+                    "sketch_mode": workflow_params.get("sketch_mode"),
+                    "fabric_id": workflow_params.get("fabric_id"),
+                    "colorway_id": colorway_id,
+                    "pantone_code": workflow_params.get("pantone_code"),
+                    "hex_color": workflow_params.get("hex_color"),
+                    "garment_type": workflow_params.get("garment_type"),
+                    "on_model": workflow_params.get("on_model"),
+                    "ghost_mode": workflow_params.get("ghost_mode"),
+                    "generation_mode": generation_mode,
+                    "sketch_asset_id": sketch_asset_id,
+                }
+            )
+            db.add(asset)
+            await db.flush()
+
+            # Register version + lineage
+            await _register_asset_version(db, asset.id, storage_path)
+            if sketch_asset_id:
+                await _register_asset_relationship(db, sketch_asset_id, asset.id, "REL-DERIVED-FROM")
+
+            # Seal C2PA
+            manifest = c2pa_service.build_manifest(
+                asset_id=asset.id,
+                workflow_id="WF-SKETCH-001",
+                brand_id=brand_id,
+                brand_name=f"Brand-{brand_id}",
+                workspace_id=str(brand_id),
+            )
+            asset.meta["c2pa_manifest"] = manifest
+
+            await db.commit()
+            print(f"[Sketch] Complete. Asset: {asset.id} colorway={colorway_id}")
+
+        except Exception as e:
+            print(f"[Sketch] Failed: {e}")
+            raise task_self.retry(exc=e, countdown=30)

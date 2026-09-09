@@ -20,6 +20,7 @@ from app.routers.jobs import router as jobs_router
 from app.routers.characters import router as characters_router
 from app.routers.video_projects import router as video_projects_router
 from app.routers.fluid import router as fluid_router
+from app.routers.sketch_studio import router as sketch_studio_router
 from app.routers.campaign_generation import router as campaign_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
@@ -49,12 +50,14 @@ from app.routers.audit import router as audit_router
 from app.routers.characters import router as characters_router
 from app.routers.video_projects import router as video_projects_router
 from app.routers.fluid import router as fluid_router
+from app.routers.sketch_studio import router as sketch_studio_router
 from app.routers.campaign_generation import router as campaign_router
 from app.routers.templates_proxy import router as templates_proxy_router
 from app.routers.internal_callbacks import router as internal_callbacks_router
 from app.routers.angle_shots import router as angle_shots_router
 from app.routers.video_projects import router as video_projects_router
 from app.routers.fluid import router as fluid_router
+from app.routers.sketch_studio import router as sketch_studio_router
 from app.routers.campaign_generation import router as campaign_router, gen_router as generation_jobs_router
 from app.routers.editorial_assets import router as editorial_assets_router
 from app.routers.health import router as health_router
@@ -199,6 +202,7 @@ app.include_router(jobs_router)
 app.include_router(characters_router)
 app.include_router(video_projects_router)
 app.include_router(fluid_router)
+app.include_router(sketch_studio_router)
 app.include_router(campaign_router)
 app.include_router(prompts_router)
 app.include_router(themes_router)
@@ -228,6 +232,7 @@ app.include_router(audit_router)
 app.include_router(characters_router)
 app.include_router(video_projects_router)
 app.include_router(fluid_router)
+app.include_router(sketch_studio_router)
 app.include_router(campaign_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
@@ -237,6 +242,7 @@ if "pytest" in sys.modules or os.getenv("TESTING") == "true":
     app.include_router(angle_shots_router)
 app.include_router(video_projects_router)
 app.include_router(fluid_router)
+app.include_router(sketch_studio_router)
 app.include_router(campaign_router)
 app.include_router(generation_jobs_router)
 app.include_router(editorial_assets_router)
