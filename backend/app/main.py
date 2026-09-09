@@ -21,12 +21,12 @@ from app.routers.characters import router as characters_router
 from app.routers.video_projects import router as video_projects_router
 from app.routers.fluid import router as fluid_router
 from app.routers.sketch_studio import router as sketch_studio_router
-from app.routers.campaign_generation import router as campaign_router
+from app.routers.campaign_generation import router as campaign_generation_router, gen_router as generation_jobs_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
 from app.routers.search import router as search_router
 from app.routers.api_keys import router as api_keys_router
-from app.routers.memory import brand_router, campaign_router
+from app.routers.memory import brand_router, campaign_router as memory_campaign_router
 from app.routers.webhooks import router as webhooks_router
 from app.routers.credits import router as credits_router
 from app.routers.billing import router as billing_router
@@ -35,7 +35,6 @@ from app.routers.fix_requests import router as fix_requests_router
 from app.routers.admin_stats import router as admin_stats_router
 from app.routers.admin_settings import router as admin_settings_router
 from app.routers.analytics import router as analytics_router
-from app.routers.campaign_generation import router as campaign_generation_router
 from app.routers.campaign_templates import router as campaign_templates_router
 from app.routers.ghost_jobs import router as ghost_jobs_router
 from app.routers.sketch_jobs import router as sketch_jobs_router
@@ -47,18 +46,9 @@ from app.routers.taxonomy_resolver import router as taxonomy_resolver_router
 from app.routers.qa import router as qa_router
 from app.routers.c2pa import router as c2pa_router
 from app.routers.audit import router as audit_router
-from app.routers.characters import router as characters_router
-from app.routers.video_projects import router as video_projects_router
-from app.routers.fluid import router as fluid_router
-from app.routers.sketch_studio import router as sketch_studio_router
-from app.routers.campaign_generation import router as campaign_router
 from app.routers.templates_proxy import router as templates_proxy_router
 from app.routers.internal_callbacks import router as internal_callbacks_router
 from app.routers.angle_shots import router as angle_shots_router
-from app.routers.video_projects import router as video_projects_router
-from app.routers.fluid import router as fluid_router
-from app.routers.sketch_studio import router as sketch_studio_router
-from app.routers.campaign_generation import router as campaign_router, gen_router as generation_jobs_router
 from app.routers.editorial_assets import router as editorial_assets_router
 from app.routers.health import router as health_router
 from app.routers.notifications import router as notifications_router
@@ -203,12 +193,12 @@ app.include_router(characters_router)
 app.include_router(video_projects_router)
 app.include_router(fluid_router)
 app.include_router(sketch_studio_router)
-app.include_router(campaign_router)
 app.include_router(prompts_router)
 app.include_router(themes_router)
 app.include_router(search_router)
 app.include_router(api_keys_router)
 app.include_router(brand_router)
+app.include_router(memory_campaign_router)
 app.include_router(webhooks_router)
 app.include_router(credits_router)
 app.include_router(billing_router)
@@ -229,28 +219,17 @@ app.include_router(taxonomy_resolver_router)
 app.include_router(qa_router)
 app.include_router(c2pa_router)
 app.include_router(audit_router)
-app.include_router(characters_router)
-app.include_router(video_projects_router)
-app.include_router(fluid_router)
-app.include_router(sketch_studio_router)
-app.include_router(campaign_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
-# app.include_router(angle_shots_router)
 import sys
 if "pytest" in sys.modules or os.getenv("TESTING") == "true":
     app.include_router(angle_shots_router)
-app.include_router(video_projects_router)
-app.include_router(fluid_router)
-app.include_router(sketch_studio_router)
-app.include_router(campaign_router)
 app.include_router(generation_jobs_router)
 app.include_router(editorial_assets_router)
 app.include_router(health_router)
 app.include_router(notifications_router)
 app.include_router(websockets_router)
 app.include_router(invites_router)
-app.include_router(campaign_router)
 app.include_router(editorial_fluid_router)
 
 

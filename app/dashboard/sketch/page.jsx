@@ -1,10 +1,14 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import { api } from "@/lib/api";
-import { Upload, PenTool, Loader2, CheckCircle2, Download, RefreshCw, AlertTriangle, Clock, X, Plus } from "lucide-react";
+import { 
+  Upload, PenTool, Loader2, CheckCircle2, Download, 
+  RefreshCw, AlertTriangle, Clock, X, Plus, Sparkles, Layers 
+} from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
+import SketchProductStudio from "@/components/dashboard/SketchProductStudio";
 import { ShieldCheck } from "lucide-react";
 
 const MODEL_TIERS = [
@@ -60,8 +64,10 @@ function MultiFileUploader({ label, maxFiles, accept, files, onFilesChange, hint
   };
   return (
     <div>
-      <label className="text-xs text-zinc-400 mb-1 block">{label} <span className="text-zinc-600">(max {maxFiles})</span></label>
-      {hint && <p className="text-xs text-zinc-600 mb-2">{hint}</p>}
+      <div className="flex justify-between items-center mb-1.5">
+        <label className="text-xs font-semibold text-zinc-300">{label}</label>
+        <span className="text-[10px] text-zinc-500">{files.length}/{maxFiles} {hint && `• ${hint}`}</span>
+      </div>
       <div className="border border-dashed border-zinc-700 hover:border-purple-500 rounded-xl p-4 transition cursor-pointer" onClick={() => inputRef.current?.click()}>
         <div className="flex flex-wrap gap-2">
           {files.map((f, i) => (
@@ -86,6 +92,7 @@ function MultiFileUploader({ label, maxFiles, accept, files, onFilesChange, hint
 }
 
 export default function SketchStudioPage() {
+  const [activeMainTab, setActiveMainTab] = useState("studio"); // 'studio' | 'legacy'
   const [sketchFiles, setSketchFiles] = useState([]);
   const [fabricFiles, setFabricFiles] = useState([]);
   const [printFiles, setPrintFiles] = useState([]);
@@ -108,24 +115,33 @@ export default function SketchStudioPage() {
 
   const startPolling = (jobId) => {
     setElapsedTime(0);
-    timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
+    timerRef.current = setInterval(() => setElapsedTime(t => t + 1), 1000);
     pollRef.current = setInterval(async () => {
       try {
-        const status = await api.get(`/api/v1/sketch-jobs/${jobId}`);
-        setJobStatus(status);
-        if (status.status === "completed" || status.status === "failed") {
+        const res = await api.get(`/api/v1/sketch-jobs/${jobId}`);
+        setJobStatus(res);
+        if (res.status === "completed" || res.status === "failed") {
           clearInterval(pollRef.current);
           clearInterval(timerRef.current);
+          if (res.status === "completed") toast.success("Sketch render completed!");
+          else toast.error("Sketch render failed");
         }
-      } catch {}
-    }, 2000);
+      } catch {
+        // ignore poll errors
+      }
+    }, 3000);
   };
 
-  useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
+  useEffect(() => {
+    return () => {
+      clearInterval(pollRef.current);
+      clearInterval(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     api.get("/api/v1/angle-shots?limit=100").then(data => {
-      setAngleShots(data?.items || []);
+      if (Array.isArray(data)) setAngleShots(data);
     }).catch(() => {});
   }, []);
 
@@ -169,206 +185,217 @@ export default function SketchStudioPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-8">
-          <PenTool className="w-7 h-7 text-purple-400" />
-          <div>
-            <h1 className="text-2xl font-bold">Sketch-to-Image Studio</h1>
-            <p className="text-zinc-400 text-sm">Fast Draft for previews • Studio Quality for detailed renders</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Uploaders */}
-          <div className="space-y-5 lg:col-span-1">
-            <MultiFileUploader label="Sketch References *" maxFiles={12} accept="image/*" files={sketchFiles} onFilesChange={setSketchFiles} hint="CAD or lineart sketches" />
-            <MultiFileUploader label="Material / Fabric References" maxFiles={4} accept="image/*" files={fabricFiles} onFilesChange={setFabricFiles} hint="Controls texture, sheen, drape" />
-            <MultiFileUploader label="Print References" maxFiles={4} accept="image/*" files={printFiles} onFilesChange={setPrintFiles} hint="Controls pattern motif & color" />
-            <MultiFileUploader label="Construction Details" maxFiles={8} accept="image/*" files={constructionFiles} onFilesChange={setConstructionFiles} hint="Collar, sleeve, hem references" />
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Navigation Header & Tab Switcher */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-950/60 border border-purple-500/40 flex items-center justify-center text-purple-400 shadow-inner">
+              <PenTool className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">Sketch-to-Product Generative CAD Studio</h1>
+              <p className="text-xs text-zinc-400">WF-SKETCH-001 • ControlNet Edge Guidance, 8 Fabric Textures & Pantone Colorways</p>
+            </div>
           </div>
 
-          {/* Middle: Controls & Briefs */}
-          <div className="space-y-5 lg:col-span-1">
-            {/* Generation Mode */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-2 block">Generation Mode</label>
-              <div className="space-y-2">
-                {MODEL_TIERS.map(tier => (
-                  <div
-                    key={tier.id}
-                    onClick={() => setModelTier(tier.id)}
-                    className={`cursor-pointer border-2 rounded-xl p-4 transition ${
-                      modelTier === tier.id
-                        ? "border-purple-600 bg-purple-950/20"
-                        : "border-zinc-850 hover:border-zinc-700 bg-zinc-950/30"
-                    }`}
-                  >
-                    {tier.badge && (
-                      <span className="inline-block text-[9px] bg-purple-900/60 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full mb-2 font-bold uppercase tracking-wider">
-                        {tier.badge}
-                      </span>
-                    )}
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-white">{tier.name}</span>
-                      <span className="text-[10px] text-zinc-400">{tier.time} · {tier.credits}</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 mb-1">{tier.description}</p>
-                    <ul className="space-y-0.5">
-                      {tier.useCases.map(u => (
-                        <li key={u} className="text-[10px] text-zinc-500">• {u}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Output Mode */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">Output Mode</label>
-              <select value={outputMode} onChange={(e) => setOutputMode(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200 outline-none">
-                {OUTPUT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-
-            {/* Aspect Ratio & Resolution */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">Aspect Ratio</label>
-                <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none">
-                  {ASPECT_RATIOS.map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">Resolution</label>
-                <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none">
-                  {RESOLUTIONS.map(r => <option key={r.value} value={r.value}>{r.label} ({r.credits})</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Text Briefs */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">Pose Preset</label>
-              {angleShots.length > 0 ? (
-                <select value={selectedAngleShot?.id || ""} onChange={(e) => { const shot = angleShots.find(s => s.id.toString() === e.target.value); setSelectedAngleShot(shot || null); }} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none mb-2">
-                  <option value="">Select pose preset...</option>
-                  {angleShots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              ) : null}
-            </div>
-            {[
-              { label: "Product Description *", value: productDesc, setter: setProductDesc, placeholder: "e.g. navy blue wool blazer with double buttons" },
-              { label: "Material Description", value: materialDesc, setter: setMaterialDesc, placeholder: "e.g. 100% merino wool, matte finish" },
-              { label: "Model Brief", value: modelBrief, setter: setModelBrief, placeholder: "e.g. standing pose, neutral expression" },
-              { label: "Background & Lighting", value: backgroundBrief, setter: setBackgroundBrief, placeholder: "e.g. studio white background, soft light" },
-            ].map(({ label, value, setter, placeholder }) => (
-              <div key={label}>
-                <label className="text-xs text-zinc-400 mb-1 block">{label}</label>
-                <textarea value={value} onChange={(e) => setter(e.target.value)} placeholder={placeholder} rows={2} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-purple-500 transition resize-none" />
-              </div>
-            ))}
-
-            {/* Section 20 Content Rights Attestation */}
-            <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
-              <div className="flex items-center gap-2 text-xs text-zinc-300 font-medium">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Section 20 Upload Rights Attestation Active</span>
-              </div>
-              <p className="text-[10px] text-zinc-500">
-                Uploaded sketches & CAD designs are protected by workspace multi-tenant isolation.
-              </p>
-            </div>
-
-            {/* Live Resolver Simulation */}
-            <TaxonomyResolverPreview
-              taxonomyIds={{
-                garment: "GAR-SKETCH-001",
-                fabric: "FAB-COTTON-001",
-                pose: "POS-CAT-0001",
-                environment: "ENV-STU-0001",
-              }}
-              workflowId="WF-SKETCH-001"
-              generationMode={modelTier}
-            />
-
-            <button onClick={handleSubmit} disabled={submitting || sketchFiles.length === 0 || !productDesc.trim()} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenTool className="w-4 h-4" />}
-              {submitting ? "Submitting..." : "Generate Render"}
+          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1 gap-1 self-start sm:self-auto">
+            <button
+              onClick={() => setActiveMainTab("studio")}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                activeMainTab === "studio"
+                  ? "bg-purple-600 text-white shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              CAD Generative Studio
+            </button>
+            <button
+              onClick={() => setActiveMainTab("legacy")}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                activeMainTab === "legacy"
+                  ? "bg-purple-600 text-white shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Multi-Reference Briefs
             </button>
           </div>
+        </div>
 
-          {/* Right: Progress + Result */}
-          <div className="space-y-5 lg:col-span-1">
-            {jobStatus ? (
-              <>
-                <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-white">Active Job</h2>
-                    <span className="flex items-center gap-1 text-xs text-zinc-500"><Clock className="w-3 h-3" /> {elapsedTime}s</span>
-                  </div>
-                  <div className="w-full bg-zinc-800 rounded-full h-2 mb-3">
-                    <div className={`h-2 rounded-full transition-all duration-500 ${jobStatus.status === "failed" ? "bg-red-500" : "bg-purple-500"}`} style={{ width: `${currentStep.progress}%` }} />
-                  </div>
-                  <span className={`text-xs px-3 py-1 rounded-full border ${currentStep.color}`}>{currentStep.label}</span>
-                  {jobStatus.status === "failed" && (
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded-xl px-3 py-2">
-                        <AlertTriangle className="w-3 h-3" /> {jobStatus.error_message || "Generation failed"}
+        {/* Tab 1: State-of-the-Art CAD Generative Studio */}
+        {activeMainTab === "studio" ? (
+          <SketchProductStudio />
+        ) : (
+          /* Tab 2: Legacy Multi-Reference Form */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left: Uploaders */}
+            <div className="space-y-5 lg:col-span-1">
+              <MultiFileUploader label="Sketch References *" maxFiles={12} accept="image/*" files={sketchFiles} onFilesChange={setSketchFiles} hint="CAD or lineart sketches" />
+              <MultiFileUploader label="Material / Fabric References" maxFiles={4} accept="image/*" files={fabricFiles} onFilesChange={setFabricFiles} hint="Controls texture, sheen, drape" />
+              <MultiFileUploader label="Print References" maxFiles={4} accept="image/*" files={printFiles} onFilesChange={setPrintFiles} hint="Controls pattern motif & color" />
+              <MultiFileUploader label="Construction Details" maxFiles={8} accept="image/*" files={constructionFiles} onFilesChange={setConstructionFiles} hint="Collar, sleeve, hem references" />
+            </div>
+
+            {/* Middle: Controls & Briefs */}
+            <div className="space-y-5 lg:col-span-1">
+              <div>
+                <label className="text-xs text-zinc-400 mb-2 block font-medium">Generation Mode</label>
+                <div className="space-y-2">
+                  {MODEL_TIERS.map(tier => (
+                    <div
+                      key={tier.id}
+                      onClick={() => setModelTier(tier.id)}
+                      className={`cursor-pointer border-2 rounded-xl p-4 transition ${
+                        modelTier === tier.id ? "border-purple-500 bg-purple-950/20" : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-sm">{tier.name}</span>
+                        {tier.badge && <span className="text-[10px] bg-purple-900/60 text-purple-300 border border-purple-700 px-2 py-0.5 rounded-full">{tier.badge}</span>}
                       </div>
-                      <button onClick={handleReset} className="flex items-center gap-1.5 text-xs border border-zinc-700 px-3 py-2 rounded-xl transition hover:border-purple-500">
-                        <RefreshCw className="w-3 h-3" /> Retry
-                      </button>
+                      <p className="text-xs text-zinc-400 mt-1">{tier.description}</p>
+                      <p className="text-[10px] text-zinc-500 mt-1">{tier.time} • {tier.credits}</p>
                     </div>
-                  )}
+                  ))}
                 </div>
+              </div>
 
-                {jobStatus.status === "completed" && (
-                  <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
-                    <h2 className="text-sm font-semibold text-white mb-3">Sketch vs. Render</h2>
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div>
-                        <p className="text-xs text-zinc-500 mb-1 text-center">Sketch</p>
-                        {sketchFiles[0] && <img src={URL.createObjectURL(sketchFiles[0])} alt="sketch" className="w-full h-36 object-contain rounded-xl border border-zinc-700 bg-zinc-800" />}
-                      </div>
-                      <div>
-                        <p className="text-xs text-zinc-500 mb-1 text-center">Render</p>
-                        {jobStatus.output_url ? (
-                          <img src={jobStatus.output_url} alt="render" className="w-full h-36 object-cover rounded-xl border border-emerald-700" />
-                        ) : (
-                          <div className="w-full h-36 bg-emerald-950/30 border border-emerald-800 rounded-xl flex items-center justify-center">
-                            <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {jobStatus.quality_score && (
-                      <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-xl px-3 py-2 mb-3">
-                        <p className="text-xs text-emerald-300">Quality Score: <span className="font-bold">{jobStatus.quality_score}%</span></p>
-                      </div>
-                    )}
-                    <div className="flex gap-2 flex-wrap">
-                      <a href={jobStatus.output_url || "#"} download className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded-xl transition">
-                        <Download className="w-3 h-3" /> Download PNG
-                      </a>
-                      <button onClick={handleReset} className="flex items-center gap-1.5 text-xs border border-zinc-700 hover:border-purple-500 px-3 py-2 rounded-xl transition">
-                        <RefreshCw className="w-3 h-3" /> New Render
-                      </button>
-                      <Link href="/dashboard/fix-requests" className="flex items-center gap-1.5 text-xs border border-zinc-700 hover:border-purple-500 px-3 py-2 rounded-xl transition">
-                        Touch-up
-                      </Link>
-                    </div>
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block font-medium">Output Mode</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {OUTPUT_MODES.map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setOutputMode(mode)}
+                      className={`py-2 px-3 text-xs rounded-xl border transition cursor-pointer ${
+                        outputMode === mode ? "border-purple-500 bg-purple-950/40 text-white font-semibold" : "border-zinc-800 bg-zinc-900/20 text-zinc-400 hover:border-zinc-700"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1.5 block font-medium">Aspect Ratio</label>
+                  <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white">
+                    {ASPECT_RATIOS.map(ar => <option key={ar} value={ar}>{ar}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1.5 block font-medium">Resolution</label>
+                  <select value={resolution} onChange={e => setResolution(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white">
+                    {RESOLUTIONS.map(r => <option key={r.value} value={r.value}>{r.label} ({r.credits})</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block font-medium">Product Description *</label>
+                  <textarea value={productDesc} onChange={e => setProductDesc(e.target.value)} rows={2} placeholder="e.g. Silk midi wrap dress with pleated skirt..." className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-xs text-white placeholder-zinc-500 resize-none" />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block font-medium">Material / Finish Notes</label>
+                  <input value={materialDesc} onChange={e => setMaterialDesc(e.target.value)} placeholder="e.g. 100% silk charmeuse, matte sheen" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500" />
+                </div>
+                {outputMode === "On-Model" && (
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block font-medium">Model Brief</label>
+                    <input value={modelBrief} onChange={e => setModelBrief(e.target.value)} placeholder="e.g. High fashion, studio neutral pose" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500" />
                   </div>
                 )}
-              </>
-            ) : (
-              <div className="bg-zinc-900/20 border border-dashed border-zinc-800 rounded-2xl p-12 text-center">
-                <PenTool className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-                <p className="text-zinc-500 text-sm">Upload sketches and submit to see the render result here</p>
               </div>
-            )}
+
+              <button onClick={handleSubmit} disabled={submitting} className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer">
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenTool className="w-4 h-4" />}
+                {submitting ? "Submitting..." : "Generate from Sketch"}
+              </button>
+            </div>
+
+            {/* Right: Output & Status */}
+            <div className="space-y-5 lg:col-span-1">
+              {jobStatus ? (
+                <>
+                  <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-xs text-zinc-400">Job #{jobStatus.id || jobStatus.job_id}</span>
+                      <span className={`text-xs px-2.5 py-0.5 rounded-full border font-medium ${currentStep.color}`}>
+                        {currentStep.label}
+                      </span>
+                    </div>
+                    <div className="w-full bg-zinc-800 rounded-full h-2 mb-3">
+                      <div className="bg-purple-600 h-2 rounded-full transition-all duration-500" style={{ width: `${currentStep.progress}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-zinc-500">
+                      <span>Elapsed: {elapsedTime}s</span>
+                      <span>Tier: {modelTier}</span>
+                    </div>
+
+                    {jobStatus.status === "failed" && (
+                      <div className="mt-3 bg-red-950/40 border border-red-800 rounded-xl p-3">
+                        <div className="flex items-center gap-2 text-red-400 text-xs font-semibold mb-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Render Failed
+                        </div>
+                        <p className="text-[11px] text-zinc-400 mb-2">{jobStatus.error_message || "An error occurred during generation"}</p>
+                        <button onClick={handleSubmit} className="text-xs bg-red-800 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer">
+                          <RefreshCw className="w-3 h-3" /> Retry
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {jobStatus.status === "completed" && (
+                    <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
+                      <h2 className="text-sm font-semibold text-white mb-3">Sketch vs. Render</h2>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                          <p className="text-xs text-zinc-500 mb-1 text-center">Sketch</p>
+                          {sketchFiles[0] && <img src={URL.createObjectURL(sketchFiles[0])} alt="sketch" className="w-full h-36 object-contain rounded-xl border border-zinc-700 bg-zinc-800" />}
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-500 mb-1 text-center">Render</p>
+                          {jobStatus.output_url ? (
+                            <img src={jobStatus.output_url} alt="render" className="w-full h-36 object-cover rounded-xl border border-emerald-700" />
+                          ) : (
+                            <div className="w-full h-36 bg-emerald-950/30 border border-emerald-800 rounded-xl flex items-center justify-center">
+                              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {jobStatus.quality_score && (
+                        <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-xl px-3 py-2 mb-3">
+                          <p className="text-xs text-emerald-300">Quality Score: <span className="font-bold">{jobStatus.quality_score}%</span></p>
+                        </div>
+                      )}
+                      <div className="flex gap-2 flex-wrap">
+                        <a href={jobStatus.output_url || "#"} download className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded-xl transition">
+                          <Download className="w-3 h-3" /> Download PNG
+                        </a>
+                        <button onClick={handleReset} className="flex items-center gap-1.5 text-xs border border-zinc-700 hover:border-purple-500 px-3 py-2 rounded-xl transition cursor-pointer">
+                          <RefreshCw className="w-3 h-3" /> New Render
+                        </button>
+                        <Link href="/dashboard/fix-requests" className="flex items-center gap-1.5 text-xs border border-zinc-700 hover:border-purple-500 px-3 py-2 rounded-xl transition">
+                          Touch-up
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="bg-zinc-900/20 border border-dashed border-zinc-800 rounded-2xl p-12 text-center">
+                  <PenTool className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
+                  <p className="text-zinc-500 text-sm">Upload sketches and submit to see the render result here</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
