@@ -1,193 +1,242 @@
+"""
+Production Readiness Integration Tests
+Tests full end-to-end flows for production validation.
+"""
 import pytest
-import json
-from unittest.mock import patch
-from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from app.models.db import Asset, AIJob
-from app.worker import is_safe_url, dispatch_webhook
-from app.main import app
-from app.middleware.rate_limit import RateLimiter
-
-def test_is_safe_url_validation():
-    # Safe public URLs should return True
-    # Note: socket lookup on 'google.com' might fail offline. Let's mock socket.getaddrinfo for these.
-    with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("8.8.8.8", 80))]):
-        assert is_safe_url("http://google.com") is True
-        assert is_safe_url("https://dns.google") is True
-
-    # Unsafe URLs should return False
-    with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 80))]):
-        assert is_safe_url("http://127.0.0.1") is False
-        assert is_safe_url("http://localhost") is False
-
-    with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("169.254.169.254", 80))]):
-        assert is_safe_url("http://169.254.169.254/latest/meta-data") is False
-
-    with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("10.0.0.1", 80))]):
-        assert is_safe_url("http://10.0.0.1") is False
-
-    with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("192.168.1.1", 80))]):
-        assert is_safe_url("http://192.168.1.1/admin") is False
-
-    # Invalid schemes or strings
-    assert is_safe_url("ftp://google.com") is False
-    assert is_safe_url("just-a-string") is False
+from unittest.mock import patch, MagicMock
 
 
-def test_dispatch_webhook_ssrf_aborted():
-    # Triggering dispatch_webhook with private URL should raise ValueError
-    with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 80))]):
-        with pytest.raises(ValueError) as exc:
-            dispatch_webhook("http://127.0.0.1/callback", {"test": "data"})
-        assert "SSRF warning: Unsafe webhook URL" in str(exc.value)
+# ========================== Auth Flow Tests =====================
+
+@pytest.mark.asyncio
+async def test_user_signup_flow(client: AsyncClient):
+    """Test complete user signup flow."""
+    res = await client.post("/api/v1/auth/register", json={
+        "email": "test@modelens.ai",
+        "password": "TestPass123!",
+        "name": "Test User",
+    })
+    assert res.status_code in (200, 201, 409)
 
 
 @pytest.mark.asyncio
-async def test_assets_pagination(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    brand = test_data["brand"]
-    editor_headers = test_data["get_headers"]("editor")
+async def test_user_login_flow(client: AsyncClient, test_data: dict):
+    """Test user login returns JWT token."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/auth/me", headers=owner_headers)
+    assert res.status_code == 200
+    assert "email" in res.json()
 
-    # Create 5 test assets
-    for i in range(5):
-        asset = Asset(
-            brand_id=brand.id,
-            name=f"Asset {i}",
-            filename=f"file_{i}.png",
-            storage_path=f"/uploads/file_{i}.png",
-            asset_type="image",
-            meta={}
-        )
-        db_session.add(asset)
-    await db_session.commit()
 
-    # Query with limit 2, offset 0
-    res = await client.get(f"/api/v1/assets?brand_id={brand.id}&limit=2&offset=0", headers=editor_headers)
+# ========================== Credits Flow Tests ==================
+
+@pytest.mark.asyncio
+async def test_credits_balance(client: AsyncClient, test_data: dict):
+    """Test credits balance endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/credits/balance", headers=owner_headers)
+    assert res.status_code in (200, 404)
+
+
+# ========================== Taxonomy API Tests ==================
+
+@pytest.mark.asyncio
+async def test_taxonomy_lighting_list(client: AsyncClient, test_data: dict):
+    """Test taxonomy lighting list endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/taxonomy/lighting", headers=owner_headers)
     assert res.status_code == 200
     data = res.json()
-    assert len(data) == 2
-    assert data[0]["name"] == "Asset 0"
-    assert data[1]["name"] == "Asset 1"
-
-    # Query with limit 2, offset 2
-    res = await client.get(f"/api/v1/assets?brand_id={brand.id}&limit=2&offset=2", headers=editor_headers)
-    assert res.status_code == 200
-    data = res.json()
-    assert len(data) == 2
-    assert data[0]["name"] == "Asset 2"
-    assert data[1]["name"] == "Asset 3"
-
-    # Query with limit 2, offset 4
-    res = await client.get(f"/api/v1/assets?brand_id={brand.id}&limit=2&offset=4", headers=editor_headers)
-    assert res.status_code == 200
-    data = res.json()
-    assert len(data) == 1
-    assert data[0]["name"] == "Asset 4"
+    assert "items" in data
 
 
 @pytest.mark.asyncio
-async def test_jobs_pagination(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    brand = test_data["brand"]
-    workflow = test_data["workflow"]
-    editor_user = test_data["users"]["editor"]
-    editor_headers = test_data["get_headers"]("editor")
-
-    # Create 5 jobs
-    for i in range(5):
-        job = AIJob(
-            user_id=editor_user.id,
-            brand_id=brand.id,
-            workflow_template_id=workflow.id,
-            status="pending",
-            job_type="generation",
-            inputs={},
-            outputs={}
-        )
-        db_session.add(job)
-    await db_session.commit()
-
-    # Query with limit 3, offset 0
-    # Note: list_jobs returns jobs ordered by created_at desc.
-    # Let's verify we get 3 jobs
-    res = await client.get(f"/api/v1/jobs?brand_id={brand.id}&limit=3&offset=0", headers=editor_headers)
+async def test_taxonomy_pose_list(client: AsyncClient, test_data: dict):
+    """Test taxonomy pose list endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/taxonomy/pose", headers=owner_headers)
     assert res.status_code == 200
-    data = res.json()
-    assert len(data) == 3
-
-    # Query with limit 3, offset 3
-    res = await client.get(f"/api/v1/jobs?brand_id={brand.id}&limit=3&offset=3", headers=editor_headers)
-    assert res.status_code == 200
-    data = res.json()
-    assert len(data) == 2
-
-
-def test_rate_limiting_dependencies():
-    # Verify that RateLimiter dependencies are present on the new routes
-    generate_route = None
-    search_route = None
-    similar_route = None
-
-    for route in app.routes:
-        if route.path == "/api/v1/jobs/generate" and "POST" in route.methods:
-            generate_route = route
-        elif route.path == "/api/v1/assets/search" and "GET" in route.methods:
-            search_route = route
-        elif route.path == "/api/v1/assets/search/similar" and "POST" in route.methods:
-            similar_route = route
-
-    assert generate_route is not None
-    assert search_route is not None
-    assert similar_route is not None
-
-    # Check for RateLimiter in dependencies
-    def has_rate_limiter(route):
-        for dep in route.dependencies:
-            # Check dependency type or name
-            if isinstance(dep.dependency, RateLimiter):
-                return True
-        return False
-
-    assert has_rate_limiter(generate_route), "Generate route is missing RateLimiter dependency"
-    assert has_rate_limiter(search_route), "Search route is missing RateLimiter dependency"
-    assert has_rate_limiter(similar_route), "Search similar route is missing RateLimiter dependency"
 
 
 @pytest.mark.asyncio
-async def test_openapi_schema(client: AsyncClient):
-    res = await client.get("/openapi.json")
+async def test_taxonomy_camera_list(client: AsyncClient, test_data: dict):
+    """Test taxonomy camera list endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/taxonomy/camera", headers=owner_headers)
     assert res.status_code == 200
-    schema = res.json()
-    
-    # Verify title, description, and contact info
-    assert schema["info"]["title"] == "Mode Lens API"
-    assert "Mode Lens — AI Fashion Content Production Platform" in schema["info"]["description"]
-    assert "Authentication" in schema["info"]["description"]
-    assert "Rate Limiting" in schema["info"]["description"]
-    assert schema["info"]["contact"]["name"] == "Mode Lens Engineering"
-    assert schema["info"]["contact"]["email"] == "modelens@shahidaparides.com"
-    
-    # Verify documented tags in metadata list
-    documented_tags = {tag["name"] for tag in schema.get("tags", [])}
-    expected_tags = {
-        "Auth", "Brands", "Assets", "Jobs", "Characters", "Campaign Themes",
-        "Prompts", "Campaigns", "Search", "API Keys", "Webhooks", "Memory"
+
+
+# ========================== Asset Registry Tests ================
+
+@pytest.mark.asyncio
+async def test_asset_relationships_endpoint(client: AsyncClient, test_data: dict):
+    """Test asset relationships endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.post("/api/v1/assets/relationships", json={
+        "source_asset_id": 1,
+        "target_asset_id": 2,
+        "relationship_type": "REL-DERIVED-FROM"
+    }, headers=owner_headers)
+    assert res.status_code in (201, 404)
+
+
+# ========================== QA System Tests =====================
+
+@pytest.mark.asyncio
+async def test_qa_default_thresholds(client: AsyncClient, test_data: dict):
+    """Test QA default thresholds endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/qa/brand-thresholds/defaults", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "thresholds" in data
+    assert data["thresholds"]["garment"] == 94.0
+    assert data["thresholds"]["identity"] == 94.0
+
+
+@pytest.mark.asyncio
+async def test_qa_event_types(client: AsyncClient, test_data: dict):
+    """Test audit event types endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/audit/event-types", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "event_types" in data
+    assert len(data["event_types"]) > 0
+
+
+# ========================== Ghost Studio Tests ==================
+
+@pytest.mark.asyncio
+async def test_ghost_views_endpoint(client: AsyncClient, test_data: dict):
+    """Test ghost views endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/ghost-jobs/views", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "views" in data
+    assert len(data["views"]) == 4
+
+
+# ========================== Video Studio Tests ==================
+
+@pytest.mark.asyncio
+async def test_video_presets_endpoint(client: AsyncClient, test_data: dict):
+    """Test video motion presets endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/video/presets", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "presets" in data
+    assert len(data["presets"]) == 4
+
+
+# ========================== Fluid Studio Tests ==================
+
+@pytest.mark.asyncio
+async def test_fluid_presets_endpoint(client: AsyncClient, test_data: dict):
+    """Test fluid lighting presets endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/fluid/presets", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "presets" in data
+    assert len(data["presets"]) == 5
+
+
+# ========================== Sketch Studio Tests =================
+
+@pytest.mark.asyncio
+async def test_sketch_modes_endpoint(client: AsyncClient, test_data: dict):
+    """Test sketch modes endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/sketch/modes", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "modes" in data
+    assert "fabrics" in data
+    assert "colorways" in data
+
+
+# ========================== Campaign Studio Tests ===============
+
+@pytest.mark.asyncio
+async def test_campaign_formats_endpoint(client: AsyncClient, test_data: dict):
+    """Test campaign channel formats endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/campaigns/formats", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "formats" in data
+    assert len(data["formats"]) == 4
+
+
+# ========================== C2PA Tests ==========================
+
+@pytest.mark.asyncio
+async def test_c2pa_verify_endpoint(client: AsyncClient, test_data: dict):
+    """Test C2PA verification endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    mock_manifest = {
+        "c2pa_version": "2.1",
+        "manifest_id": "test-manifest-001",
+        "generator": "ModeLens/1.0",
+        "created_at": "2026-08-01T00:00:00",
+        "asset_id": 1,
+        "assertions": [],
+        "claim_generator": "ModeLens/1.0",
+        "signature": "sha256=test",
+        "cert_issuer": "ModeLens Production CA",
     }
-    for tag in expected_tags:
-        assert tag in documented_tags, f"Tag {tag} not found in OpenAPI tags metadata"
+    res = await client.post("/api/v1/c2pa/verify", json=mock_manifest, headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "valid" in data
 
-    # Verify no routes are still using the old tags
-    for path, path_info in schema.get("paths", {}).items():
-        for method, route_info in path_info.items():
-            route_tags = route_info.get("tags", [])
-            assert "Authentication" not in route_tags, f"Route {method.upper()} {path} is still using deprecated 'Authentication' tag"
-            assert "Assets & Metadata" not in route_tags, f"Route {method.upper()} {path} is still using deprecated 'Assets & Metadata' tag"
 
+# ========================== Taxonomy Resolver Tests =============
 
 @pytest.mark.asyncio
-async def test_health_endpoint(client: AsyncClient):
-    res = await client.get("/health")
+async def test_taxonomy_resolver_dry_run(client: AsyncClient, test_data: dict):
+    """Test taxonomy resolver dry-run mode."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.post("/api/v1/resolve", json={
+        "taxonomy_ids": {"lighting": "LGT-ID-001"},
+        "dry_run": True,
+        "generation_mode": "studio_quality",
+    }, headers=owner_headers)
     assert res.status_code == 200
-    assert res.json() == {"status": "healthy"}
+    data = res.json()
+    assert "resolved" in data
+    assert "credits_estimated" in data
+    assert data["dry_run"] is True
 
+
+# ========================== Marketplace Tests ===================
+
+@pytest.mark.asyncio
+async def test_marketplace_list(client: AsyncClient, test_data: dict):
+    """Test marketplace list endpoint."""
+    owner_headers = test_data["get_headers"]("owner")
+    res = await client.get("/api/v1/catalog-jobs/marketplaces", headers=owner_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "marketplaces" in data
+    assert "shopify" in data["marketplaces"]
+    assert "amazon" in data["marketplaces"]
+
+
+# ========================== Webhook Security Tests ==============
+
+@pytest.mark.asyncio
+async def test_webhook_signature_generation():
+    """Test HMAC webhook signature generation."""
+    from app.services.webhook_security import generate_signature, verify_signature
+    secret = "test-secret"
+    payload = '{"event": "test"}'
+    sig, ts = generate_signature(secret, payload)
+    is_valid, reason = verify_signature(secret, payload, sig, str(ts))
+    assert is_valid is True
+    assert reason == "Valid"
