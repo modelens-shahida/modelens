@@ -4,7 +4,8 @@ import uuid
 import time
 from contextvars import ContextVar
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
+from app.services.tracing import tracing_middleware, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +47,7 @@ from app.routers.taxonomy_resolver import router as taxonomy_resolver_router
 from app.routers.qa import router as qa_router
 from app.routers.c2pa import router as c2pa_router
 from app.routers.audit import router as audit_router
+from app.routers.presigned_upload import router as presigned_upload_router
 from app.routers.templates_proxy import router as templates_proxy_router
 from app.routers.internal_callbacks import router as internal_callbacks_router
 from app.routers.angle_shots import router as angle_shots_router
@@ -219,6 +221,7 @@ app.include_router(taxonomy_resolver_router)
 app.include_router(qa_router)
 app.include_router(c2pa_router)
 app.include_router(audit_router)
+app.include_router(presigned_upload_router)
 app.include_router(templates_proxy_router)
 app.include_router(internal_callbacks_router)
 import sys
