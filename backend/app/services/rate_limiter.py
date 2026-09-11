@@ -132,4 +132,15 @@ class RateLimiter:
 
 
 # Singleton
-rate_limiter = RateLimiter()
+def get_rate_limiter() -> RateLimiter:
+    """Get rate limiter with Redis client from settings."""
+    try:
+        import redis.asyncio as aioredis
+        from app.config import settings
+        redis_client = aioredis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+        return RateLimiter(redis_client=redis_client)
+    except Exception as e:
+        print(f"[RateLimit] Redis connection failed: {e}")
+        return RateLimiter(redis_client=None)
+
+rate_limiter = get_rate_limiter()

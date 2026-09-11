@@ -4,6 +4,29 @@ import uuid
 import time
 from contextvars import ContextVar
 
+
+# ========================== Sentry & Error Handler ==============
+import os
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+# Sentry setup
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            integrations=[FastApiIntegration(), CeleryIntegration()],
+            traces_sample_rate=0.2,
+            environment=os.getenv("APP_ENV", "development"),
+        )
+        print("[Sentry] Initialized")
+except ImportError:
+    print("[Sentry] SDK not installed - skipping")
+
 from fastapi import FastAPI
 from app.services.tracing import tracing_middleware, Request, status
 from fastapi.responses import JSONResponse
@@ -84,7 +107,25 @@ for handler in logging.getLogger().handlers:
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
+
+
+async def check_db_migrations():
+    """Check if database migrations are up to date."""
+    try:
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+        from alembic.config import Config
+        import os
+
+        alembic_cfg = Config("alembic.ini")
+        script = ScriptDirectory.from_config(alembic_cfg)
+        head = script.get_current_head()
+        print(f"[Migration] Head revision: {head}")
+    except Exception as e:
+        print(f"[Migration] Check failed: {e}")
+
 async def lifespan(app: FastAPI):
+    await check_db_migrations()
     # Startup
     import asyncio
     asyncio.create_task(redis_pubsub_listener())
@@ -239,6 +280,23 @@ app.include_router(editorial_fluid_router)
 
 # --- Global Exception Handlers ---
 
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global error handler for all unhandled exceptions."""
+    import traceback
+    error_detail = str(exc)
+    print(f"[Error] Unhandled exception: {error_detail}")
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
+    except Exception:
+        pass
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": error_detail[:200]}
+    )
 @app.exception_handler(IntegrityError)
 async def db_integrity_exception_handler(request: Request, exc: IntegrityError):
     """Graceful handler for database unique constraints or foreign key violations."""

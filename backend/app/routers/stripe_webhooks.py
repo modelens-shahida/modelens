@@ -61,7 +61,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     else:
         try:
             import stripe
-            stripe.api_key = settings.STRIPE_API_KEY
+            stripe.api_key = settings.STRIPE_SECRET_KEY
             event = stripe.Webhook.construct_event(
                 payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
             )

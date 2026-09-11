@@ -69,7 +69,8 @@ class DLQService:
         """Publish DLQ event to Redis for monitoring."""
         try:
             import redis.asyncio as aioredis
-            r = aioredis.from_url("redis://localhost:6379")
+            from app.config import settings
+            r = aioredis.from_url(settings.REDIS_URL or "redis://localhost:6379")
             event = {
                 "type": "job.dlq_failure",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -86,7 +87,8 @@ class DLQService:
         """Get recent DLQ failed jobs."""
         try:
             import redis.asyncio as aioredis
-            r = aioredis.from_url("redis://localhost:6379")
+            from app.config import settings
+            r = aioredis.from_url(settings.REDIS_URL or "redis://localhost:6379")
             jobs = await r.lrange("dlq:failed_jobs", 0, limit - 1)
             await r.aclose()
             return [json.loads(j) for j in jobs]

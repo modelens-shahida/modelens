@@ -64,11 +64,12 @@ class FASHNService:
                     return response.json()
                 else:
                     logger.warning(f"FASHN API error status {response.status_code}: {response.text}")
-                    # Return mock success structure for fallback/demo
-                    return self._fallback_result(product_image_url, "product-to-model")
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=502, detail=f"FASHN API error: non-200 response")
         except Exception as e:
             logger.error(f"FASHN API connection exception: {str(e)}")
-            return self._fallback_result(product_image_url, "product-to-model")
+            from fastapi import HTTPException
+            raise HTTPException(status_code=502, detail=f"FASHN API unavailable: {str(e)}")
 
     async def generate_try_on_max(
         self,
@@ -107,10 +108,12 @@ class FASHNService:
                     return response.json()
                 else:
                     logger.warning(f"FASHN API error status {response.status_code}: {response.text}")
-                    return self._fallback_result(product_image_url, "try-on-max")
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=502, detail=f"FASHN API error: non-200 response")
         except Exception as e:
             logger.error(f"FASHN API connection exception: {str(e)}")
-            return self._fallback_result(product_image_url, "try-on-max")
+            from fastapi import HTTPException
+            raise HTTPException(status_code=502, detail=f"FASHN API unavailable: {str(e)}")
 
     def _fallback_result(self, product_url: str, mode: str) -> Dict[str, Any]:
         """Generates a demo fallback payload when FASHN API key is in sandbox mode."""
