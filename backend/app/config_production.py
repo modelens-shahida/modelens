@@ -11,12 +11,14 @@ REQUIRED_PRODUCTION_VARS = [
     ("REDIS_URL", "Redis connection string"),
     ("SECRET_KEY", "Application secret key"),
     ("STRIPE_SECRET_KEY", "Stripe live secret key"),
+    ("STRIPE_API_KEY", "Stripe API key alias"),
     ("STRIPE_WEBHOOK_SECRET", "Stripe webhook secret"),
     ("AWS_ACCESS_KEY_ID", "AWS access key for S3"),
     ("AWS_SECRET_ACCESS_KEY", "AWS secret key for S3"),
     ("AWS_S3_BUCKET", "S3 bucket name"),
     ("OPENAI_API_KEY", "OpenAI API key"),
     ("SENDGRID_API_KEY", "SendGrid API key"),
+    ("CDN_BASE_URL", "CDN base URL for asset delivery"),
     ("INTERNAL_CALLBACK_SECRET", "Internal callback secret"),
 ]
 

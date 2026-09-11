@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     MLFLOW_URI: str = Field(default="http://localhost:5000")
 
     # Stripe Billing
-    STRIPE_API_KEY: str = Field(default="sk_test_mock_key")
+    STRIPE_SECRET_KEY: str = Field(default="sk_test_mock_key")
     STRIPE_WEBHOOK_SECRET: str = Field(default="whsec_mock_secret")
     STRIPE_MOCK_MODE: bool = Field(default=True)
 

@@ -71,10 +71,11 @@ class TracingService:
 
         if self._otel_enabled:
             try:
-                with self._tracer.start_as_current_span(name) as otel_span:
-                    if attributes:
-                        for k, v in attributes.items():
-                            otel_span.set_attribute(k, str(v))
+                span = self._tracer.start_span(name)
+                if attributes:
+                    for k, v in attributes.items():
+                        span.set_attribute(k, str(v))
+                span["_otel_span"] = span
             except Exception:
                 pass
 

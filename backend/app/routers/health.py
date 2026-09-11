@@ -13,6 +13,21 @@ router = APIRouter(
 
 
 @router.get("")
+
+
+async def check_celery_workers() -> dict:
+    """Check if Celery workers are alive."""
+    try:
+        from app.worker import celery_app
+        inspector = celery_app.control.inspect(timeout=3)
+        ping = inspector.ping()
+        if ping:
+            worker_count = len(ping)
+            return {"status": "healthy", "workers": worker_count}
+        return {"status": "unhealthy", "workers": 0, "error": "No workers responded"}
+    except Exception as e:
+        return {"status": "unhealthy", "workers": 0, "error": str(e)}
+
 async def health_check():
     """
     Detailed health check endpoint.
