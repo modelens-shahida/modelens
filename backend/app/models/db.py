@@ -1135,3 +1135,122 @@ async def get_db():
             yield session
         finally:
             await session.close()
+
+# ========================== Character Registry ====================
+
+class CharacterIdentityProfile(Base):
+    __tablename__ = "character_identity_profiles"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), unique=True, nullable=False)
+    workspace_id = Column(String(50), nullable=True)
+    internal_name = Column(String(100), nullable=True)
+    display_name = Column(String(100), nullable=True)
+    status = Column(String(50), default="CHAR_CONCEPT")
+    age_anchor = Column(Integer, nullable=True)
+    face_shape = Column(String(20), nullable=True)
+    eye_shape = Column(String(20), nullable=True)
+    eye_spacing = Column(String(20), nullable=True)
+    nose_bridge = Column(String(20), nullable=True)
+    nose_width = Column(String(20), nullable=True)
+    cheekbone_height = Column(String(20), nullable=True)
+    jaw_width = Column(String(20), nullable=True)
+    chin_shape = Column(String(20), nullable=True)
+    identity_markers = Column(JSONB, nullable=True)
+    locked_fields = Column(JSONB, nullable=True)
+    customer_visible = Column(Boolean, default=False)
+    production_enabled = Column(Boolean, default=False)
+    golden_character_version = Column(String(10), nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterBodyProfile(Base):
+    __tablename__ = "character_body_profiles"
+
+    id = Column(Integer, primary_key=True)
+    body_profile_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=False)
+    height_cm = Column(Float, nullable=True)
+    height_band = Column(String(10), nullable=True)
+    build_code = Column(String(10), nullable=True)
+    frame_code = Column(String(10), nullable=True)
+    head_body_ratio = Column(Float, nullable=True)
+    shoulders_width = Column(String(10), nullable=True)
+    shoulders_slope = Column(String(10), nullable=True)
+    torso_length = Column(String(10), nullable=True)
+    waist_position = Column(String(10), nullable=True)
+    hip_width = Column(String(10), nullable=True)
+    leg_proportion = Column(String(10), nullable=True)
+    arm_length = Column(String(10), nullable=True)
+    status = Column(String(30), default="DRAFT")
+    version = Column(String(10), default="1.0")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CharacterSkinProfile(Base):
+    __tablename__ = "character_skin_profiles"
+
+    id = Column(Integer, primary_key=True)
+    skin_profile_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=False)
+    depth_code = Column(String(10), nullable=True)
+    undertone_code = Column(String(10), nullable=True)
+    chroma_code = Column(String(10), nullable=True)
+    translucency_code = Column(String(10), nullable=True)
+    pore_density = Column(String(10), nullable=True)
+    pore_visibility = Column(String(10), nullable=True)
+    microtexture = Column(String(10), nullable=True)
+    vellus_hair = Column(String(10), nullable=True)
+    under_eye_texture = Column(String(10), nullable=True)
+    sebum_code = Column(String(10), nullable=True)
+    age_profile = Column(String(10), nullable=True)
+    permanent_markers = Column(JSONB, nullable=True)
+    status = Column(String(30), default="DRAFT")
+    version = Column(String(10), default="1.0")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CharacterHairProfile(Base):
+    __tablename__ = "character_hair_profiles"
+
+    id = Column(Integer, primary_key=True)
+    hair_dna_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=False)
+    natural_color = Column(String(15), nullable=True)
+    undertone = Column(String(15), nullable=True)
+    hairline = Column(String(15), nullable=True)
+    density = Column(String(15), nullable=True)
+    strand_thickness = Column(String(15), nullable=True)
+    natural_texture = Column(String(15), nullable=True)
+    canonical_length = Column(String(15), nullable=True)
+    canonical_part = Column(String(15), nullable=True)
+    status = Column(String(30), default="DRAFT")
+    version = Column(String(10), default="1.0")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CharacterRuntimeProfile(Base):
+    __tablename__ = "character_runtime_profiles"
+
+    id = Column(Integer, primary_key=True)
+    runtime_profile_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=False)
+    character_version = Column(String(10), nullable=True)
+    identity_profile_id = Column(String(50), nullable=True)
+    body_profile_id = Column(String(50), nullable=True)
+    skin_profile_id = Column(String(50), nullable=True)
+    hair_profile_id = Column(String(50), nullable=True)
+    production_model_alias = Column(String(100), nullable=True)
+    default_strength = Column(Float, default=0.78)
+    approved_workflows = Column(JSONB, nullable=True)
+    strength_overrides = Column(JSONB, nullable=True)
+    status = Column(String(30), default="DRAFT")
+    production_enabled = Column(Boolean, default=False)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

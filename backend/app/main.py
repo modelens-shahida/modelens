@@ -45,6 +45,7 @@ from app.routers.characters import router as characters_router
 from app.routers.video_projects import router as video_projects_router
 from app.routers.fluid import router as fluid_router
 from app.routers.sketch_studio import router as sketch_studio_router
+from app.routers.character_registry import router as character_registry_router
 from app.routers.campaign_generation import router as campaign_generation_router, gen_router as generation_jobs_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
@@ -236,6 +237,7 @@ app.include_router(characters_router)
 app.include_router(video_projects_router)
 app.include_router(fluid_router)
 app.include_router(sketch_studio_router)
+app.include_router(character_registry_router)
 app.include_router(prompts_router)
 app.include_router(themes_router)
 app.include_router(search_router)
