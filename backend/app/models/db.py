@@ -1254,3 +1254,106 @@ class CharacterRuntimeProfile(Base):
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+# ========================== Provider Abstraction =================
+
+class Provider(Base):
+    __tablename__ = "providers"
+
+    id = Column(Integer, primary_key=True)
+    provider_id = Column(String(50), unique=True, nullable=False)
+    display_name = Column(String(100), nullable=False)
+    provider_type = Column(String(50), nullable=False)
+    status = Column(String(30), default="ACTIVE")
+    capabilities = Column(JSONB, nullable=True)
+    latency_profile = Column(String(20), nullable=True)
+    cost_profile = Column(String(20), nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class ProviderModel(Base):
+    __tablename__ = "provider_models"
+
+    id = Column(Integer, primary_key=True)
+    model_id = Column(String(50), unique=True, nullable=False)
+    provider_id = Column(String(50), nullable=False)
+    display_name = Column(String(100), nullable=True)
+    model_type = Column(String(50), nullable=True)
+    status = Column(String(30), default="ACTIVE")
+    capabilities = Column(JSONB, nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class ProviderRoute(Base):
+    __tablename__ = "provider_routes"
+
+    id = Column(Integer, primary_key=True)
+    route_id = Column(String(50), unique=True, nullable=False)
+    workflow_id = Column(String(50), nullable=False)
+    quality_mode = Column(String(30), nullable=False)
+    provider_id = Column(String(50), nullable=False)
+    model_id = Column(String(50), nullable=True)
+    priority = Column(Integer, default=1)
+    status = Column(String(30), default="ACTIVE")
+    fallback_route_id = Column(String(50), nullable=True)
+    avg_latency_ms = Column(Integer, nullable=True)
+    avg_qa_score = Column(Float, nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class RoutingPolicy(Base):
+    __tablename__ = "routing_policies"
+
+    id = Column(Integer, primary_key=True)
+    policy_id = Column(String(50), unique=True, nullable=False)
+    workflow_id = Column(String(50), nullable=False)
+    quality_mode = Column(String(30), nullable=False)
+    primary_route_id = Column(String(50), nullable=False)
+    fallback_route_id = Column(String(50), nullable=True)
+    fallback_class = Column(String(30), default="FALLBACK-EQUIVALENT")
+    rules = Column(JSONB, nullable=True)
+    status = Column(String(30), default="ACTIVE")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+# ========================== Pose Geometry Separation =============
+
+class PoseGeometryPreset(Base):
+    __tablename__ = "pose_geometry_presets"
+
+    id = Column(Integer, primary_key=True)
+    preset_id = Column(String(50), unique=True, nullable=False)
+    display_name = Column(String(100), nullable=False)
+    family = Column(String(50), nullable=True)
+
+    # Body geometry - independent
+    body_yaw = Column(String(20), nullable=True)
+    body_pitch = Column(String(20), nullable=True)
+    body_roll = Column(String(20), nullable=True)
+
+    # Head geometry - independent from body
+    head_yaw = Column(String(20), nullable=True)
+    head_pitch = Column(String(20), nullable=True)
+    head_roll = Column(String(20), nullable=True)
+
+    # Gaze and expression - independent
+    gaze = Column(String(20), nullable=True)
+    expression_id = Column(String(30), nullable=True)
+
+    # Stance
+    stance_id = Column(String(20), nullable=True)
+    weight_distribution = Column(String(20), nullable=True)
+    arm_config = Column(String(20), nullable=True)
+    leg_config = Column(String(20), nullable=True)
+
+    complexity = Column(String(20), nullable=True)
+    risk = Column(String(20), nullable=True)
+    customer_visible = Column(Boolean, default=True)
+    status = Column(String(30), default="APPROVED")
+    version = Column(String(10), default="1.0")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
