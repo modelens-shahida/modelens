@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import AutoFilenameGenerator from "@/components/dashboard/AutoFilenameGenerator";
 import CharacterReferenceSetManager from "@/components/dashboard/CharacterReferenceSetManager";
+import CharacterRegistryManager from "@/components/dashboard/CharacterRegistryManager";
 import { 
   User, 
   CheckCircle2, 
@@ -15,7 +16,8 @@ import {
   Activity, 
   Sliders, 
   Eye, 
-  Award 
+  Award,
+  Dna
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -69,7 +71,7 @@ const GOLDEN_GATES = [
 ];
 
 export default function GoldenCharacterHubPage() {
-  const [activeTab, setActiveTab] = useState("coverage"); // "coverage" | "references" | "generator"
+  const [activeTab, setActiveTab] = useState("registry"); // "registry" | "coverage" | "references" | "generator"
 
   const totalSlots = ELISKA_CANONICAL_SLOTS.reduce((acc, g) => acc + g.total, 0);
   const filledSlots = ELISKA_CANONICAL_SLOTS.reduce((acc, g) => acc + g.filled, 0);
@@ -121,6 +123,17 @@ export default function GoldenCharacterHubPage() {
         {/* Tab Navigation */}
         <div className="flex gap-2 border-b border-zinc-800 pb-3">
           <button
+            onClick={() => setActiveTab("registry")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
+              activeTab === "registry"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                : "bg-zinc-900 text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Dna className="w-4 h-4" />
+            Character Registry (P2 Profiles)
+          </button>
+          <button
             onClick={() => setActiveTab("coverage")}
             className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
               activeTab === "coverage"
@@ -154,6 +167,13 @@ export default function GoldenCharacterHubPage() {
             Auto-Filename Generator
           </button>
         </div>
+
+        {/* Tab 0: P2 Character Registry Multi-Profiles */}
+        {activeTab === "registry" && (
+          <div>
+            <CharacterRegistryManager initialCharacterId="EE-F-002" />
+          </div>
+        )}
 
         {/* Tab 1: Coverage & Golden Gates */}
         {activeTab === "coverage" && (
