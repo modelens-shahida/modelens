@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { taxonomyResolverApi } from "@/lib/taxonomyResolverApi";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
-import { Search, Filter, CheckCircle2, XCircle, Clock, ChevronDown, Loader2, Sparkles, Cpu, Layers, Sliders } from "lucide-react";
+import ProviderRegistryManager from "@/components/dashboard/ProviderRegistryManager";
+import { Search, Filter, CheckCircle2, XCircle, Clock, ChevronDown, Loader2, Sparkles, Cpu, Layers, Sliders, ArrowRightLeft } from "lucide-react";
 import toast from "react-hot-toast";
 
 const TAXONOMY_TYPES = [
@@ -26,7 +27,7 @@ const STATUS_CONFIG = {
 };
 
 export default function TaxonomyAdminPage() {
-  const [mainTab, setMainTab] = useState("registry"); // "registry" | "resolver" | "nodemaps"
+  const [mainTab, setMainTab] = useState("providers"); // "providers" | "registry" | "resolver" | "nodemaps"
   const [activeType, setActiveType] = useState("lighting");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -123,6 +124,17 @@ export default function TaxonomyAdminPage() {
         {/* Main Navigation Tabs */}
         <div className="flex gap-2 border-b border-zinc-800 pb-3">
           <button
+            onClick={() => setMainTab("providers")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
+              mainTab === "providers"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                : "bg-zinc-900 text-zinc-400 hover:text-white"
+            }`}
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            Provider Abstraction & Pose Geometry
+          </button>
+          <button
             onClick={() => setMainTab("registry")}
             className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
               mainTab === "registry"
@@ -156,6 +168,13 @@ export default function TaxonomyAdminPage() {
             ComfyUI Node Maps
           </button>
         </div>
+
+        {/* Tab 0: Provider Abstraction & Decoupled Pose */}
+        {mainTab === "providers" && (
+          <div>
+            <ProviderRegistryManager />
+          </div>
+        )}
 
         {/* Tab 1: Taxonomy Registry */}
         {mainTab === "registry" && (
