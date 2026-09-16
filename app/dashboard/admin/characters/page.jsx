@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import AutoFilenameGenerator from "@/components/dashboard/AutoFilenameGenerator";
 import CharacterReferenceSetManager from "@/components/dashboard/CharacterReferenceSetManager";
 import CharacterRegistryManager from "@/components/dashboard/CharacterRegistryManager";
+import P3DatasetTrainingStudio from "@/components/dashboard/P3DatasetTrainingStudio";
 import { 
   User, 
   CheckCircle2, 
@@ -17,7 +18,8 @@ import {
   Sliders, 
   Eye, 
   Award,
-  Dna
+  Dna,
+  FlaskConical
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -121,7 +123,18 @@ export default function GoldenCharacterHubPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-2 border-b border-zinc-800 pb-3">
+        <div className="flex gap-2 border-b border-zinc-800 pb-3 flex-wrap">
+          <button
+            onClick={() => setActiveTab("p3datasets")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
+              activeTab === "p3datasets"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                : "bg-zinc-900 text-zinc-400 hover:text-white"
+            }`}
+          >
+            <FlaskConical className="w-4 h-4" />
+            P3 Datasets & MLflow Staging
+          </button>
           <button
             onClick={() => setActiveTab("registry")}
             className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
@@ -167,6 +180,13 @@ export default function GoldenCharacterHubPage() {
             Auto-Filename Generator
           </button>
         </div>
+
+        {/* Tab 0: P3 Datasets & MLflow Staging */}
+        {activeTab === "p3datasets" && (
+          <div>
+            <P3DatasetTrainingStudio characterId="EE-F-002" />
+          </div>
+        )}
 
         {/* Tab 0: P2 Character Registry Multi-Profiles */}
         {activeTab === "registry" && (
