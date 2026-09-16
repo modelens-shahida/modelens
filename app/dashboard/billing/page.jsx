@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import PreservationConstraintStudio from "@/components/dashboard/PreservationConstraintStudio";
 import { CreditCard, ArrowRight, Loader2, Coins, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
@@ -406,6 +407,11 @@ export default function BillingPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* SHA-256 Immutable Credit Ledger & Preservation Studio */}
+      <div className="pt-6 border-t border-zinc-900">
+        <PreservationConstraintStudio brandId={brands[0]?.id || 1} />
       </div>
     </div>
   );
