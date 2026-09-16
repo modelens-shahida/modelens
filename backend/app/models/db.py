@@ -1357,3 +1357,144 @@ class PoseGeometryPreset(Base):
     version = Column(String(10), default="1.0")
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+# ========================== P3 Dataset Registry ==================
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=True)
+    workspace_id = Column(String(50), nullable=True)
+    display_name = Column(String(100), nullable=False)
+    purpose = Column(String(30), nullable=False)
+    split = Column(String(20), default="TRAIN")
+    status = Column(String(30), default="DRAFT")
+    total_items = Column(Integer, default=0)
+    frozen = Column(Boolean, default=False)
+    frozen_at = Column(DateTime, nullable=True)
+    manifest = Column(JSONB, nullable=True)
+    rights_snapshot = Column(JSONB, nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class DatasetItem(Base):
+    __tablename__ = "dataset_items"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(String(50), nullable=False)
+    asset_id = Column(Integer, nullable=True)
+    asset_version = Column(Integer, default=1)
+    split = Column(String(20), default="TRAIN")
+    sample_weight = Column(Float, default=1.0)
+    training_eligible = Column(Boolean, default=True)
+    training_permission = Column(String(20), default="ALLOWED")
+    caption = Column(Text, nullable=True)
+    caption_version = Column(Integer, default=1)
+    status = Column(String(20), default="APPROVED")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class DatasetAnnotation(Base):
+    __tablename__ = "dataset_annotations"
+
+    id = Column(Integer, primary_key=True)
+    dataset_item_id = Column(Integer, nullable=False)
+    annotation_type = Column(String(50), nullable=False)
+    annotation_data = Column(JSONB, nullable=True)
+    annotated_by = Column(String(50), nullable=True)
+    confidence = Column(Float, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+# ========================== P3 Training Experiment Registry ======
+
+class ExperimentRun(Base):
+    __tablename__ = "experiment_runs"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(String(50), unique=True, nullable=False)
+    experiment_name = Column(String(100), nullable=False)
+    character_id = Column(String(50), nullable=True)
+    dataset_id = Column(String(50), nullable=True)
+    base_model = Column(String(100), nullable=True)
+    adapter_type = Column(String(50), nullable=True)
+    training_token = Column(String(50), nullable=True)
+    status = Column(String(30), default="QUEUED")
+    mlflow_run_id = Column(String(100), nullable=True)
+    mlflow_experiment_id = Column(String(100), nullable=True)
+    hyperparameters = Column(JSONB, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class ExperimentMetric(Base):
+    __tablename__ = "experiment_metrics"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(String(50), nullable=False)
+    metric_name = Column(String(50), nullable=False)
+    metric_value = Column(Float, nullable=False)
+    step = Column(Integer, nullable=True)
+    epoch = Column(Integer, nullable=True)
+    recorded_at = Column(DateTime, server_default=func.now())
+
+
+# ========================== P3 Model Lifecycle ===================
+
+class ModelArtifact(Base):
+    __tablename__ = "model_artifacts"
+
+    id = Column(Integer, primary_key=True)
+    model_id = Column(String(50), unique=True, nullable=False)
+    run_id = Column(String(50), nullable=True)
+    character_id = Column(String(50), nullable=True)
+    dataset_id = Column(String(50), nullable=True)
+    adapter_type = Column(String(50), nullable=True)
+    base_model = Column(String(100), nullable=True)
+    storage_path = Column(String(500), nullable=True)
+    checksum_sha256 = Column(String(64), nullable=True)
+    file_size_bytes = Column(BigInteger, nullable=True)
+    status = Column(String(30), default="EXPERIMENTAL")
+    production_alias = Column(String(100), nullable=True)
+    version_major = Column(Integer, default=1)
+    version_minor = Column(Integer, default=0)
+    supersedes_model_id = Column(String(50), nullable=True)
+    identity_score = Column(Float, nullable=True)
+    qa_score = Column(Float, nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# ========================== P3 Rights Registry ===================
+
+class RightsRegistry(Base):
+    __tablename__ = "rights_registry"
+
+    id = Column(Integer, primary_key=True)
+    rights_id = Column(String(50), unique=True, nullable=False)
+    resource_type = Column(String(50), nullable=False)
+    resource_id = Column(String(100), nullable=False)
+    workspace_id = Column(String(50), nullable=True)
+    ownership_status = Column(String(30), default="OWN-UNKNOWN")
+    source_type = Column(String(30), default="SRC-UNKNOWN")
+    generation_allowed = Column(Boolean, default=True)
+    commercial_allowed = Column(Boolean, default=True)
+    publication_allowed = Column(Boolean, default=True)
+    training_allowed = Column(Boolean, default=False)
+    internal_improvement_allowed = Column(Boolean, default=False)
+    consent_status = Column(String(30), default="CONSENT-PENDING")
+    rights_status = Column(String(30), default="RIGHTS-UNKNOWN")
+    license_id = Column(String(50), nullable=True)
+    expiration_date = Column(DateTime, nullable=True)
+    evidence_reference = Column(String(200), nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
