@@ -4,8 +4,8 @@ import Wrapper from "@/components/Wrapper";
 import Providers from "./providers";
 
 export const metadata = {
-  title: "ModeLens",
-  description: "AI Fashion Store Clone",
+  title: "ModeLens | AI Generative Fashion Models & Volumetric CAD Studio",
+  description: "Empowering global fashion brands with synthetic AI models, 3D volumetric ghost mannequins, ControlNet sketch-to-product CAD, and omnichannel campaign generation.",
 };
 
 export default function RootLayout({ children }) {
