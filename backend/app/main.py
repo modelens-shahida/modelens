@@ -27,8 +27,8 @@ try:
 except ImportError:
     print("[Sentry] SDK not installed - skipping")
 
-from fastapi import FastAPI
-from app.services.tracing import tracing_middleware, Request, status
+from fastapi import FastAPI, Request, status
+from app.services.tracing import tracing_middleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,7 +48,7 @@ from app.routers.sketch_studio import router as sketch_studio_router
 from app.routers.character_registry import router as character_registry_router
 from app.routers.preservation import router as preservation_router
 from app.routers.p3_registry import router as p3_registry_router
-from app.routers.campaign_generation import router as campaign_generation_router, gen_router as generation_jobs_router
+from app.routers.campaign_generation import router as campaign_generation_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
 from app.routers.search import router as search_router
@@ -233,6 +233,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.include_router(auth_router)
 app.include_router(assets_router)
 app.include_router(brands_router)
+app.include_router(campaign_generation_router)
 app.include_router(campaigns_router)
 app.include_router(jobs_router)
 app.include_router(characters_router)
@@ -256,7 +257,6 @@ app.include_router(fix_requests_router)
 app.include_router(admin_stats_router)
 app.include_router(admin_settings_router)
 app.include_router(analytics_router)
-app.include_router(campaign_generation_router)
 app.include_router(campaign_templates_router)
 app.include_router(ghost_jobs_router)
 app.include_router(sketch_jobs_router)
@@ -274,7 +274,6 @@ app.include_router(internal_callbacks_router)
 import sys
 if "pytest" in sys.modules or os.getenv("TESTING") == "true":
     app.include_router(angle_shots_router)
-app.include_router(generation_jobs_router)
 app.include_router(editorial_assets_router)
 app.include_router(health_router)
 app.include_router(notifications_router)

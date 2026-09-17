@@ -33,7 +33,11 @@ class GhostJobCreate(BaseModel):
     generation_mode: Optional[str] = "studio"
 
 
-# ========================== Endpoints ============================
+@router.get("/views")
+async def get_ghost_views():
+    """Get available ghost mannequin views."""
+    return {"views": ["front", "back", "side", "flatlay"]}
+
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_ghost_job(

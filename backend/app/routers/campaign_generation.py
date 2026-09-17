@@ -19,6 +19,11 @@ CHANNEL_FORMATS = {
     "print_catalog": {"aspect_ratio": "4:5", "width": 1080, "height": 1350, "label": "Print Catalog"},
 }
 
+@router.get("/formats")
+async def get_campaign_formats():
+    """Get available campaign channel formats."""
+    return {"formats": list(CHANNEL_FORMATS.values())}
+
 
 # ========================== Schemas ==============================
 

@@ -30,6 +30,12 @@ class CatalogJobCreate(BaseModel):
     products: List[dict] = Field(default_factory=list)
 
 
+@router.get("/marketplaces")
+async def get_marketplaces():
+    """Get supported marketplace channels."""
+    return {"marketplaces": ["shopify", "amazon", "myntra", "woocommerce"]}
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_catalog_job(
     request: Request,

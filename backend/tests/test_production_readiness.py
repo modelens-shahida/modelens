@@ -16,7 +16,7 @@ async def test_user_signup_flow(client: AsyncClient):
     res = await client.post("/api/v1/auth/register", json={
         "email": "test@modelens.ai",
         "password": "TestPass123!",
-        "name": "Test User",
+        "full_name": "Test User",
     })
     assert res.status_code in (200, 201, 409)
 

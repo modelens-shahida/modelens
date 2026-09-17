@@ -2,6 +2,9 @@ from datetime import datetime
 from typing import Optional
 import sqlalchemy as sa
 from sqlalchemy import (
+    Column,
+    Float,
+    BigInteger,
     String,
     Integer,
     DateTime,
@@ -1093,7 +1096,7 @@ class WorkflowNodeMap(Base):
 
 
 
-class AuditLog(Base):
+class AuditLogV2(Base):
     __tablename__ = "audit_logs_v2"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1103,7 +1106,7 @@ class AuditLog(Base):
     brand_id: Mapped[Optional[int]] = mapped_column(ForeignKey("brands.id", ondelete="SET NULL"), nullable=True, index=True)
     resource_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     resource_id: Mapped[Optional[int]] = mapped_column(nullable=True)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    log_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     severity: Mapped[str] = mapped_column(String(20), default="INFO")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
