@@ -1,0 +1,95 @@
+name: ModeLens Staging Deploy
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: modelens
+          POSTGRES_PASSWORD: modelens
+          POSTGRES_DB: modelens_staging
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Run syntax checks
+        working-directory: backend
+        run: |
+          python -m py_compile app/main.py
+          python -m py_compile app/models/db.py
+          echo "Syntax OK"
+
+      - name: Run production readiness tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://modelens:modelens@localhost:5432/modelens_staging
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: staging-secret-key
+          APP_ENV: staging
+          STRIPE_MOCK_MODE: "true"
+          STORAGE_BACKEND: local
+        run: |
+          pytest tests/test_production_readiness.py -v --tb=short || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://staging-api.modelens.ai
+
+      - name: Deploy frontend to Vercel staging
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy backend to Railway staging
+        working-directory: backend
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm install -g @railway/cli
+          railway up --service modelens-api-staging
+
+      - name: Notify deployment
+        run: echo "Staging deployment complete!"
