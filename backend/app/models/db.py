@@ -1501,3 +1501,303 @@ class RightsRegistry(Base):
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+# ========================== Character Registry V2 ================
+
+class CharacterV2(Base):
+    __tablename__ = "characters_v2"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), unique=True, nullable=False)
+    display_name = Column(String(100), nullable=False)
+    internal_name = Column(String(100), nullable=True)
+    workspace_id = Column(String(50), nullable=True)
+    gender_presentation = Column(String(20), nullable=True)
+    status = Column(String(30), default="DEVELOPMENT")
+    current_version = Column(String(10), default="0.1")
+    customer_visible = Column(Boolean, default=False)
+    production_enabled = Column(Boolean, default=False)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterVersion(Base):
+    __tablename__ = "character_versions"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+    status = Column(String(30), default="DEVELOPMENT")
+    locked = Column(Boolean, default=False)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by = Column(String(100), nullable=True)
+    promoted_to_production = Column(Boolean, default=False)
+    promoted_at = Column(DateTime, nullable=True)
+    taxonomy_version = Column(String(20), nullable=True)
+    dna_snapshot = Column(JSONB, nullable=True)
+    qa_snapshot = Column(JSONB, nullable=True)
+    release_notes = Column(Text, nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterIdentityDNA(Base):
+    __tablename__ = "character_identity_dna"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+
+    # Face geometry
+    face_shape = Column(String(20), nullable=True)
+    face_width = Column(String(20), nullable=True)
+    face_length = Column(String(20), nullable=True)
+    face_symmetry = Column(String(20), nullable=True)
+
+    # Eye characteristics
+    eye_shape = Column(String(20), nullable=True)
+    eye_size = Column(String(20), nullable=True)
+    eye_spacing = Column(String(20), nullable=True)
+    eye_color = Column(String(20), nullable=True)
+    eye_depth = Column(String(20), nullable=True)
+    eye_angle = Column(String(20), nullable=True)
+
+    # Brow
+    brow_shape = Column(String(20), nullable=True)
+    brow_thickness = Column(String(20), nullable=True)
+    brow_position = Column(String(20), nullable=True)
+    brow_arch = Column(String(20), nullable=True)
+
+    # Nose
+    nose_bridge = Column(String(20), nullable=True)
+    nose_width = Column(String(20), nullable=True)
+    nose_length = Column(String(20), nullable=True)
+    nose_tip = Column(String(20), nullable=True)
+    nose_profile = Column(String(20), nullable=True)
+
+    # Mouth/lips
+    lip_shape = Column(String(20), nullable=True)
+    lip_fullness = Column(String(20), nullable=True)
+    lip_width = Column(String(20), nullable=True)
+    mouth_position = Column(String(20), nullable=True)
+    philtrum = Column(String(20), nullable=True)
+
+    # Cheeks
+    cheekbone_height = Column(String(20), nullable=True)
+    cheekbone_prominence = Column(String(20), nullable=True)
+    cheek_fullness = Column(String(20), nullable=True)
+
+    # Jaw/chin
+    jaw_width = Column(String(20), nullable=True)
+    jaw_angle = Column(String(20), nullable=True)
+    chin_shape = Column(String(20), nullable=True)
+    chin_projection = Column(String(20), nullable=True)
+
+    # Hairline and ears
+    hairline_shape = Column(String(20), nullable=True)
+    hairline_height = Column(String(20), nullable=True)
+    ear_size = Column(String(20), nullable=True)
+    ear_position = Column(String(20), nullable=True)
+
+    # Identity anchors
+    age_anchor = Column(Integer, nullable=True)
+    gender_presentation = Column(String(20), nullable=True)
+    identity_markers = Column(JSONB, nullable=True)
+    landmark_profile = Column(JSONB, nullable=True)
+
+    status = Column(String(20), default="DRAFT")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterBodyDNA(Base):
+    __tablename__ = "character_body_dna"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+
+    # Height and stature
+    canonical_height_cm = Column(Float, nullable=True)
+    height_status = Column(String(20), default="ESTIMATED")
+    stature_class = Column(String(30), nullable=True)
+    body_scale_class = Column(String(20), nullable=True)
+    body_archetype = Column(String(50), nullable=True)
+    visual_stature_target = Column(String(30), nullable=True)
+    proportion_profile_id = Column(String(50), nullable=True)
+
+    # Head and torso
+    head_to_body_ratio = Column(String(20), nullable=True)
+    shoulder_width_class = Column(String(20), nullable=True)
+    ribcage_profile = Column(String(20), nullable=True)
+    bust_profile = Column(String(20), nullable=True)
+    waist_profile = Column(String(20), nullable=True)
+    pelvis_profile = Column(String(20), nullable=True)
+    hip_profile = Column(String(20), nullable=True)
+
+    # Torso proportions
+    torso_length = Column(String(20), nullable=True)
+    waist_height = Column(String(20), nullable=True)
+    pelvis_height = Column(String(20), nullable=True)
+
+    # Leg proportions
+    femur_ratio = Column(String(20), nullable=True)
+    knee_height = Column(String(20), nullable=True)
+    tibia_ratio = Column(String(20), nullable=True)
+    thigh_profile = Column(String(20), nullable=True)
+    calf_profile = Column(String(20), nullable=True)
+    ankle_profile = Column(String(20), nullable=True)
+    foot_scale = Column(String(20), nullable=True)
+
+    # Arm proportions
+    upper_arm_ratio = Column(String(20), nullable=True)
+    forearm_ratio = Column(String(20), nullable=True)
+    hand_scale = Column(String(20), nullable=True)
+
+    status = Column(String(20), default="DRAFT")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterAppearanceProfile(Base):
+    __tablename__ = "character_appearance_profiles"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+
+    # Base skin
+    skin_depth_code = Column(String(15), nullable=True)
+    skin_undertone = Column(String(15), nullable=True)
+    skin_chroma = Column(String(15), nullable=True)
+    skin_texture = Column(String(15), nullable=True)
+    skin_pore_density = Column(String(15), nullable=True)
+
+    # Base hair
+    hair_color = Column(String(20), nullable=True)
+    hair_undertone = Column(String(20), nullable=True)
+    hair_texture = Column(String(20), nullable=True)
+    hair_density = Column(String(20), nullable=True)
+    hair_canonical_length = Column(String(20), nullable=True)
+    hair_canonical_style = Column(String(30), nullable=True)
+
+    # Base makeup
+    makeup_base = Column(String(20), default="MINIMAL")
+    makeup_profile = Column(JSONB, nullable=True)
+
+    status = Column(String(20), default="DRAFT")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CanonicalAsset(Base):
+    __tablename__ = "canonical_assets"
+
+    id = Column(Integer, primary_key=True)
+    asset_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+    asset_role = Column(String(50), nullable=False)
+    framing = Column(String(30), nullable=True)
+    angle_code = Column(String(10), nullable=True)
+
+    # Structured geometry
+    camera_yaw_deg = Column(Float, default=0.0)
+    camera_pitch_deg = Column(Float, default=0.0)
+    camera_roll_deg = Column(Float, default=0.0)
+    body_yaw_deg = Column(Float, default=0.0)
+    head_relative_to_body_deg = Column(Float, default=0.0)
+    head_pitch_deg = Column(Float, default=0.0)
+    head_roll_deg = Column(Float, default=0.0)
+    gaze = Column(String(20), default="FOLLOW_HEAD")
+    expression = Column(String(20), default="NEUTRAL")
+    pose_id = Column(String(30), nullable=True)
+
+    # File info
+    filename = Column(String(500), nullable=True)
+    original_filename = Column(String(500), nullable=True)
+    storage_path = Column(String(1000), nullable=True)
+    content_hash_sha256 = Column(String(64), nullable=True)
+    width_px = Column(Integer, nullable=True)
+    height_px = Column(Integer, nullable=True)
+    mime_type = Column(String(50), nullable=True)
+
+    # QA
+    identity_qa = Column(String(20), default="NOT_REVIEWED")
+    body_qa = Column(String(20), default="NOT_REVIEWED")
+    hands_qa = Column(String(20), default="NOT_REVIEWED")
+    feet_qa = Column(String(20), default="NOT_REVIEWED")
+    angle_qa = Column(String(20), default="NOT_REVIEWED")
+    artifact_qa = Column(String(20), default="NOT_REVIEWED")
+    overall_qa_status = Column(String(20), default="NOT_REVIEWED")
+
+    # Eligibility
+    training_eligible = Column(Boolean, default=False)
+    validation_eligible = Column(Boolean, default=False)
+    production_reference_eligible = Column(Boolean, default=False)
+
+    # Asset lineage
+    parent_asset_ids = Column(JSONB, nullable=True)
+    source_asset_ids = Column(JSONB, nullable=True)
+    workflow_id = Column(String(50), nullable=True)
+    workflow_version = Column(String(20), nullable=True)
+    prompt_version = Column(String(20), nullable=True)
+    taxonomy_version = Column(String(20), nullable=True)
+    seed = Column(BigInteger, nullable=True)
+    generation_parameters = Column(JSONB, nullable=True)
+    model_route = Column(String(100), nullable=True)
+    quality_mode = Column(String(30), nullable=True)
+    region_roles = Column(JSONB, nullable=True)
+    reference_authority_role = Column(String(50), nullable=True)
+
+    status = Column(String(20), default="CANDIDATE")
+    active_canonical = Column(Boolean, default=False)
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterVersionQA(Base):
+    __tablename__ = "character_version_qa"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+    identity_gate = Column(String(20), default="NOT_REVIEWED")
+    body_profile_gate = Column(String(20), default="NOT_REVIEWED")
+    half_body_angle_gate = Column(String(20), default="NOT_REVIEWED")
+    full_body_angle_gate = Column(String(20), default="NOT_REVIEWED")
+    hands_gate = Column(String(20), default="NOT_REVIEWED")
+    feet_gate = Column(String(20), default="NOT_REVIEWED")
+    training_gate = Column(String(20), default="NOT_REVIEWED")
+    production_gate = Column(String(20), default="NOT_REVIEWED")
+    reviewed_by = Column(String(100), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CharacterRuntimeV2(Base):
+    __tablename__ = "character_runtime_v2"
+
+    id = Column(Integer, primary_key=True)
+    runtime_id = Column(String(50), unique=True, nullable=False)
+    character_id = Column(String(50), nullable=False)
+    version = Column(String(10), nullable=False)
+    identity_dna_id = Column(Integer, nullable=True)
+    body_dna_id = Column(Integer, nullable=True)
+    appearance_profile_id = Column(Integer, nullable=True)
+    production_model_alias = Column(String(100), nullable=True)
+    default_strength = Column(Float, default=0.78)
+    strength_overrides = Column(JSONB, nullable=True)
+    approved_workflows = Column(JSONB, nullable=True)
+    golden_reference_set = Column(JSONB, nullable=True)
+    status = Column(String(20), default="DRAFT")
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
