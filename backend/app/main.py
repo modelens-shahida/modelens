@@ -49,6 +49,7 @@ from app.routers.character_registry import router as character_registry_router
 from app.routers.preservation import router as preservation_router
 from app.routers.p3_registry import router as p3_registry_router
 from app.routers.character_registry_v2 import router as character_registry_v2_router
+from app.routers.generation_api import router as generation_api_router
 from app.routers.campaign_generation import router as campaign_generation_router, gen_router as generation_jobs_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
@@ -245,6 +246,7 @@ app.include_router(character_registry_router)
 app.include_router(preservation_router)
 app.include_router(p3_registry_router)
 app.include_router(character_registry_v2_router)
+app.include_router(generation_api_router)
 app.include_router(prompts_router)
 app.include_router(themes_router)
 app.include_router(search_router)
