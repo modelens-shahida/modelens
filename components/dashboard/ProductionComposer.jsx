@@ -33,7 +33,7 @@ const SAMPLE_DIRECTIONS = [
   { id: "dir_4", name: "Soft Daylight Natural", desc: "Organic sunbeams, natural skin textures and airy mood" },
 ];
 
-export default function ProductionComposer({ onGenerate }) {
+export default function ProductionComposer({ onGenerate, isSubmitting = false }) {
   // Step selections
   const [selectedProduct, setSelectedProduct] = useState(SAMPLE_PRODUCTS[0]);
   const [selectedCharacter, setSelectedCharacter] = useState(SAMPLE_CHARACTERS[0]);
@@ -41,6 +41,7 @@ export default function ProductionComposer({ onGenerate }) {
   const [selectedBackground, setSelectedBackground] = useState(SAMPLE_BACKGROUNDS[0]);
   const [selectedDirection, setSelectedDirection] = useState(SAMPLE_DIRECTIONS[0]);
   const [qualityMode, setQualityMode] = useState("studio_quality"); // "fast_draft" | "studio_quality"
+  const [parallelExecution, setParallelExecution] = useState(true);
 
   // Active drawer toggle: "product" | "character" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
@@ -64,6 +65,7 @@ export default function ProductionComposer({ onGenerate }) {
         background: selectedBackground,
         direction: selectedDirection,
         quality: qualityMode,
+        parallel: parallelExecution,
       });
     }
   };
@@ -267,37 +269,61 @@ export default function ProductionComposer({ onGenerate }) {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setQualityMode("fast_draft")}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                qualityMode === "fast_draft"
-                  ? "bg-zinc-800 text-white border border-zinc-700"
-                  : "text-zinc-500 hover:text-zinc-300"
+              onClick={() => setParallelExecution(!parallelExecution)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold rounded-xl border transition-all ${
+                parallelExecution
+                  ? "bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-sm"
+                  : "bg-zinc-950 text-zinc-500 border-zinc-800"
               }`}
             >
-              Draft (2 cr)
+              <Zap className={`w-3.5 h-3.5 ${parallelExecution ? "text-purple-400" : "text-zinc-600"}`} />
+              <span>Parallel Multi-Angle: {parallelExecution ? "ON" : "OFF"}</span>
             </button>
-            <button
-              onClick={() => setQualityMode("studio_quality")}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                qualityMode === "studio_quality"
-                  ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Studio Quality (5 cr)
-            </button>
+
+            <div className="flex items-center gap-1 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
+              <button
+                onClick={() => setQualityMode("fast_draft")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  qualityMode === "fast_draft"
+                    ? "bg-zinc-800 text-white border border-zinc-700"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Draft (2 cr)
+              </button>
+              <button
+                onClick={() => setQualityMode("studio_quality")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  qualityMode === "studio_quality"
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Studio Quality (5 cr)
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Generate Primary Button */}
         <button
           onClick={handleTriggerGenerate}
-          className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-base py-4 rounded-xl transition-all shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-3 tracking-wide"
+          disabled={isSubmitting}
+          className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:opacity-60 disabled:cursor-not-allowed text-black font-extrabold text-base py-4 rounded-xl transition-all shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-3 tracking-wide"
         >
-          <Sparkles className="w-5 h-5" />
-          <span>GENERATE PHOTOSHOOT PRODUCTION</span>
+          {isSubmitting ? (
+            <>
+              <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              <span>DISPATCHING BATCH GENERATION PIPELINE...</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5" />
+              <span>GENERATE PHOTOSHOOT PRODUCTION</span>
+            </>
+          )}
         </button>
       </div>
 
