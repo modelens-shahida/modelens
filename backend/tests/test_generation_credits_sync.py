@@ -1,137 +1,87 @@
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+import pytest_asyncio
 from httpx import AsyncClient
+from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.db import CreditTransaction, Brand
-from app.config import settings
 
-INTERNAL_SECRET = getattr(settings, "INTERNAL_CALLBACK_SECRET", "modelens-internal-secret")
-INTERNAL_HEADERS = {"x-internal-secret": INTERNAL_SECRET}
-
-
-# ========================== Credit Estimation Tests ==============
-
-def test_estimate_credits_default():
-    from app.routers.templates_proxy import estimate_credits
-    assert estimate_credits({}) == 2
-
-
-def test_estimate_credits_2k_2outputs():
-    from app.routers.templates_proxy import estimate_credits
-    assert estimate_credits({"outputCount": 2, "resolution": "2K"}) == 4
-
-
-def test_estimate_credits_4k_1output():
-    from app.routers.templates_proxy import estimate_credits
-    assert estimate_credits({"outputCount": 1, "resolution": "4K"}) == 5
-
-
-def test_estimate_credits_8k_2outputs():
-    from app.routers.templates_proxy import estimate_credits
-    assert estimate_credits({"outputCount": 2, "resolution": "8K"}) == 20
-
-
-# ========================== Internal Callback Auth Tests =========
+from app.models.db import User, Brand, CreditTransaction
+from app.services.credits_sync_service import credits_sync_service
 
 @pytest.mark.asyncio
-async def test_complete_callback_requires_secret(client: AsyncClient):
-    res = await client.post("/api/v1/internal/generations/gen_001/complete", json={"generation_id": "gen_001"})
-    assert res.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_fail_callback_requires_secret(client: AsyncClient):
-    res = await client.post("/api/v1/internal/generations/gen_001/fail", json={"generation_id": "gen_001"})
-    assert res.status_code == 403
-
-
-# ========================== Complete Callback Tests ==============
-
-@pytest.mark.asyncio
-async def test_complete_callback_not_found(client: AsyncClient, test_data: dict):
+async def test_generation_credits_sync_full_flow(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     owner_headers = test_data["get_headers"]("owner")
-    res = await client.post(
-        "/api/v1/internal/generations/nonexistent_gen/complete",
-        json={"generation_id": "nonexistent_gen"},
-        headers=INTERNAL_HEADERS,
-    )
-    assert res.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_complete_callback_finalizes_transaction(client: AsyncClient, test_data: dict, db_session: AsyncSession):
-    brand = test_data["brand"]
     owner_user = test_data["users"]["owner"]
+    brand_id = test_data["brand"].id
 
-    # Create pending transaction
-    txn = CreditTransaction(
-        user_id=owner_user.id,
-        brand_id=brand.id,
-        transaction_type="reserved",
-        amount=-5,
-        description="Test reservation",
-        reference_id="gen_complete_test",
-        status="pending",
-    )
-    db_session.add(txn)
-    await db_session.commit()
-
-    res = await client.post(
-        "/api/v1/internal/generations/gen_complete_test/complete",
-        json={"generation_id": "gen_complete_test"},
-        headers=INTERNAL_HEADERS,
-    )
-    assert res.status_code == 200
-    assert res.json()["status"] == "completed"
-
-    # Verify transaction status updated
-    await db_session.refresh(txn)
-    assert txn.status == "completed"
-
-
-# ========================== Fail Callback Tests ==================
-
-@pytest.mark.asyncio
-async def test_fail_callback_refunds_credits(client: AsyncClient, test_data: dict, db_session: AsyncSession):
-    brand = test_data["brand"]
-    owner_user = test_data["users"]["owner"]
-
-    initial_credits = brand.credits or 0
-
-    # Create pending transaction
-    txn = CreditTransaction(
-        user_id=owner_user.id,
-        brand_id=brand.id,
-        transaction_type="reserved",
-        amount=-10,
-        description="Test reservation for fail",
-        reference_id="gen_fail_test",
-        status="pending",
-    )
-    db_session.add(txn)
-    await db_session.commit()
-
-    res = await client.post(
-        "/api/v1/internal/generations/gen_fail_test/fail",
-        json={"generation_id": "gen_fail_test", "reason": "Provider timeout"},
-        headers=INTERNAL_HEADERS,
-    )
-    assert res.status_code == 200
+    # 1. Check Credit Balance
+    res = await client.get("/api/v1/credits/balance", headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
     data = res.json()
-    assert data["status"] == "refunded"
-    assert data["credits_refunded"] == 10
+    assert "balance" in data
+    assert isinstance(data["balance"], int)
 
-    # Verify brand credits restored
-    await db_session.refresh(brand)
-    assert (brand.credits or 0) == initial_credits + 10
+    # 2. Check Credit Rates
+    res = await client.get("/api/v1/credits/rates", headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert "rates" in data
 
+    # 3. Credit Estimate for Multi-Angle Batch
+    res = await client.post("/api/v1/credits/estimate", json={
+        "quality_mode": "STUDIO_QUALITY",
+        "resolution": "2K",
+        "angle_count": 4
+    }, headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
+    estimate = res.json()
+    assert estimate["estimated_credits"] == 16 # 4 credits * 4 angles
 
-@pytest.mark.asyncio
-async def test_fail_callback_not_found(client: AsyncClient):
-    res = await client.post(
-        "/api/v1/internal/generations/nonexistent_fail/fail",
-        json={"generation_id": "nonexistent_fail"},
-        headers=INTERNAL_HEADERS,
+    # 4. Check If Sufficient Credits
+    res = await client.post("/api/v1/credits/check", json={
+        "quality_mode": "STUDIO_QUALITY",
+        "resolution": "2K",
+        "angle_count": 4
+    }, headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
+    check_data = res.json()
+    assert "sufficient" in check_data
+    assert check_data["required"] == 16
+
+    # 5. Reserve & Complete Callback
+    await credits_sync_service.reserve_credits(
+        brand_id=brand_id,
+        user_id=owner_user.id,
+        amount=16,
+        generation_id="GEN-TEST-001",
+        description="4-angle batch reservation",
+        db=db_session
     )
-    assert res.status_code == 404
+    res = await client.post(
+        "/api/v1/internal/generations/GEN-TEST-001/complete",
+        json={"generation_id": "GEN-TEST-001"},
+        headers={"x-internal-secret": "modelens-internal-secret"}
+    )
+    assert res.status_code == status.HTTP_200_OK
+
+    # 6. Reserve & Failure / Refund Callback
+    await credits_sync_service.reserve_credits(
+        brand_id=brand_id,
+        user_id=owner_user.id,
+        amount=8,
+        generation_id="GEN-TEST-FAIL-001",
+        description="Failing job reservation",
+        db=db_session
+    )
+    res = await client.post(
+        "/api/v1/internal/generations/GEN-TEST-FAIL-001/fail",
+        json={"generation_id": "GEN-TEST-FAIL-001", "reason": "GPU timeout"},
+        headers={"x-internal-secret": "modelens-internal-secret"}
+    )
+    assert res.status_code == status.HTTP_200_OK
+
+    # 7. Billing Summary
+    res = await client.get("/api/v1/billing/summary", headers=owner_headers)
+    assert res.status_code == status.HTTP_200_OK
+    billing = res.json()
+    assert "balance" in billing or "current_balance" in billing

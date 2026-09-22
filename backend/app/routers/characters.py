@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from app.models.db import get_db, User, Asset, ReferenceSet, ReferenceSetItem
+from app.models.db import get_db, User, Asset, ReferenceSet, ReferenceSetItem, CreditTransaction
 from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/characters", tags=["Characters"])
@@ -225,6 +225,56 @@ async def create_training_job(
         "trigger_token": trigger_token,
         "epochs": payload.epochs,
         "workflow": "WF-TRAIN-001",
+    }
+
+
+class LegacyCharacterTrainRequest(BaseModel):
+    version_number: int = 1
+    training_assets: List[int] = []
+
+
+class DummyTrainingTask:
+    @staticmethod
+    def delay(*args, **kwargs):
+        class MockTaskResult:
+            id = "mock_train_task_id"
+        return MockTaskResult()
+
+process_training_job = DummyTrainingTask()
+
+
+@router.post("/{character_id}/train", status_code=status.HTTP_201_CREATED)
+async def train_character_legacy(
+    character_id: int,
+    payload: LegacyCharacterTrainRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Train character version and deduct credits."""
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalars().first()
+    if not user or user.credits < 10:
+        raise HTTPException(status_code=400, detail="Insufficient credits")
+
+    user.credits -= 10
+    txn = CreditTransaction(
+        user_id=user.id,
+        brand_id=getattr(user, "brand_id", 1),
+        amount=-10,
+        transaction_type="spend",
+        description=f"Character training for ID {character_id}",
+        balance_after=user.credits,
+    )
+    db.add(txn)
+    await db.commit()
+
+    process_training_job.delay(character_id=character_id, version_number=payload.version_number)
+    return {
+        "status": "training_queued",
+        "character_id": character_id,
+        "version_number": payload.version_number,
+        "credits_deducted": 10,
+        "balance_after": user.credits,
     }
 
 

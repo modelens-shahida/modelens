@@ -51,7 +51,7 @@ from app.routers.p3_registry import router as p3_registry_router
 from app.routers.character_registry_v2 import router as character_registry_v2_router
 from app.routers.generation_api import router as generation_api_router
 from app.routers.phase2_batch import router as phase2_batch_router
-from app.routers.campaign_generation import router as campaign_generation_router, gen_router as generation_jobs_router
+from app.routers.campaign_generation import router as campaign_generation_router
 from app.routers.prompts import router as prompts_router
 from app.routers.themes import router as themes_router
 from app.routers.search import router as search_router

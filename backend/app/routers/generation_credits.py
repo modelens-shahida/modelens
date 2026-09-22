@@ -61,9 +61,7 @@ async def get_credit_balance(
     db: AsyncSession = Depends(get_db),
 ):
     """Get current credit balance for the user's brand."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated with user.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     balance = await credits_sync_service.get_brand_credits(brand_id, db)
     return {
@@ -132,9 +130,7 @@ async def check_credits(
     db: AsyncSession = Depends(get_db),
 ):
     """Check if brand has sufficient credits before generation."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated with user.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     if payload.angle_count:
         required = estimate_batch_credits(

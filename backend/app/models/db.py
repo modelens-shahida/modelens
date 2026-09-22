@@ -1522,8 +1522,9 @@ class CharacterV2(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
-class CharacterVersion(Base):
-    __tablename__ = "character_versions"
+class CharacterRegistryVersion(Base):
+    __tablename__ = "character_registry_versions"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(Integer, primary_key=True)
     character_id = Column(String(50), nullable=False)
