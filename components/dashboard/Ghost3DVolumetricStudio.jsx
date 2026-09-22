@@ -23,9 +23,15 @@ import {
   Contrast,
   Image as ImageIcon,
   Shirt,
+  AlertCircle,
+  CreditCard,
+  ArrowRight,
+  X,
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "react-hot-toast";
 import { ghostApi } from "@/lib/ghostApi";
+import { checkGhostBatchCredits } from "@/lib/generationService";
 
 const GHOST_VIEWS = [
   {
@@ -101,6 +107,7 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
   const [stageMessage, setStageMessage] = useState("");
   const [completedJob, setCompletedJob] = useState(null);
   const [showC2paModal, setShowC2paModal] = useState(false);
+  const [shortfallModal, setShortfallModal] = useState(null); // { required, balance, shortfall }
 
   // Auto-spin animation when turntable tab is active
   useEffect(() => {
@@ -126,11 +133,31 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
   };
 
   const handleLaunchVolumetricJob = async () => {
-    setIsGenerating(true);
-    setProgress(15);
-    setStageMessage("Segmenting flatlay contours & separating collar layers (ghost.segmenting)...");
-
     try {
+      // 1. Pre-flight credit check
+      const creditCheck = await checkGhostBatchCredits(
+        [
+          {
+            sku: `SKU-GHOST-${sourceAssetId || 1}`,
+            views: selectedViews.map((v) => ({ view: v, resolution: resolution })),
+          },
+        ],
+        "STUDIO_QUALITY"
+      );
+
+      if (creditCheck && !creditCheck.sufficient) {
+        setShortfallModal({
+          required: creditCheck.required,
+          balance: creditCheck.balance,
+          shortfall: creditCheck.shortfall,
+        });
+        return;
+      }
+
+      setIsGenerating(true);
+      setProgress(15);
+      setStageMessage("Segmenting flatlay contours & separating collar layers (ghost.segmenting)...");
+
       const res = await ghostApi.createVolumetricJob({
         brand_id: Number(brandId) || 1,
         source_asset_id: sourceAssetId,
@@ -562,6 +589,61 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Insufficient Credits Alert Modal */}
+      {shortfallModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2 text-amber-400">
+                <AlertCircle className="w-5 h-5" />
+                <h3 className="text-base font-bold text-white">Insufficient Ghost Credits</h3>
+              </div>
+              <button onClick={() => setShortfallModal(null)} className="text-zinc-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-zinc-300 leading-relaxed">
+                This 3D volumetric shoot requires <strong className="text-white font-mono">{shortfallModal.required} credits</strong>, but your brand balance is currently <strong className="text-amber-400 font-mono">{shortfallModal.balance} credits</strong>.
+              </p>
+
+              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Required for Views:</span>
+                  <span className="font-mono text-white font-bold">{shortfallModal.required} cr</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Available Balance:</span>
+                  <span className="font-mono text-zinc-400">{shortfallModal.balance} cr</span>
+                </div>
+                <div className="flex justify-between border-t border-zinc-800 pt-2 text-rose-400 font-bold">
+                  <span>Credit Shortfall:</span>
+                  <span className="font-mono">-{shortfallModal.shortfall} cr</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShortfallModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <Link
+                href="/dashboard/billing"
+                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-teal-400 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Top Up Credits</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
             </div>
           </div>
         </div>

@@ -14,13 +14,20 @@ import {
   Check,
   ChevronRight,
   Settings,
-  Plus
+  Plus,
+  AlertCircle,
+  CreditCard,
+  ArrowRight,
+  X,
+  ShieldCheck,
+  Box,
+  Sparkles
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import TaxonomyResolverPreview from "@/components/dashboard/TaxonomyResolverPreview";
 import Ghost3DVolumetricStudio from "@/components/dashboard/Ghost3DVolumetricStudio";
-import { ShieldCheck, Box, Sparkles } from "lucide-react";
+import { checkGhostBatchCredits } from "@/lib/generationService";
 
 const GARMENT_TYPES = ["dress", "top", "outerwear", "pants", "jumpsuit", "full outfit"];
 const VIEWS = ["front", "back", "detail"];
@@ -101,6 +108,7 @@ export default function GhostStudioPage() {
   const [batchJobsStatus, setBatchJobsStatus] = useState({});
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [batchElapsedTime, setBatchElapsedTime] = useState(0);
+  const [shortfallModal, setShortfallModal] = useState(null); // { required, balance, shortfall }
 
   const pollRef = useRef(null);
   const timerRef = useRef(null);
@@ -154,29 +162,37 @@ export default function GhostStudioPage() {
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
+    const file = e.dataTransfer.files?.[0];
     if (file) handleFileSelect(file);
   };
 
   const startPolling = (jobId) => {
-    setElapsedTime(0);
     clearInterval(pollRef.current);
     clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
+    setElapsedTime(0);
+
+    timerRef.current = setInterval(() => {
+      setElapsedTime(prev => prev + 1);
+    }, 1000);
+
     pollRef.current = setInterval(async () => {
       try {
-        const status = await api.get(`/api/v1/ghost-jobs/${jobId}`);
-        setJobStatus(status);
-        if (status.status === "completed" || status.status === "failed") {
+        const res = await api.get(`/api/v1/ghost-jobs/${jobId}`);
+        setJobStatus(res);
+
+        if (res.status === "completed" || res.status === "failed") {
           clearInterval(pollRef.current);
           clearInterval(timerRef.current);
-          if (status.status === "completed") {
-            // Retrieve outputs to show output url
+
+          if (res.status === "completed") {
+            toast.success("Ghost mannequin render ready!");
+            // Fetch final outputs
             const outRes = await api.get(`/api/v1/ghost-jobs/${jobId}/outputs`);
-            if (outRes.outputs?.length > 0) {
+            if (outRes.outputs && outRes.outputs.length > 0) {
               setJobStatus(prev => ({
                 ...prev,
                 output_url: outRes.outputs[0].output_url,
+                c2pa_manifest_id: outRes.outputs[0].c2pa_manifest_id,
                 quality_score: Math.round((outRes.outputs[0].quality_score || 0.93) * 100)
               }));
             }
@@ -189,9 +205,29 @@ export default function GhostStudioPage() {
   const handleSubmit = async () => {
     if (!primaryImage) { toast.error("Please upload a primary image"); return; }
     if (!productHint.trim()) { toast.error("Please enter a product description"); return; }
-    setSubmitting(true);
-    setJobStatus(null);
+
     try {
+      // 1. Pre-flight credit check
+      const creditCheck = await checkGhostBatchCredits(
+        [{
+          sku: productHint || "SKU-SINGLE",
+          views: [{ view: view.toUpperCase(), resolution }]
+        }],
+        generationMode === "fast" ? "FAST_DRAFT" : "STUDIO_QUALITY"
+      );
+
+      if (creditCheck && !creditCheck.sufficient) {
+        setShortfallModal({
+          required: creditCheck.required,
+          balance: creditCheck.balance,
+          shortfall: creditCheck.shortfall,
+        });
+        return;
+      }
+
+      setSubmitting(true);
+      setJobStatus(null);
+
       const formData = new FormData();
       formData.append("image", primaryImage);
       formData.append("product_hint", productHint);
@@ -452,9 +488,27 @@ export default function GhostStudioPage() {
       return;
     }
 
-    setBatchSubmitting(true);
-    setBatchJobsStatus({});
     try {
+      // 1. Pre-flight credit check
+      const creditCheck = await checkGhostBatchCredits(
+        readyItems.map(item => ({
+          sku: item.productHint || `SKU-${item.id}`,
+          views: [{ view: item.view?.toUpperCase() || "FRONT", resolution: item.resolution || "2K" }]
+        })),
+        "STUDIO_QUALITY"
+      );
+
+      if (creditCheck && !creditCheck.sufficient) {
+        setShortfallModal({
+          required: creditCheck.required,
+          balance: creditCheck.balance,
+          shortfall: creditCheck.shortfall,
+        });
+        return;
+      }
+
+      setBatchSubmitting(true);
+      setBatchJobsStatus({});
       const payload = {
         brand_id: parseInt(selectedBrandId),
         jobs: readyItems.map(item => ({
@@ -1166,7 +1220,61 @@ export default function GhostStudioPage() {
             )}
           </div>
         )}
-          </>
+      </>
+    )}
+    {/* Insufficient Credits Alert Modal */}
+        {shortfallModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center gap-2 text-amber-400">
+                  <AlertCircle className="w-5 h-5" />
+                  <h3 className="text-base font-bold text-white">Insufficient Ghost Credits</h3>
+                </div>
+                <button onClick={() => setShortfallModal(null)} className="text-zinc-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <p className="text-zinc-300 leading-relaxed">
+                  This photoshoot requires <strong className="text-white font-mono">{shortfallModal.required} credits</strong>, but your brand balance is currently <strong className="text-amber-400 font-mono">{shortfallModal.balance} credits</strong>.
+                </p>
+
+                <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Required Credits:</span>
+                    <span className="font-mono text-white font-bold">{shortfallModal.required} cr</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Available Balance:</span>
+                    <span className="font-mono text-zinc-400">{shortfallModal.balance} cr</span>
+                  </div>
+                  <div className="flex justify-between border-t border-zinc-800 pt-2 text-rose-400 font-bold">
+                    <span>Credit Shortfall:</span>
+                    <span className="font-mono">-{shortfallModal.shortfall} cr</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setShortfallModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <Link
+                  href="/dashboard/billing"
+                  className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-teal-400 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Top Up Credits</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

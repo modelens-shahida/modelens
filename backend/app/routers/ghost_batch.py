@@ -112,9 +112,7 @@ async def check_ghost_batch_credits(
     db: AsyncSession = Depends(get_db),
 ):
     """Pre-flight credit check for ghost batch job."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated with user.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     estimate = estimate_ghost_batch_credits(payload.items, payload.quality_mode)
     required = estimate["total_credits"]
@@ -136,9 +134,7 @@ async def create_ghost_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create multi-garment ghost batch job with credit reservation."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated with user.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     # Estimate credits
     estimate = estimate_ghost_batch_credits(payload.items, payload.quality_mode)
