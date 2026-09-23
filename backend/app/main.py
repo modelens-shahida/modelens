@@ -89,6 +89,7 @@ from app.routers.invites import router as invites_router
 from app.routers.editorial_fluid import router as editorial_fluid_router
 from app.routers.generation_credits import router as generation_credits_router
 from app.routers.ghost_batch import router as ghost_batch_router
+from app.routers.fashn_workflow import router as fashn_workflow_router
 from app.middleware.api_versioning import APIVersionMiddleware
 import app.services.metrics
 
@@ -290,6 +291,7 @@ app.include_router(invites_router)
 app.include_router(editorial_fluid_router)
 app.include_router(generation_credits_router)
 app.include_router(ghost_batch_router)
+app.include_router(fashn_workflow_router)
 
 
 
