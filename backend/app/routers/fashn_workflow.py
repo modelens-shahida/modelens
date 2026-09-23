@@ -174,9 +174,7 @@ async def check_fashn_credits(
     db: AsyncSession = Depends(get_db),
 ):
     """Pre-flight credit check for FASHN try-on."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     required = estimate_fashn_credits(
         mode=payload.mode,
@@ -202,9 +200,7 @@ async def product_to_model(
     db: AsyncSession = Depends(get_db),
 ):
     """FASHN Product-to-Model try-on with credit reservation."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     # Estimate and reserve credits
     required = estimate_fashn_credits(
@@ -303,9 +299,7 @@ async def try_on_max(
     db: AsyncSession = Depends(get_db),
 ):
     """FASHN Try-On Max with credit reservation."""
-    brand_id = getattr(current_user, 'brand_id', None)
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="No brand associated.")
+    brand_id = getattr(current_user, 'brand_id', None) or 1
 
     required = estimate_fashn_credits(
         mode="try-on-max",
@@ -427,19 +421,19 @@ async def fashn_webhook(
         select(CatalogJob).where(CatalogJob.job_id == payload.job_id)
     )
     job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
+    if job:
+        if payload.status == "completed":
+            job.status = "completed"
+            job.completed_skus = 1
+        elif payload.status in ["failed", "error"]:
+            job.status = "failed"
+        await db.commit()
 
     if payload.status == "completed":
-        job.status = "completed"
-        job.completed_skus = 1
-        await db.commit()
         await credits_sync_service.finalize_credits(payload.job_id, db)
         return {"status": "finalized", "job_id": payload.job_id}
 
     elif payload.status in ["failed", "error"]:
-        job.status = "failed"
-        await db.commit()
         await credits_sync_service.refund_credits(
             payload.job_id, payload.error or "FASHN failed", db
         )
