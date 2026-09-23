@@ -25,13 +25,17 @@ import {
   Zap,
   Database,
   Globe,
-  Lock
+  Lock,
+  AlertCircle,
+  CreditCard,
+  ArrowRight
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { useWebSocket } from "@/lib/useWebSocket";
 import { useAuth } from "@/lib/auth-context";
 import C2PAProvenanceModal from "@/components/dashboard/C2PAProvenanceModal";
+import { checkFashnCredits } from "@/lib/generationService";
 
 const MODEL_IDENTITIES = [
   { id: "EE-F-002", name: "Eliska Novak (EE-F-002 · Golden Master)", recommended: true },
@@ -113,6 +117,7 @@ export default function CatalogStudioPage() {
   const [exportingZip, setExportingZip] = useState(false);
   const [batchTelemetry, setBatchTelemetry] = useState(null);
   const [selectedC2PAAsset, setSelectedC2PAAsset] = useState(null);
+  const [shortfallModal, setShortfallModal] = useState(null); // { required, balance, shortfall }
   const fileInputRef = useRef(null);
   const customModelRef = useRef(null);
   const pollRef = useRef(null);
@@ -233,10 +238,27 @@ export default function CatalogStudioPage() {
       return;
     }
 
-    setSubmitting(true);
-    setJobStatus(null);
-    setOutputImages([]);
     try {
+      // 1. Pre-flight credit check
+      const creditCheck = await checkFashnCredits({
+        mode: fashnMode === "tryon_max" ? "try-on-max" : "product-to-model",
+        resolution: "2k",
+        num_images: productFiles.length,
+        generation_mode: generationMode === "fast_draft" ? "standard" : "quality",
+      });
+
+      if (creditCheck && !creditCheck.sufficient) {
+        setShortfallModal({
+          required: creditCheck.required,
+          balance: creditCheck.balance,
+          shortfall: creditCheck.shortfall,
+        });
+        return;
+      }
+
+      setSubmitting(true);
+      setJobStatus(null);
+      setOutputImages([]);
       const formData = new FormData();
       productFiles.forEach((f, i) => {
         formData.append("products", f);
@@ -742,6 +764,60 @@ export default function CatalogStudioPage() {
         </div>
         )}
       </div>
+      {/* Insufficient Credits Alert Modal */}
+      {shortfallModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2 text-amber-400">
+                <AlertCircle className="w-5 h-5" />
+                <h3 className="text-base font-bold text-white">Insufficient FASHN Credits</h3>
+              </div>
+              <button onClick={() => setShortfallModal(null)} className="text-zinc-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-zinc-300 leading-relaxed">
+                This catalog try-on batch requires <strong className="text-white font-mono">{shortfallModal.required} credits</strong>, but your brand balance is currently <strong className="text-amber-400 font-mono">{shortfallModal.balance} credits</strong>.
+              </p>
+
+              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Required Credits:</span>
+                  <span className="font-mono text-white font-bold">{shortfallModal.required} cr</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Available Balance:</span>
+                  <span className="font-mono text-zinc-400">{shortfallModal.balance} cr</span>
+                </div>
+                <div className="flex justify-between border-t border-zinc-800 pt-2 text-rose-400 font-bold">
+                  <span>Credit Shortfall:</span>
+                  <span className="font-mono">-{shortfallModal.shortfall} cr</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShortfallModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <Link
+                href="/dashboard/billing"
+                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-purple-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-purple-500/20"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Top Up Credits</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* C2PA Content Credentials Modal */}
       {selectedC2PAAsset && (
