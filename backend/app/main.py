@@ -47,6 +47,7 @@ from app.services.pubsub_listener import redis_pubsub_listener
 from app.routers.websockets import router as websockets_router
 from app.routers.invites import router as invites_router
 from app.routers.editorial_fluid import router as editorial_fluid_router
+from app.routers.fashn_workflow import router as fashn_workflow_router
 from app.middleware.api_versioning import APIVersionMiddleware
 import app.services.metrics
 
@@ -214,6 +215,7 @@ app.include_router(websockets_router)
 app.include_router(invites_router)
 app.include_router(campaign_router)
 app.include_router(editorial_fluid_router)
+app.include_router(fashn_workflow_router)
 
 
 
