@@ -16,7 +16,6 @@ async def redis_pubsub_listener():
     Channel pattern: brand:{brand_id}:events
     """
     while True:
-        redis = None
         try:
             redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             pubsub = redis.pubsub()
@@ -47,10 +46,3 @@ async def redis_pubsub_listener():
         except Exception as e:
             logger.error(f"[PubSub] Connection error: {e}. Reconnecting in 5s...")
             await asyncio.sleep(5)
-        finally:
-            if redis:
-                try:
-                    await redis.aclose()
-                except Exception:
-                    pass
-

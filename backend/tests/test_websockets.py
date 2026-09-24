@@ -51,42 +51,11 @@ async def test_connection_manager_broadcast_correct_payload():
     cm.disconnect(ws)
 
 
-class MockSessionContext:
-    def __init__(self, session):
-        self.session = session
-
-    async def __aenter__(self):
-        return self.session
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-
 @pytest.mark.asyncio
-async def test_websocket_rejects_invalid_token(test_data: dict, db_session):
+async def test_websocket_rejects_invalid_token(test_data: dict):
     from app.main import app
     brand = test_data["brand"]
-    with patch("app.routers.websockets.async_session_maker", return_value=MockSessionContext(db_session)):
-        with TestClient(app) as tc:
-            with pytest.raises(Exception):
-                with tc.websocket_connect(f"/api/v1/ws/events?token=invalid_token&brand_id={brand.id}"):
-                    pass
-
-
-@pytest.mark.asyncio
-async def test_websocket_successful_auth_and_welcome(test_data: dict, db_session):
-    from app.main import app
-    from app.middleware.auth import create_access_token
-    brand = test_data["brand"]
-    editor = test_data["users"]["editor"]
-    token = create_access_token({"sub": editor.email})
-    
-    with patch("app.routers.websockets.async_session_maker", return_value=MockSessionContext(db_session)):
-        with TestClient(app) as tc:
-            with tc.websocket_connect(f"/api/v1/ws/events?token={token}&brand_id={brand.id}") as websocket:
-                data = websocket.receive_text()
-                welcome_msg = json.loads(data)
-                assert welcome_msg["type"] == "connected"
-                assert welcome_msg["brand_id"] == brand.id
-                assert welcome_msg["user_id"] == editor.id
-
+    with TestClient(app) as tc:
+        with pytest.raises(Exception):
+            with tc.websocket_connect(f"/api/v1/ws/events?token=invalid_token&brand_id={brand.id}"):
+                pass

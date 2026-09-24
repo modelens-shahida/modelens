@@ -23,12 +23,12 @@ async def _authenticate_websocket(token: str) -> tuple[User, None] | tuple[None,
         from jose import jwt, JWTError
         from app.config import settings
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email = payload.get("sub")
-        if not email:
+        user_id = payload.get("sub")
+        if not user_id:
             return None, "Invalid token payload"
 
         async with async_session_maker() as db:
-            result = await db.execute(select(User).where(User.email == email))
+            result = await db.execute(select(User).where(User.id == int(user_id)))
             user = result.scalars().first()
             if not user:
                 return None, "User not found"
