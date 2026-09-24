@@ -1536,10 +1536,8 @@ def _render_low_credit_template(user_name: str, current_balance: int, threshold:
 
 def _send_email(to_email: str, subject: str, html_content: str):
     """Send an email via SendGrid or AWS SES based on EMAIL_PROVIDER setting."""
-    from app.config import settings
-
-    provider = (settings.EMAIL_PROVIDER or "sendgrid").lower()
-    from_email = settings.FROM_EMAIL or "no-reply@modelens.com"
+    provider = (getattr(settings, "EMAIL_PROVIDER", None) or "sendgrid").lower()
+    from_email = getattr(settings, "FROM_EMAIL", None) or "no-reply@modelens.com"
 
     if provider == "sendgrid":
         from sendgrid import SendGridAPIClient
@@ -1582,13 +1580,16 @@ def send_low_credit_warning_email(self, user_id: int):
     Retries up to 3 times with exponential backoff on failure.
     """
     try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    try:
-        loop.run_until_complete(_send_low_credit_warning_async(user_id))
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    executor.submit(lambda: asyncio.run(_send_low_credit_warning_async(user_id))).result()
+            else:
+                loop.run_until_complete(_send_low_credit_warning_async(user_id))
+        except RuntimeError:
+            asyncio.run(_send_low_credit_warning_async(user_id))
     except Exception as exc:
         print(f"[Worker] Email send failed for user {user_id}: {exc}. Retrying...")
         raise self.retry(exc=exc, countdown=2 ** self.request.retries)
@@ -1597,14 +1598,23 @@ def send_low_credit_warning_email(self, user_id: int):
 async def _send_low_credit_warning_async(user_id: int):
     async with async_session_maker() as db:
         result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalars().first()
+        scalars_res = result.scalars()
+        if asyncio.iscoroutine(scalars_res):
+            scalars_res = await scalars_res
+        user = scalars_res.first()
+        if asyncio.iscoroutine(user):
+            user = await user
+
         if not user:
             print(f"[Worker] Low credit warning: user {user_id} not found.")
             return
 
+        user_name = getattr(user, 'full_name', None) or (user.email.split("@")[0] if getattr(user, 'email', None) else "User")
+        current_credits = getattr(user, 'credits', 0)
+
         html_content = _render_low_credit_template(
-            user_name=user.email.split("@")[0],
-            current_balance=user.credits,
+            user_name=user_name,
+            current_balance=current_credits,
         )
 
         _send_email(

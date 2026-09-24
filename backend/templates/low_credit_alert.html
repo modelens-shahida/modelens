@@ -1,68 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Low Credit Balance Warning - ModeLens</title>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #7c3aed; padding: 24px; text-align: center; }
+    .header h1 { color: #ffffff; margin: 0; font-size: 22px; }
+    .body { padding: 32px; }
+    .body p { color: #374151; font-size: 15px; line-height: 1.6; }
+    .balance-box { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center; }
+    .balance-box .amount { font-size: 36px; font-weight: bold; color: #d97706; }
+    .balance-box .label { color: #92400e; font-size: 13px; }
+    .cta { text-align: center; margin: 28px 0; }
+    .cta a { background: #7c3aed; color: #ffffff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 15px; }
+    .footer { background: #f9fafb; padding: 16px; text-align: center; color: #9ca3af; font-size: 12px; }
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f4f7;font-family:'Segoe UI',Arial,sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 0;">
-        <tr>
-            <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
-                    <!-- Header -->
-                    <tr>
-                        <td style="background:linear-gradient(135deg,#6B21A8,#9333EA);padding:32px 40px;text-align:center;">
-                            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">ModeLens</h1>
-                            <p style="color:#e9d5ff;margin:8px 0 0;font-size:14px;">Credit Balance Alert</p>
-                        </td>
-                    </tr>
-
-                    <!-- Body -->
-                    <tr>
-                        <td style="padding:40px;">
-                            <p style="color:#374151;font-size:16px;margin:0 0 16px;">Hi {{user_name}},</p>
-                            <p style="color:#374151;font-size:16px;margin:0 0 24px;">
-                                Your ModeLens credit balance has dropped below the warning threshold. Please top up your credits to continue generating content without interruption.
-                            </p>
-
-                            <!-- Balance Box -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
-                                <tr>
-                                    <td style="background-color:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:20px;text-align:center;">
-                                        <p style="color:#92400e;font-size:14px;margin:0 0 8px;font-weight:600;">CURRENT BALANCE</p>
-                                        <p style="color:#92400e;font-size:36px;margin:0;font-weight:700;">{{current_balance}} credits</p>
-                                        <p style="color:#92400e;font-size:13px;margin:8px 0 0;">Warning threshold: {{threshold}} credits</p>
-                                    </td>
-                                </tr>
-                            </table>
-
-                            <!-- CTA Button -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
-                                <tr>
-                                    <td align="center">
-                                        <a href="{{credits_url}}" style="display:inline-block;background:linear-gradient(135deg,#6B21A8,#9333EA);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;">
-                                            Add Credits Now
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-
-                            <p style="color:#6b7280;font-size:14px;margin:0;">
-                                If you have any questions, please contact our support team.
-                            </p>
-                        </td>
-                    </tr>
-
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background-color:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
-                            <p style="color:#9ca3af;font-size:12px;margin:0;">&copy; 2026 ModeLens. All rights reserved.</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚠️ Low Credit Balance Warning</h1>
+    </div>
+    <div class="body">
+      <p>Hi <strong>{{user_name}}</strong>,</p>
+      <p>Your ModeLens credit balance has dropped below the warning threshold of <strong>{{threshold}} credits</strong>.</p>
+      <div class="balance-box">
+        <div class="amount">{{current_balance}}</div>
+        <div class="label">credits remaining</div>
+      </div>
+      <p>To avoid interruptions to your AI fashion content generation, please top up your credits now.</p>
+      <div class="cta">
+        <a href="{{credits_url}}">Add Credits Now</a>
+      </div>
+      <p>If you have any questions, please contact our support team.</p>
+      <p>Best regards,<br><strong>The ModeLens Team</strong></p>
+    </div>
+    <div class="footer">
+      <p>© 2026 ModeLens. All rights reserved.<br>
+      You are receiving this email because your account balance dropped below the configured threshold.</p>
+    </div>
+  </div>
 </body>
 </html>
