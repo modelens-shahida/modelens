@@ -94,6 +94,7 @@ from app.routers.fashn_workflow import router as fashn_workflow_router
 from app.routers.realtime_generation import router as realtime_generation_router
 from app.routers.low_credit_alerts import router as low_credit_alerts_router
 from app.routers.pipeline_hardening import router as pipeline_hardening_router
+from app.routers.rosanne_pipeline import router as rosanne_pipeline_router
 from app.middleware.api_versioning import APIVersionMiddleware
 import app.services.metrics
 
@@ -295,6 +296,7 @@ app.include_router(fashn_workflow_router)
 app.include_router(realtime_generation_router)
 app.include_router(low_credit_alerts_router)
 app.include_router(pipeline_hardening_router)
+app.include_router(rosanne_pipeline_router)
 
 
 
