@@ -216,7 +216,7 @@ function LoginPageContent() {
           <p className="text-sm text-zinc-400">
             Don't have an account?{" "}
             <Link
-              href="/auth/register"
+              href={`/auth/register?redirect=${encodeURIComponent(redirectTarget)}`}
               className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
             >
               Sign up

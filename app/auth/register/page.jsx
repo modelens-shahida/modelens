@@ -1,14 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useSearchParams } from "next/navigation";
+import { safeRedirect } from "@/lib/safe-redirect";
 import { toast } from "react-hot-toast";
 import { motion } from "framer-motion";
 import { Mail, Lock, User, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 
-export default function RegisterPage() {
+function RegisterPageContent() {
   const { register } = useAuth();
+  const searchParams = useSearchParams();
+  const redirectTarget = safeRedirect(searchParams.get("redirect"));
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,7 +33,7 @@ export default function RegisterPage() {
 
     setIsSubmitting(true);
     try {
-      await register(email, password, fullName);
+      await register(email, password, fullName, redirectTarget);
       toast.success("Welcome to ModeLens! Account created successfully 🎉");
     } catch (error) {
       toast.error(error.message || "Registration failed. Please try again.");
@@ -164,7 +168,7 @@ export default function RegisterPage() {
           <p className="text-sm text-zinc-400">
             Already have an account?{" "}
             <Link
-              href="/auth/login"
+              href={`/auth/login?redirect=${encodeURIComponent(redirectTarget)}`}
               className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
             >
               Sign in
@@ -173,5 +177,17 @@ export default function RegisterPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <Loader2 className="animate-spin text-purple-500" size={24} />
+      </div>
+    }>
+      <RegisterPageContent />
+    </Suspense>
   );
 }
