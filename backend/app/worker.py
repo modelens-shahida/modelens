@@ -1,6 +1,7 @@
 import os
 import base64
 from datetime import datetime, UTC
+from typing import Optional
 import socket
 import ipaddress
 from urllib.parse import urlparse
