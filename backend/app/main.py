@@ -138,6 +138,8 @@ async def check_db_migrations():
 async def lifespan(app: FastAPI):
     await check_db_migrations()
     # Startup
+    from app.services.sso_verification import log_mock_mode_status
+    log_mock_mode_status()
     import asyncio
     asyncio.create_task(redis_pubsub_listener())
     yield

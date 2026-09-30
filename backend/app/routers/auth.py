@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Literal, Optional
 from app.config import settings
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from datetime import datetime, timedelta, UTC
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ import secrets
 
 from app.models.db import get_db, User, APIKey
 from app.services.sso_service import handle_sso_login
+from app.services.sso_verification import SSOVerificationError, verify_sso_identity
 from app.middleware.auth import (
     hash_password,
     verify_password,
@@ -42,9 +43,22 @@ class LoginRequest(BaseModel):
 
 
 class SSOLoginRequest(BaseModel):
-    email: EmailStr
-    full_name: str
-    provider: str
+    """Provider credential only; the email always comes from the provider, never the client."""
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["google", "github"]
+    id_token: Optional[str] = Field(default=None, min_length=1, max_length=8192)      # Google
+    access_token: Optional[str] = Field(default=None, min_length=1, max_length=1024)  # GitHub
+    code: Optional[str] = Field(default=None, min_length=1, max_length=1024)          # GitHub
+
+    @model_validator(mode="after")
+    def check_credentials(self):
+        if self.provider == "google":
+            if not self.id_token or self.access_token or self.code:
+                raise ValueError("google requires id_token only")
+        elif bool(self.access_token) == bool(self.code) or self.id_token:
+            raise ValueError("github requires exactly one of access_token or code")
+        return self
 
 
 class RefreshRequest(BaseModel):
@@ -163,20 +177,33 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/sso-login")
 async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)):
     """
-    SSO login/registration callback from the frontend.
-    Verifies/creates the user in the database and returns a standard JWT session.
+    SSO login/registration. Verifies the provider credential server-side, then
+    finds or creates the user for the provider-verified email and returns a JWT session.
     """
-    query = select(User).where(User.email == payload.email)
+    try:
+        identity = await verify_sso_identity(
+            payload.provider,
+            id_token=payload.id_token,
+            access_token=payload.access_token,
+            code=payload.code,
+        )
+    except SSOVerificationError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="SSO verification failed",
+        )
+
+    query = select(User).where(User.email == identity.email)
     result = await db.execute(query)
     user = result.scalars().first()
 
     if not user:
-        # Auto-register user since they successfully authenticated via SSO (OAuth)
+        # Auto-register: the provider has verified ownership of this email
         h_password = hash_password(secrets.token_urlsafe(24))
         user = User(
-            email=payload.email,
+            email=identity.email,
             hashed_password=h_password,
-            full_name=payload.full_name,
+            full_name=identity.full_name,
             role="user",
         )
         db.add(user)

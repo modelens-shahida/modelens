@@ -92,6 +92,18 @@ class Settings(BaseSettings):
     SES_REGION: str = Field(default="us-east-1")
     FROM_EMAIL: str = Field(default="no-reply@modelens.com")
 
+    # Environment (development | local | staging | production)
+    APP_ENV: Optional[str] = Field(default=None)
+    TESTING: bool = Field(default=False)
+
+    # SSO identity verification
+    GOOGLE_CLIENT_ID: Optional[str] = Field(default=None)
+    GITHUB_CLIENT_ID: Optional[str] = Field(default=None)
+    GITHUB_CLIENT_SECRET: Optional[str] = Field(default=None)
+    # Accept "mock:<email>" SSO credentials. Only honored with TESTING=true or
+    # APP_ENV=development/local; always refused when APP_ENV is production.
+    SSO_MOCK_MODE: bool = Field(default=False)
+
     # Load configuration settings from the resolved .env file path
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,

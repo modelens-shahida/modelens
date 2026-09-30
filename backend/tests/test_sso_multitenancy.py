@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timedelta, UTC
 
+from app.config import settings
 from app.models.db import Brand, BrandMember, Invitation, User
 from app.services.sso_service import (
     extract_email_domain,
@@ -217,8 +218,11 @@ async def test_update_domain_whitelist_viewer_forbidden(client: AsyncClient, tes
 
 
 @pytest.mark.asyncio
-async def test_sso_login_endpoint_auto_registers_and_provisions(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+async def test_sso_login_endpoint_auto_registers_and_provisions(client: AsyncClient, db_session: AsyncSession, test_data: dict, monkeypatch):
     """POST /api/v1/auth/sso-login should register a new user and generate JWT tokens."""
+    # Mock-mode credential; real provider verification is covered in test_sso_verification.py
+    monkeypatch.setattr(settings, "APP_ENV", None)
+    monkeypatch.setattr(settings, "TESTING", True)
     brand = test_data["brand"]
     # Update brand whitelist
     result = await db_session.execute(select(Brand).where(Brand.id == brand.id))
@@ -230,9 +234,8 @@ async def test_sso_login_endpoint_auto_registers_and_provisions(client: AsyncCli
     res = await client.post(
         "/api/v1/auth/sso-login",
         json={
-            "email": "newuser@sso-company.com",
-            "full_name": "New SSO User",
-            "provider": "google"
+            "provider": "google",
+            "id_token": "mock:newuser@sso-company.com",
         }
     )
     assert res.status_code == status.HTTP_200_OK
@@ -245,7 +248,7 @@ async def test_sso_login_endpoint_auto_registers_and_provisions(client: AsyncCli
     user_res = await db_session.execute(user_query)
     user = user_res.scalars().first()
     assert user is not None
-    assert user.full_name == "New SSO User"
+    assert user.full_name == "newuser"
 
     # Verify user was auto-provisioned as Viewer in the brand
     member_query = select(BrandMember).where(
