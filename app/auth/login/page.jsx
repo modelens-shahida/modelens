@@ -8,11 +8,13 @@ import { toast } from "react-hot-toast";
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { signIn } from "next-auth/react";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 function LoginPageContent() {
   const { login } = useAuth();
   const searchParams = useSearchParams();
-  const redirectTarget = searchParams.get("redirect") || "/dashboard";
+  const redirectTarget = safeRedirect(searchParams.get("redirect"));
+  const ssoCallbackUrl = `/auth/sso-callback?redirect=${encodeURIComponent(redirectTarget)}`;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -186,7 +188,7 @@ function LoginPageContent() {
         <div className="grid grid-cols-2 gap-4">
           <button
             type="button"
-            onClick={() => signIn("google", { callbackUrl: "/auth/sso-callback" })}
+            onClick={() => signIn("google", { callbackUrl: ssoCallbackUrl })}
             className="flex items-center justify-center gap-2.5 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800/80 text-zinc-200 hover:text-white text-xs font-semibold py-3 px-4 rounded-xl transition-all cursor-pointer"
           >
             <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
@@ -199,7 +201,7 @@ function LoginPageContent() {
           </button>
           <button
             type="button"
-            onClick={() => signIn("github", { callbackUrl: "/auth/sso-callback" })}
+            onClick={() => signIn("github", { callbackUrl: ssoCallbackUrl })}
             className="flex items-center justify-center gap-2.5 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800/80 text-zinc-200 hover:text-white text-xs font-semibold py-3 px-4 rounded-xl transition-all cursor-pointer"
           >
             <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">

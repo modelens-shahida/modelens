@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import { loginUrlFor } from "@/lib/safe-redirect";
 import Sidebar from "@/components/dashboard/Sidebar";
 import TopBar from "@/components/dashboard/TopBar";
 import HeaderNotifications from "@/components/dashboard/HeaderNotifications";
@@ -28,7 +29,7 @@ export default function DashboardLayout({ children }) {
 
   useEffect(() => {
     if (!loading && !token) {
-      router.push("/auth/login");
+      router.replace(loginUrlFor(window.location.pathname + window.location.search));
     }
   }, [token, loading, router]);
 
