@@ -25,12 +25,22 @@ function SSOCallbackContent() {
       if (status === "authenticated" && session?.user) {
         handled.current = true;
         try {
-          // 1. Call the backend /sso-login endpoint to log in or register
-          const data = await api.post("/api/v1/auth/sso-login", {
-            email: session.user.email,
-            full_name: session.user.name || "SSO User",
-            provider: "sso",
-          });
+          // 1. Determine provider & credential (id_token for Google, access_token for GitHub, or mock fallback)
+          const provider = (session.provider === "github" || (!session.provider && session.access_token)) ? "github" : "google";
+          let payload;
+          if (provider === "google") {
+            payload = {
+              provider: "google",
+              id_token: session.id_token || (session.user?.email ? `mock:${session.user.email}` : "mock:user@example.com"),
+            };
+          } else {
+            payload = {
+              provider: "github",
+              access_token: session.access_token || (session.user?.email ? `mock:${session.user.email}` : "mock:user@example.com"),
+            };
+          }
+
+          const data = await api.post("/api/v1/auth/sso-login", payload);
 
           // 2. Resolve user profile
           const token = data.access_token;

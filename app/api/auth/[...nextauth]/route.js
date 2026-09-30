@@ -19,7 +19,12 @@ const authOptions = {
   },
   callbacks: {
     async jwt({ token, account, profile }) {
-      if (account && profile) {
+      if (account) {
+        token.provider = account.provider;
+        token.id_token = account.id_token;
+        token.access_token = account.access_token;
+      }
+      if (profile) {
         token.email = profile.email;
         token.name = profile.name || profile.login;
       }
@@ -30,6 +35,9 @@ const authOptions = {
         session.user.email = token.email;
         session.user.name = token.name;
       }
+      session.provider = token.provider;
+      session.id_token = token.id_token;
+      session.access_token = token.access_token;
       return session;
     },
   },
