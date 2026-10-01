@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
-from app.services.webhook_security import build_webhook_headers, verify_signature, SIGNATURE_HEADER, TIMESTAMP_HEADER
-import secrets
+from app.services.webhook_security import build_webhook_headers, generate_webhook_secret, serialize_payload
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,12 +15,11 @@ from app.services.audit import write_audit_log
 async def deliver_webhook_with_security(url: str, payload: dict, secret: str) -> bool:
     """Deliver webhook payload with HMAC-SHA256 signature."""
     import httpx
-    import json
-    payload_str = json.dumps(payload)
-    headers = build_webhook_headers(secret, payload_str)
+    body = serialize_payload(payload)
+    headers = build_webhook_headers(secret, body)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(url, content=payload_str, headers=headers)
+            response = await client.post(url, content=body, headers=headers)
             return response.status_code < 300
     except Exception as e:
         print(f"[Webhook] Delivery failed: {e}")
@@ -118,7 +116,7 @@ async def register_webhook(
             detail=f"Invalid events: {invalid_events}. Allowed: {ALLOWED_EVENTS}"
         )
 
-    secret_token = f"ml_sec_{secrets.token_hex(32)}"
+    secret_token = generate_webhook_secret()
     subscription = WebhookSubscription(
         brand_id=payload.brand_id,
         url=payload.url,
@@ -229,25 +227,43 @@ async def get_webhook_logs(
     ]
 
 
-@router.post("/{subscription_id}/rotate-secret")
+class RotateSecretResponse(BaseModel):
+    message: str
+    subscription_id: int
+    secret_token: str
+
+
+@router.post("/{subscription_id}/rotate-secret", response_model=RotateSecretResponse)
 async def rotate_webhook_secret(
     subscription_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Rotate the signing secret for a webhook subscription. Requires Admin or Owner role."""
+    """
+    Rotate the signing secret for a webhook subscription. Requires Admin or Owner role
+    in the webhook's brand. The old secret stops working immediately; the new secret is
+    returned only in this response.
+    """
     result = await db.execute(select(WebhookSubscription).where(WebhookSubscription.id == subscription_id))
     subscription = result.scalars().first()
     if not subscription:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook subscription not found.")
 
     role = await get_user_role_in_brand(current_user.id, subscription.brand_id, db)
+    if role == "none":
+        # Don't reveal that another brand's webhook exists
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook subscription not found.")
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role to rotate webhook secret.")
 
-    new_secret = f"ml_sec_{secrets.token_hex(32)}"
+    new_secret = generate_webhook_secret()
     subscription.secret_token = new_secret
+    brand_id = subscription.brand_id
     await db.commit()
+
+    # Audit log (never include the secret)
+    await write_audit_log(db, action="webhook_secret_rotated", user_id=current_user.id, brand_id=brand_id, details={"webhook_id": subscription_id}, request=request)
 
     return {
         "message": "Webhook signing secret rotated successfully.",

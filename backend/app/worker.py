@@ -73,7 +73,7 @@ from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
 from app.services.asset_pipeline import process_image
 from app.services.ai_tagging_service import generate_ai_tags
-from app.services.webhook_security import build_webhook_headers
+from app.services.webhook_security import build_webhook_headers, generate_webhook_secret, serialize_payload
 from app.config import settings
 
 @celery_app.task
@@ -994,6 +994,44 @@ def _trigger_webhook_failed_notification(subscription_id, callback_url):
     t.join()
 
 
+def _get_or_create_subscription_secret(subscription_id):
+    """
+    Return the signing secret for a webhook subscription, generating and persisting one
+    on the fly for legacy subscriptions that predate signing. Returns None if the
+    subscription no longer exists. Never logs the secret.
+    """
+    import threading as _t
+    holder = {}
+    def _run():
+        import asyncio as _asyncio
+        loop = _asyncio.new_event_loop()
+        try:
+            async def _do():
+                async with async_session_maker() as db:
+                    result = await db.execute(
+                        select(WebhookSubscription).where(WebhookSubscription.id == subscription_id)
+                    )
+                    sub = result.scalars().first()
+                    if not sub:
+                        return None
+                    if not sub.secret_token:
+                        sub.secret_token = generate_webhook_secret()
+                        await db.commit()
+                        print(f"[Worker] Generated missing signing secret for webhook subscription {subscription_id}")
+                    return sub.secret_token
+            holder["secret"] = loop.run_until_complete(_do())
+        except Exception as e:
+            holder["error"] = e
+        finally:
+            loop.close()
+    t = _t.Thread(target=_run)
+    t.start()
+    t.join()
+    if "error" in holder:
+        raise holder["error"]
+    return holder.get("secret")
+
+
 @celery_app.task(
     name="app.worker.dispatch_webhook",
     bind=True,
@@ -1017,41 +1055,25 @@ def dispatch_webhook(self, callback_url: str, payload: dict, subscription_id: in
         print(f"[Worker] Webhook dispatch aborted: unsafe URL {callback_url}")
         raise ValueError(f"SSRF warning: Unsafe webhook URL: {callback_url}")
 
-    # Build HMAC signature
-    headers = {}
+    # Serialize once: the signature covers these exact bytes, and these bytes are sent.
+    body = serialize_payload(payload)
+    headers = {"Content-Type": "application/json", "User-Agent": "ModelLens-Webhook/1.0"}
+
+    # Sign subscription deliveries with HMAC-SHA256. Fail closed: never send unsigned.
     if subscription_id:
         try:
-            import hashlib, hmac, json as _json
-            async def _get_secret():
-                async with async_session_maker() as db:
-                    result = await db.execute(
-                        select(WebhookSubscription).where(WebhookSubscription.id == subscription_id)
-                    )
-                    sub = result.scalars().first()
-                    return sub.secret_token if sub else None
-            import threading as _threading
-            secret_holder = [None]
-            def _fetch():
-                import asyncio as _asyncio
-                loop = _asyncio.new_event_loop()
-                try:
-                    secret_holder[0] = loop.run_until_complete(_get_secret())
-                finally:
-                    loop.close()
-            t = _threading.Thread(target=_fetch)
-            t.start()
-            t.join()
-            secret = secret_holder[0]
-            if secret:
-                payload_str = _json.dumps(payload, separators=(",", ":"))
-                sig_headers = build_webhook_headers(secret, payload_str)
-                headers.update(sig_headers)
-        except Exception as sig_err:
-            print(f"[Worker] HMAC signing failed (non-fatal): {sig_err}")
+            secret = _get_or_create_subscription_secret(subscription_id)
+        except Exception as e:
+            print(f"[Worker] Could not load signing secret for subscription {subscription_id}: {type(e).__name__}")
+            raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        if not secret:
+            print(f"[Worker] Webhook dispatch aborted: subscription {subscription_id} not found")
+            return
+        headers.update(build_webhook_headers(secret, body))
 
     try:
         with httpx.Client() as client:
-            response = client.post(callback_url, json=payload, headers=headers, timeout=10.0)
+            response = client.post(callback_url, content=body, headers=headers, timeout=10.0)
             status_code = response.status_code
             response_body = response.text[:1000] if response.text else None
             execution_time_ms = int((_time.time() - start_time) * 1000)

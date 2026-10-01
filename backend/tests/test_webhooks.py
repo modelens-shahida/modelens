@@ -293,7 +293,9 @@ async def test_webhook_dispatch_logs_success(db_session: AsyncSession, test_data
             from unittest.mock import AsyncMock
             mock_db = AsyncMock()
             mock_result = MagicMock()
-            mock_result.scalars.return_value.first.return_value = None
+            # Subscription lookup (for the signing secret) must find the subscription,
+            # otherwise delivery fails closed and nothing is sent or logged.
+            mock_result.scalars.return_value.first.return_value = MagicMock(secret_token="whsec_test", brand_id=brand.id)
             mock_db.execute.return_value = mock_result
             mock_session.return_value.__aenter__.return_value = mock_db
             dispatch_webhook("https://example.com/success-hook", {"type": "job.completed"}, subscription_id=sub.id)
@@ -318,7 +320,7 @@ async def test_register_webhook_returns_secret_token(client: AsyncClient, test_d
     assert res.status_code == status.HTTP_201_CREATED
     data = res.json()
     assert "secret_token" in data
-    assert data["secret_token"].startswith("ml_sec_")
+    assert data["secret_token"].startswith("whsec_")
 
 
 @pytest.mark.asyncio
@@ -341,7 +343,7 @@ async def test_rotate_secret_owner_success(client: AsyncClient, test_data: dict)
     assert res.status_code == status.HTTP_200_OK
     data = res.json()
     assert "secret_token" in data
-    assert data["secret_token"].startswith("ml_sec_")
+    assert data["secret_token"].startswith("whsec_")
     assert data["secret_token"] != original_secret
 
 
@@ -373,7 +375,7 @@ async def test_rotate_secret_not_found(client: AsyncClient, test_data: dict):
 
 @pytest.mark.asyncio
 async def test_dispatch_webhook_includes_hmac_header(db_session, test_data: dict):
-    """dispatch_webhook should include X-Modelens-Signature header."""
+    """dispatch_webhook should include X-Modelens-Signature-256 header."""
     from app.models.db import WebhookSubscription
     from unittest.mock import patch, MagicMock
 
@@ -396,7 +398,7 @@ async def test_dispatch_webhook_includes_hmac_header(db_session, test_data: dict
 
     captured_headers = {}
 
-    def mock_post(url, json=None, headers=None, timeout=None):
+    def mock_post(url, content=None, headers=None, timeout=None):
         captured_headers.update(headers or {})
         return mock_response
 
@@ -411,7 +413,7 @@ async def test_dispatch_webhook_includes_hmac_header(db_session, test_data: dict
             subscription_id=sub.id
         )
 
-    assert "X-Modelens-Signature" in captured_headers
-    sig = captured_headers["X-Modelens-Signature"]
+    assert "X-Modelens-Signature-256" in captured_headers
+    sig = captured_headers["X-Modelens-Signature-256"]
     assert sig.startswith("sha256=")
     assert "X-Modelens-Timestamp" in captured_headers
