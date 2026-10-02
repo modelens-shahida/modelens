@@ -12,6 +12,7 @@ from app.middleware.auth import get_current_user
 from app.services.fashn_service import fashn_service
 from app.services.credits_sync_service import credits_sync_service
 from app.config import settings
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/fashn", tags=["FASHN Workflow Integration"])
 
@@ -145,7 +146,14 @@ async def poll_fashn_job(
 
 # ========================== Endpoints ============================
 
-@router.post("/estimate")
+@router.post(
+    "/estimate",
+    summary="Estimate FASHN credits",
+    description="Estimate credits for FASHN try-on job.",
+    response_description="Estimated credit cost for the try-on job.",
+    operation_id="estimate_fashn_credits",
+    responses=error_responses(401, 422),
+)
 async def estimate_fashn_credits_endpoint(
     payload: FashnCreditEstimateRequest,
     current_user: User = Depends(get_current_user),
@@ -167,7 +175,14 @@ async def estimate_fashn_credits_endpoint(
     }
 
 
-@router.post("/check")
+@router.post(
+    "/check",
+    summary="Check FASHN credits",
+    description="Pre-flight credit check for FASHN try-on.",
+    response_description="Whether the brand has enough credits, with balance and shortfall.",
+    operation_id="check_fashn_credits",
+    responses=error_responses(401, 404, 422),
+)
 async def check_fashn_credits(
     payload: FashnCreditEstimateRequest,
     current_user: User = Depends(get_current_user),
@@ -192,7 +207,15 @@ async def check_fashn_credits(
     }
 
 
-@router.post("/product-to-model", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/product-to-model",
+    status_code=status.HTTP_201_CREATED,
+    summary="Start a FASHN product-to-model job",
+    description="FASHN Product-to-Model try-on with credit reservation.",
+    response_description="The created job with reserved credits.",
+    operation_id="create_fashn_product_to_model_job",
+    responses=error_responses(401, 402, 404, 422, 500),
+)
 async def product_to_model(
     payload: ProductToModelRequest,
     background_tasks: BackgroundTasks,
@@ -291,7 +314,15 @@ async def product_to_model(
         raise HTTPException(status_code=500, detail=f"FASHN API error: {str(e)}")
 
 
-@router.post("/try-on-max", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/try-on-max",
+    status_code=status.HTTP_201_CREATED,
+    summary="Start a FASHN Try-On Max job",
+    description="FASHN Try-On Max with credit reservation.",
+    response_description="The created job with reserved credits.",
+    operation_id="create_fashn_try_on_max_job",
+    responses=error_responses(401, 402, 404, 422, 500),
+)
 async def try_on_max(
     payload: TryOnMaxRequest,
     background_tasks: BackgroundTasks,
@@ -382,7 +413,14 @@ async def try_on_max(
         raise HTTPException(status_code=500, detail=f"FASHN API error: {str(e)}")
 
 
-@router.get("/jobs/{job_id}")
+@router.get(
+    "/jobs/{job_id}",
+    summary="Get a FASHN job",
+    description="Get FASHN job status.",
+    response_description="FASHN job status.",
+    operation_id="get_fashn_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_fashn_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -407,7 +445,18 @@ async def get_fashn_job(
     }
 
 
-@router.post("/webhook")
+@router.post(
+    "/webhook",
+    summary="Receive a FASHN job callback",
+    description=(
+        "FASHN webhook callback for job completion/failure.\n"
+        "\n"
+        "Internal endpoint: requires the `X-Internal-Secret` header."
+    ),
+    response_description="Result of finalizing or refunding the job's credits.",
+    operation_id="receive_fashn_webhook",
+    responses=error_responses(403, 404, 422),
+)
 async def fashn_webhook(
     payload: FashnWebhookPayload,
     x_internal_secret: Optional[str] = Header(None),
@@ -442,7 +491,14 @@ async def fashn_webhook(
     return {"status": "acknowledged", "job_id": payload.job_id}
 
 
-@router.get("/rates")
+@router.get(
+    "/rates",
+    summary="Get FASHN credit rates",
+    description="Get FASHN credit rates.",
+    response_description="Credit rates for FASHN jobs.",
+    operation_id="get_fashn_rates",
+    responses=error_responses(401),
+)
 async def get_fashn_rates(
     current_user: User = Depends(get_current_user),
 ):

@@ -9,6 +9,7 @@ from datetime import datetime
 from app.models.db import get_db, APIKey, User
 from app.middleware.auth import get_current_user, hash_api_key
 from app.services.audit import write_audit_log
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/api-keys",
@@ -49,7 +50,16 @@ def mask_key(key_hash: str) -> str:
 
 # ========================== Endpoints =============================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=APIKeyCreateResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=APIKeyCreateResponse,
+    summary="Create an API key",
+    description="Generate a new API key. Returns plaintext key ONCE — never stored or returned again.",
+    response_description="The new API key. The plaintext key is shown only in this response.",
+    operation_id="create_api_key",
+    responses=error_responses(401, 409, 422),
+)
 async def create_api_key(
     payload: APIKeyCreateRequest,
     request: Request,
@@ -89,7 +99,18 @@ async def create_api_key(
     )
 
 
-@router.get("", response_model=List[APIKeyListResponse])
+@router.get(
+    "",
+    response_model=List[APIKeyListResponse],
+    summary="List API keys",
+    description=(
+        "List all API keys for the authenticated user.\n"
+        "Returns masked key display — never exposes raw hash or plaintext."
+    ),
+    response_description="The caller's API keys with masked key values.",
+    operation_id="list_api_keys",
+    responses=error_responses(401),
+)
 async def list_api_keys(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -115,7 +136,15 @@ async def list_api_keys(
     ]
 
 
-@router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke an API key",
+    description="Revoke and delete an API key. Only the key owner can delete their own keys.",
+    response_description="API key revoked; no content returned.",
+    operation_id="delete_api_key",
+    responses=error_responses(401, 404, 422),
+)
 async def delete_api_key(
     key_id: int,
     request: Request,

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, User, TaxonomyItem
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses, limit_query, page_query
 
 router = APIRouter(prefix="/api/v1/taxonomy", tags=["Taxonomy"])
 
@@ -44,14 +45,21 @@ class TaxonomyItemUpdate(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("/{taxonomy_type}")
+@router.get(
+    "/{taxonomy_type}",
+    summary="List taxonomy items",
+    description="List all taxonomy items by type.",
+    response_description="A page of taxonomy items of the given type.",
+    operation_id="list_taxonomy_items",
+    responses=error_responses(400, 401, 422),
+)
 async def list_taxonomy(
     taxonomy_type: str,
     status: Optional[str] = Query(None),
     family: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
+    page: int = page_query(),
+    limit: int = limit_query(50, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -92,7 +100,14 @@ async def list_taxonomy(
     }
 
 
-@router.get("/{taxonomy_type}/{item_id}")
+@router.get(
+    "/{taxonomy_type}/{item_id}",
+    summary="Get a taxonomy item",
+    description="Get a single taxonomy item.",
+    response_description="The requested taxonomy item.",
+    operation_id="get_taxonomy_item",
+    responses=error_responses(401, 404, 422),
+)
 async def get_taxonomy_item(
     taxonomy_type: str,
     item_id: int,
@@ -112,7 +127,15 @@ async def get_taxonomy_item(
     return _serialize(item)
 
 
-@router.post("/{taxonomy_type}", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{taxonomy_type}",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a taxonomy item",
+    description="Create a new taxonomy item.",
+    response_description="The created taxonomy item.",
+    operation_id="create_taxonomy_item",
+    responses=error_responses(400, 401, 409, 422),
+)
 async def create_taxonomy_item(
     taxonomy_type: str,
     payload: TaxonomyItemCreate,
@@ -149,7 +172,14 @@ async def create_taxonomy_item(
     return _serialize(item)
 
 
-@router.patch("/{taxonomy_type}/{item_id}")
+@router.patch(
+    "/{taxonomy_type}/{item_id}",
+    summary="Update a taxonomy item",
+    description="Update a taxonomy item.",
+    response_description="The updated taxonomy item.",
+    operation_id="update_taxonomy_item",
+    responses=error_responses(401, 404, 422),
+)
 async def update_taxonomy_item(
     taxonomy_type: str,
     item_id: int,
@@ -195,7 +225,15 @@ async def update_taxonomy_item(
     return _serialize(item)
 
 
-@router.delete("/{taxonomy_type}/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{taxonomy_type}/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a taxonomy item",
+    description="Soft delete a taxonomy item.",
+    response_description="Taxonomy item soft-deleted; no content returned.",
+    operation_id="delete_taxonomy_item",
+    responses=error_responses(401, 404, 422),
+)
 async def delete_taxonomy_item(
     taxonomy_type: str,
     item_id: int,

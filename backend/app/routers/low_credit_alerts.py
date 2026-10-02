@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from app.models.db import get_db, User, Brand, CreditTransaction
 from app.middleware.auth import get_current_user
 from app.services.credits_sync_service import credits_sync_service
+from app.api_docs import error_responses, limit_query
 
 router = APIRouter(prefix="/api/v1/credits/alerts", tags=["Low Credit Alerts"])
 
@@ -124,7 +125,14 @@ async def _resolve_brand_id(current_user: User, db: AsyncSession) -> int:
     return b_id or 1
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    summary="Get low-credit alert status",
+    description="Get current credit alert status for the brand.",
+    response_description="Current credit alert status for the brand.",
+    operation_id="get_credit_alert_status",
+    responses=error_responses(401, 404),
+)
 async def get_credit_alert_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -154,7 +162,14 @@ async def get_credit_alert_status(
     }
 
 
-@router.post("/check")
+@router.post(
+    "/check",
+    summary="Run low-credit alert check",
+    description="Manually trigger credit alert check.",
+    response_description="Result of the alert check, including any alerts sent.",
+    operation_id="check_low_credit_alerts",
+    responses=error_responses(401, 404),
+)
 async def check_and_send_alerts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -167,9 +182,16 @@ async def check_and_send_alerts(
     return result
 
 
-@router.get("/history")
+@router.get(
+    "/history",
+    summary="Get low-credit alert history",
+    description="Get recent credit transactions that triggered low balance.",
+    response_description="Recent transactions that triggered a low balance.",
+    operation_id="get_low_credit_alert_history",
+    responses=error_responses(401, 422),
+)
 async def get_alert_history(
-    limit: int = 20,
+    limit: int = limit_query(20, le=None, ge=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -214,7 +236,14 @@ async def get_alert_history(
     }
 
 
-@router.get("/thresholds")
+@router.get(
+    "/thresholds",
+    summary="Get low-credit alert thresholds",
+    description="Get current alert threshold configuration.",
+    response_description="Current alert threshold configuration.",
+    operation_id="get_low_credit_alert_thresholds",
+    responses=error_responses(401),
+)
 async def get_alert_thresholds(
     current_user: User = Depends(get_current_user),
 ):

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, User, Asset, AssetVersion, AssetRelationship, ReferenceSet, ReferenceSetItem
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/assets", tags=["Asset Registry"])
 
@@ -37,7 +38,15 @@ class ReferenceSetCreate(BaseModel):
 
 # ========================== Asset Versions =======================
 
-@router.post("/{asset_id}/versions", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{asset_id}/versions",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an asset version",
+    description="Create a new version of an asset.",
+    response_description="The created asset version.",
+    operation_id="create_asset_version",
+    responses=error_responses(401, 404, 422),
+)
 async def create_asset_version(
     asset_id: int,
     payload: AssetVersionCreate,
@@ -73,7 +82,14 @@ async def create_asset_version(
     return {"id": version.id, "version": version.version, "storage_uri": version.storage_uri}
 
 
-@router.get("/{asset_id}/versions")
+@router.get(
+    "/{asset_id}/versions",
+    summary="List asset versions",
+    description="List all versions of an asset.",
+    response_description="All versions of the asset.",
+    operation_id="list_asset_versions",
+    responses=error_responses(401, 422),
+)
 async def list_asset_versions(
     asset_id: int,
     current_user: User = Depends(get_current_user),
@@ -92,7 +108,15 @@ async def list_asset_versions(
 
 # ========================== Asset Relationships ==================
 
-@router.post("/relationships", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/relationships",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an asset relationship",
+    description="Create a relationship between two assets.",
+    response_description="The created relationship between the two assets.",
+    operation_id="create_asset_relationship",
+    responses=error_responses(401, 422),
+)
 async def create_asset_relationship(
     payload: AssetRelationshipCreate,
     current_user: User = Depends(get_current_user),
@@ -110,7 +134,14 @@ async def create_asset_relationship(
     return {"id": rel.id, "relationship_type": rel.relationship_type}
 
 
-@router.get("/{asset_id}/relationships")
+@router.get(
+    "/{asset_id}/relationships",
+    summary="List asset relationships",
+    description="Get all relationships for an asset.",
+    response_description="Relationships in which the asset participates.",
+    operation_id="get_asset_relationships",
+    responses=error_responses(401, 422),
+)
 async def get_asset_relationships(
     asset_id: int,
     current_user: User = Depends(get_current_user),
@@ -137,7 +168,15 @@ async def get_asset_relationships(
 
 # ========================== Reference Sets =======================
 
-@router.post("/reference-sets", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/reference-sets",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a reference set",
+    description="Create a reference set for character conditioning.",
+    response_description="The created reference set.",
+    operation_id="create_reference_set",
+    responses=error_responses(401, 422),
+)
 async def create_reference_set(
     payload: ReferenceSetCreate,
     current_user: User = Depends(get_current_user),
@@ -167,7 +206,14 @@ async def create_reference_set(
     return {"id": ref_set.id, "name": ref_set.name, "status": ref_set.status}
 
 
-@router.get("/reference-sets/{ref_set_id}")
+@router.get(
+    "/reference-sets/{ref_set_id}",
+    summary="Get a reference set",
+    description="Get a reference set with its items.",
+    response_description="The reference set with its items.",
+    operation_id="get_reference_set",
+    responses=error_responses(401, 404, 422),
+)
 async def get_reference_set(
     ref_set_id: int,
     current_user: User = Depends(get_current_user),
@@ -206,7 +252,15 @@ class AssetTouchUpRequest(BaseModel):
     qa_profile_id: str = "QA-PROFILE-CATALOG-001"
 
 
-@router.post("/{asset_id}/touch-up", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{asset_id}/touch-up",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Queue an asset touch-up job",
+    description="Queue a localized touch-up inpainting job for an asset.",
+    response_description="The touch-up job was accepted and queued.",
+    operation_id="create_touch_up_job",
+    responses=error_responses(401, 404, 422),
+)
 async def create_touch_up_job(
     asset_id: int,
     payload: AssetTouchUpRequest,

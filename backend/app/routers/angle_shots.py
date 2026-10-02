@@ -12,6 +12,7 @@ from jsonschema import validate, ValidationError
 from app.models.db import get_db, User, AngleShot, AngleShotCompatibility, AngleShotVersion
 from app.middleware.auth import get_current_user
 from app.services.compatibility import validate_compatibility
+from app.api_docs import error_responses, limit_query, page_query
 
 router = APIRouter(prefix="/api/v1/angle-shots", tags=["Angle Shots"])
 
@@ -113,7 +114,14 @@ class CustomAngleShotCreate(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("")
+@router.get(
+    "",
+    summary="List angle shot presets",
+    description="List all angle shot presets with filters, computed facets, and pagination.",
+    response_description="A page of angle shot presets with facets and pagination metadata.",
+    operation_id="list_angle_shots",
+    responses=error_responses(401, 422),
+)
 async def list_angle_shots(
     category: Optional[str] = Query(None),
     ageGroup: Optional[str] = Query(None),
@@ -127,8 +135,8 @@ async def list_angle_shots(
     search: Optional[str] = Query(None),
     is_custom: Optional[bool] = Query(None),
     source: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(40, ge=1, le=100),
+    page: int = page_query(),
+    limit: int = limit_query(40, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -262,7 +270,14 @@ async def list_angle_shots(
         },
         "facets": facets,
     }
-@router.get("/facets")
+@router.get(
+    "/facets",
+    summary="Get angle shot filter facets",
+    description="Retrieve all available unique filter options for angle shots.",
+    response_description="Distinct filter values available across angle shot presets.",
+    operation_id="get_filter_facets",
+    responses=error_responses(401),
+)
 async def get_filter_facets(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -301,7 +316,14 @@ async def get_filter_facets(
     }
 
 
-@router.get("/{shot_id}")
+@router.get(
+    "/{shot_id}",
+    summary="Get an angle shot preset",
+    description="Get a single angle shot preset.",
+    response_description="The requested angle shot preset.",
+    operation_id="get_angle_shot",
+    responses=error_responses(401, 404, 422),
+)
 async def get_angle_shot(
     shot_id: int,
     current_user: User = Depends(get_current_user),
@@ -346,7 +368,15 @@ async def get_angle_shot(
     }
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an angle shot preset",
+    description="Create a new angle shot preset supporting both JSON and FormData.",
+    response_description="The created angle shot preset.",
+    operation_id="create_angle_shot",
+    responses=error_responses(400, 401),
+)
 async def create_angle_shot(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -502,7 +532,14 @@ async def create_angle_shot(
     return {"id": shot.id, "name": shot.name, "status": shot.status, "version": shot.version}
 
 
-@router.patch("/{shot_id}")
+@router.patch(
+    "/{shot_id}",
+    summary="Update an angle shot preset",
+    description="Update an angle shot preset.",
+    response_description="The updated angle shot preset.",
+    operation_id="update_angle_shot",
+    responses=error_responses(401, 404, 422),
+)
 async def update_angle_shot(
     shot_id: int,
     payload: AngleShotUpdate,
@@ -558,7 +595,15 @@ async def update_angle_shot(
     return {"id": shot.id, "name": shot.name, "version": shot.version}
 
 
-@router.delete("/{shot_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{shot_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an angle shot preset",
+    description="Soft delete an angle shot preset.",
+    response_description="Preset soft-deleted; no content returned.",
+    operation_id="delete_angle_shot",
+    responses=error_responses(401, 404, 422),
+)
 async def delete_angle_shot(
     shot_id: int,
     current_user: User = Depends(get_current_user),
@@ -575,7 +620,14 @@ async def delete_angle_shot(
     await db.commit()
 
 
-@router.get("/{shot_id}/history")
+@router.get(
+    "/{shot_id}/history",
+    summary="Get angle shot version history",
+    description="Get version history of an angle shot.",
+    response_description="Previous versions of the angle shot preset.",
+    operation_id="get_angle_shot_history",
+    responses=error_responses(401, 422),
+)
 async def get_angle_shot_history(
     shot_id: int,
     current_user: User = Depends(get_current_user),
@@ -595,7 +647,14 @@ async def get_angle_shot_history(
     }
 
 
-@router.post("/{shot_id}/restore")
+@router.post(
+    "/{shot_id}/restore",
+    summary="Restore an angle shot version",
+    description="Restore a previous version of an angle shot.",
+    response_description="The angle shot preset after restoring the requested version.",
+    operation_id="restore_angle_shot_version",
+    responses=error_responses(401, 404, 422),
+)
 async def restore_angle_shot_version(
     shot_id: int,
     version_number: int,
@@ -643,7 +702,14 @@ async def restore_angle_shot_version(
     return {"id": shot.id, "restored_from_version": version_number, "current_version": shot.version}
 
 
-@router.post("/{shot_id}/compatibility-check")
+@router.post(
+    "/{shot_id}/compatibility-check",
+    summary="Check angle shot compatibility",
+    description="Check compatibility of an angle shot with a product.",
+    response_description="Compatibility result for the angle shot and product.",
+    operation_id="check_compatibility",
+    responses=error_responses(401, 404, 422),
+)
 async def check_compatibility(
     shot_id: int,
     payload: CompatibilityCheckRequest,
@@ -676,7 +742,15 @@ async def check_compatibility(
     }
 
 
-@router.post("/validate", status_code=status.HTTP_200_OK)
+@router.post(
+    "/validate",
+    status_code=status.HTTP_200_OK,
+    summary="Validate an angle shot payload",
+    description="Validate a raw pose preset payload against the JSON Schema.",
+    response_description="Validation result for the submitted preset payload.",
+    operation_id="validate_preset_payload",
+    responses=error_responses(400, 401, 422),
+)
 async def validate_preset_payload(
     payload: dict,
     current_user: User = Depends(get_current_user),
@@ -686,8 +760,22 @@ async def validate_preset_payload(
     return {"valid": True, "message": "Preset configuration conforms to the JSON Schema."}
 
 
-@router.post("/admin/reorder")
-@router.post("/reorder")
+@router.post(
+    "/admin/reorder",
+    summary="Reorder angle shot presets (admin path)",
+    description="Reorder multiple angle shot presets.",
+    response_description="Confirmation of the new preset ordering.",
+    operation_id="admin_reorder_angle_shots",
+    responses=error_responses(401, 422),
+)
+@router.post(
+    "/reorder",
+    summary="Reorder angle shot presets",
+    description="Reorder multiple angle shot presets.",
+    response_description="Confirmation of the new preset ordering.",
+    operation_id="reorder_angle_shots",
+    responses=error_responses(401, 422),
+)
 async def reorder_angle_shots(
     payload: ReorderRequest,
     current_user: User = Depends(get_current_user),
@@ -707,8 +795,22 @@ async def reorder_angle_shots(
     return {"success": True, "message": "Presets reordered successfully."}
 
 
-@router.post("/admin/bulk-update")
-@router.post("/bulk-update")
+@router.post(
+    "/admin/bulk-update",
+    summary="Bulk update angle shot presets (admin path)",
+    description="Bulk update multiple angle shot presets.",
+    response_description="Summary of the presets that were updated.",
+    operation_id="admin_bulk_update_angle_shots",
+    responses=error_responses(401, 422),
+)
+@router.post(
+    "/bulk-update",
+    summary="Bulk update angle shot presets",
+    description="Bulk update multiple angle shot presets.",
+    response_description="Summary of the presets that were updated.",
+    operation_id="bulk_update_angle_shots",
+    responses=error_responses(401, 422),
+)
 async def bulk_update_angle_shots(
     payload: BulkUpdateRequest,
     current_user: User = Depends(get_current_user),
@@ -741,7 +843,14 @@ async def bulk_update_angle_shots(
     return {"success": True, "updated_count": updated_count}
 
 
-@router.post("/custom/upload-url")
+@router.post(
+    "/custom/upload-url",
+    summary="Request a custom reference upload URL",
+    description="Request a mock or pre-signed upload URL for a custom reference image.",
+    response_description="Upload URL and storage key for the custom reference image.",
+    operation_id="request_custom_upload_url",
+    responses=error_responses(401, 422),
+)
 async def request_custom_upload_url(
     payload: CustomUploadUrlRequest,
     current_user: User = Depends(get_current_user),
@@ -759,7 +868,14 @@ async def request_custom_upload_url(
     }
 
 
-@router.post("/custom")
+@router.post(
+    "/custom",
+    summary="Create a custom angle shot preset",
+    description="Create a custom preset from an uploaded reference image key.",
+    response_description="The created custom angle shot preset.",
+    operation_id="create_custom_angle_shot",
+    responses=error_responses(401, 422),
+)
 async def create_custom_angle_shot_custom(
     payload: CustomAngleShotCreate,
     current_user: User = Depends(get_current_user),

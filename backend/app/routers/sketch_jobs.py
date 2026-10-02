@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.models.db import get_db, User, SketchJob, SketchJobReference, SketchOutput, Brand, BrandMember
 from app.middleware.auth import get_current_user
 from app.worker import process_sketch_job
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/sketch-jobs", tags=["Sketch Studio"])
 
@@ -34,7 +35,15 @@ class SketchJobCreate(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a sketch-to-image job",
+    description="Create a new sketch-to-image job supporting both JSON and FormData.",
+    response_description="The created sketch job with reserved credits.",
+    operation_id="create_sketch_job",
+    responses=error_responses(400, 401, 402),
+)
 async def create_sketch_job(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -176,7 +185,14 @@ async def create_sketch_job(
     }
 
 
-@router.get("/{job_id}")
+@router.get(
+    "/{job_id}",
+    summary="Get a sketch job",
+    description="Get sketch job status, progress, and outputs.",
+    response_description="Sketch job status, progress and outputs.",
+    operation_id="get_sketch_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_sketch_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -210,7 +226,14 @@ async def get_sketch_job(
     }
 
 
-@router.post("/{job_id}/cancel")
+@router.post(
+    "/{job_id}/cancel",
+    summary="Cancel a sketch job",
+    description="Cancel active/queued sketch job and refund credits.",
+    response_description="The cancelled job; reserved credits are refunded.",
+    operation_id="cancel_sketch_job",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def cancel_sketch_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -233,7 +256,14 @@ async def cancel_sketch_job(
     return {"job_id": job.id, "status": "cancelled", "credits_refunded": job.credits_reserved}
 
 
-@router.post("/{job_id}/retry")
+@router.post(
+    "/{job_id}/retry",
+    summary="Retry a sketch job",
+    description="Retry a failed sketch job.",
+    response_description="The sketch job re-queued for processing.",
+    operation_id="retry_sketch_job",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def retry_sketch_job(
     job_id: int,
     current_user: User = Depends(get_current_user),

@@ -10,6 +10,7 @@ from app.models.db import get_db, User
 from app.middleware.auth import get_current_user
 from app.services.preservation_service import preservation_service
 from app.services.credit_ledger_service import credit_ledger_service
+from app.api_docs import error_responses, limit_query
 
 router = APIRouter(prefix="/api/v1", tags=["Preservation & Credit Ledger"])
 
@@ -55,7 +56,15 @@ class ConstraintValidationRequest(BaseModel):
 
 # ========================== Preservation Endpoints ===============
 
-@router.post("/preservation/garment", status_code=status.HTTP_200_OK)
+@router.post(
+    "/preservation/garment",
+    status_code=status.HTTP_200_OK,
+    summary="Build a garment preservation profile",
+    description="Build garment preservation profile.",
+    response_description="The garment preservation profile.",
+    operation_id="create_garment_preservation_profile",
+    responses=error_responses(401, 422),
+)
 async def create_garment_preservation_profile(
     payload: GarmentPreservationRequest,
     current_user: User = Depends(get_current_user),
@@ -73,7 +82,15 @@ async def create_garment_preservation_profile(
     return {"profile": profile, "status": "generated"}
 
 
-@router.post("/preservation/brand-protection", status_code=status.HTTP_200_OK)
+@router.post(
+    "/preservation/brand-protection",
+    status_code=status.HTTP_200_OK,
+    summary="Define brand protection zones",
+    description="Define brand logo and mark protection zones.",
+    response_description="The brand logo/mark protection zones.",
+    operation_id="create_brand_protection_zones",
+    responses=error_responses(401, 422),
+)
 async def create_brand_protection_zones(
     payload: BrandProtectionRequest,
     current_user: User = Depends(get_current_user),
@@ -88,7 +105,15 @@ async def create_brand_protection_zones(
     return {"protection_profile": zones, "status": "generated"}
 
 
-@router.post("/preservation/identity-gate", status_code=status.HTTP_200_OK)
+@router.post(
+    "/preservation/identity-gate",
+    status_code=status.HTTP_200_OK,
+    summary="Build a facial identity gate",
+    description="Build facial identity preservation gate.",
+    response_description="The facial identity preservation gate.",
+    operation_id="create_identity_gate",
+    responses=error_responses(401, 422),
+)
 async def create_identity_gate(
     payload: IdentityGateRequest,
     current_user: User = Depends(get_current_user),
@@ -104,7 +129,15 @@ async def create_identity_gate(
     return {"identity_gate": gate, "status": "generated"}
 
 
-@router.post("/preservation/protection-mask", status_code=status.HTTP_200_OK)
+@router.post(
+    "/preservation/protection-mask",
+    status_code=status.HTTP_200_OK,
+    summary="Generate a protection mask",
+    description="Generate protection mask from zone definitions.",
+    response_description="The generated protection mask.",
+    operation_id="generate_protection_mask",
+    responses=error_responses(401, 422),
+)
 async def generate_protection_mask(
     payload: ProtectionMaskRequest,
     current_user: User = Depends(get_current_user),
@@ -118,7 +151,15 @@ async def generate_protection_mask(
     return {"mask": mask, "status": "generated"}
 
 
-@router.post("/preservation/validate", status_code=status.HTTP_200_OK)
+@router.post(
+    "/preservation/validate",
+    status_code=status.HTTP_200_OK,
+    summary="Validate preservation constraints",
+    description="Validate generation request against preservation constraints.",
+    response_description="Validation result for the generation request.",
+    operation_id="validate_preservation_constraints",
+    responses=error_responses(401, 422),
+)
 async def validate_constraints(
     payload: ConstraintValidationRequest,
     current_user: User = Depends(get_current_user),
@@ -133,10 +174,17 @@ async def validate_constraints(
 
 # ========================== Credit Ledger Endpoints ==============
 
-@router.get("/credits/ledger/{brand_id}")
+@router.get(
+    "/credits/ledger/{brand_id}",
+    summary="Get the credit ledger",
+    description="Get immutable credit transaction ledger.",
+    response_description="Immutable credit transaction ledger for the brand.",
+    operation_id="get_credit_ledger",
+    responses=error_responses(401, 422),
+)
 async def get_credit_ledger(
     brand_id: int,
-    limit: int = 100,
+    limit: int = limit_query(100, le=None, ge=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -181,7 +229,14 @@ async def get_credit_ledger(
     }
 
 
-@router.get("/credits/ledger/{brand_id}/export")
+@router.get(
+    "/credits/ledger/{brand_id}/export",
+    summary="Export the credit ledger as CSV",
+    description="Export credit ledger as CSV.",
+    response_description="CSV file of the brand's credit ledger.",
+    operation_id="export_credit_ledger_csv",
+    responses=error_responses(401, 422),
+)
 async def export_credit_ledger_csv(
     brand_id: int,
     current_user: User = Depends(get_current_user),
@@ -226,7 +281,14 @@ async def export_credit_ledger_csv(
     )
 
 
-@router.post("/credits/ledger/verify")
+@router.post(
+    "/credits/ledger/verify",
+    summary="Verify credit ledger integrity",
+    description="Verify integrity of credit transaction hash chain.",
+    response_description="Result of verifying the transaction hash chain.",
+    operation_id="verify_credit_ledger_integrity",
+    responses=error_responses(401, 422),
+)
 async def verify_ledger_integrity(
     brand_id: int,
     current_user: User = Depends(get_current_user),

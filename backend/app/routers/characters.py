@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, User, Asset, ReferenceSet, ReferenceSetItem, CreditTransaction
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/characters", tags=["Characters"])
 
@@ -46,7 +47,15 @@ class TrainingJobRequest(BaseModel):
 
 # ========================== Reference Set Endpoints ==============
 
-@router.post("/reference-sets", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/reference-sets",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character reference set",
+    description="Create a new character reference set.",
+    response_description="The created reference set.",
+    operation_id="create_character_reference_set",
+    responses=error_responses(401, 422),
+)
 async def create_character_reference_set(
     payload: RefSetCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -70,7 +79,14 @@ async def create_character_reference_set(
     }
 
 
-@router.post("/reference-sets/{ref_set_id}/upload")
+@router.post(
+    "/reference-sets/{ref_set_id}/upload",
+    summary="Upload a reference image",
+    description="Upload a reference image for a specific viewpoint.",
+    response_description="The stored reference image and updated coverage.",
+    operation_id="upload_reference_image",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def upload_reference_image(
     ref_set_id: int,
     view_code: str = Form(...),
@@ -152,7 +168,14 @@ async def upload_reference_image(
     }
 
 
-@router.get("/reference-sets/{ref_set_id}/coverage")
+@router.get(
+    "/reference-sets/{ref_set_id}/coverage",
+    summary="Get reference set coverage",
+    description="Get viewpoint coverage for a reference set.",
+    response_description="Viewpoint coverage for the reference set.",
+    operation_id="get_reference_set_coverage",
+    responses=error_responses(401, 422),
+)
 async def get_reference_set_coverage(
     ref_set_id: int,
     current_user: User = Depends(get_current_user),
@@ -179,7 +202,15 @@ async def get_reference_set_coverage(
 
 # ========================== Training Endpoints ==================
 
-@router.post("/training-jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/training-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Start a LoRA training job",
+    description="Dispatch a LoRA training job for a character.",
+    response_description="The training job was accepted and queued.",
+    operation_id="create_training_job",
+    responses=error_responses(400, 401, 422),
+)
 async def create_training_job(
     payload: TrainingJobRequest,
     current_user: User = Depends(get_current_user),
@@ -243,7 +274,15 @@ class DummyTrainingTask:
 process_training_job = DummyTrainingTask()
 
 
-@router.post("/{character_id}/train", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/train",
+    status_code=status.HTTP_201_CREATED,
+    summary="Train a character (legacy)",
+    description="Train character version and deduct credits.",
+    response_description="The created training record; credits have been deducted.",
+    operation_id="train_character_legacy",
+    responses=error_responses(400, 401, 422),
+)
 async def train_character_legacy(
     character_id: int,
     payload: LegacyCharacterTrainRequest,

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, User, Asset
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/campaigns", tags=["Campaign Studio"])
 
@@ -19,7 +20,17 @@ CHANNEL_FORMATS = {
     "print_catalog": {"aspect_ratio": "4:5", "width": 1080, "height": 1350, "label": "Print Catalog"},
 }
 
-@router.get("/formats")
+@router.get(
+    "/formats",
+    summary="Get campaign channel formats",
+    description=(
+        "Get available campaign channel formats.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Available campaign channel formats.",
+    operation_id="get_campaign_formats",
+)
 async def get_campaign_formats():
     """Get available campaign channel formats."""
     return {"formats": list(CHANNEL_FORMATS.values())}
@@ -43,7 +54,19 @@ class CampaignJobRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("/formats")
+@router.get(
+    "/formats",
+    summary="List campaign channel formats",
+    description=(
+        "List all available channel formats.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `get_campaign_formats`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Available campaign channel formats.",
+    operation_id="list_channel_formats",
+    responses=error_responses(401),
+    include_in_schema=False,
+)
 async def list_channel_formats(
     current_user: User = Depends(get_current_user),
 ):
@@ -51,7 +74,15 @@ async def list_channel_formats(
     return {"formats": CHANNEL_FORMATS}
 
 
-@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a campaign generation job",
+    description="Submit a multi-channel campaign generation job.",
+    response_description="The campaign job was accepted and queued.",
+    operation_id="create_campaign_job",
+    responses=error_responses(400, 401, 422),
+)
 async def create_campaign_job(
     payload: CampaignJobRequest,
     current_user: User = Depends(get_current_user),
@@ -98,7 +129,14 @@ async def create_campaign_job(
     }
 
 
-@router.get("/jobs/{task_id}/export-zip")
+@router.get(
+    "/jobs/{task_id}/export-zip",
+    summary="Export campaign assets as ZIP",
+    description="Export campaign assets as ZIP with C2PA manifests.",
+    response_description="ZIP archive of campaign assets with C2PA manifests.",
+    operation_id="export_campaign_zip",
+    responses=error_responses(401, 422),
+)
 async def export_campaign_zip(
     task_id: str,
     brand_id: int,

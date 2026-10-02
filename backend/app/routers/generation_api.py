@@ -14,6 +14,7 @@ from app.models.db import (
     PoseGeometryPreset,
 )
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["Generation API & WebSockets"])
 
@@ -86,7 +87,15 @@ manager = GenerationConnectionManager()
 
 # ========================== Generation Endpoints =================
 
-@router.post("/generate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a generation job",
+    description="Create a new generation job with character, product, angles and environment.",
+    response_description="The created generation job.",
+    operation_id="create_generation_job",
+    responses=error_responses(401, 422),
+)
 async def create_generation_job(
     payload: GenerationRequest,
     current_user: User = Depends(get_current_user),
@@ -126,7 +135,14 @@ async def create_generation_job(
     }
 
 
-@router.get("/generate/{job_id}")
+@router.get(
+    "/generate/{job_id}",
+    summary="Get a generation job",
+    description="Get generation job status and results.",
+    response_description="Generation job status and results.",
+    operation_id="get_generation_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_generation_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -221,7 +237,14 @@ async def generation_websocket(
 
 # ========================== Preset Pickers =======================
 
-@router.get("/pose-geometry-presets")
+@router.get(
+    "/pose-geometry-presets",
+    summary="List pose/angle presets",
+    description="Get pose/angle presets for Create Production drawer.",
+    response_description="Pose and angle presets for the Create Production drawer.",
+    operation_id="list_pose_geometry_presets",
+    responses=error_responses(401, 422),
+)
 async def get_pose_presets(
     family: Optional[str] = None,
     framing: Optional[str] = None,
@@ -256,7 +279,14 @@ async def get_pose_presets(
     ]}
 
 
-@router.get("/environments")
+@router.get(
+    "/environments",
+    summary="List environment presets",
+    description="Get environment presets for Create Production background picker.",
+    response_description="Environment presets for the background picker.",
+    operation_id="list_environment_presets",
+    responses=error_responses(401, 422),
+)
 async def get_environments(
     family: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -283,7 +313,14 @@ async def get_environments(
 
 # ========================== QA Evaluation ========================
 
-@router.get("/qa/evaluations/{asset_id}")
+@router.get(
+    "/qa/evaluations/{asset_id}",
+    summary="Get QA scores for an asset",
+    description="Get QA evaluation scores for a generated asset.",
+    response_description="QA evaluation scores for the generated asset.",
+    operation_id="get_generation_qa_evaluation",
+    responses=error_responses(401, 422),
+)
 async def get_qa_evaluation(
     asset_id: str,
     current_user: User = Depends(get_current_user),

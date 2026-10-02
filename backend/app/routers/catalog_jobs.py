@@ -10,6 +10,7 @@ from app.worker import process_catalog_job, process_catalog_item
 from app.services.storage import storage_service
 import os
 import uuid
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Studio"])
 
@@ -30,13 +31,31 @@ class CatalogJobCreate(BaseModel):
     products: List[dict] = Field(default_factory=list)
 
 
-@router.get("/marketplaces")
+@router.get(
+    "/marketplaces",
+    summary="Get supported marketplaces",
+    description=(
+        "Get supported marketplace channels.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Supported marketplace channels.",
+    operation_id="get_catalog_marketplaces",
+)
 async def get_marketplaces():
     """Get supported marketplace channels."""
     return {"marketplaces": ["shopify", "amazon", "myntra", "woocommerce"]}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a catalog job",
+    description="Create a new catalog batch job supporting both JSON and FormData.",
+    response_description="The created catalog job with reserved credits.",
+    operation_id="create_catalog_job",
+    responses=error_responses(400, 401, 402),
+)
 async def create_catalog_job(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -153,7 +172,14 @@ async def create_catalog_job(
     }
 
 
-@router.get("/{job_id}")
+@router.get(
+    "/{job_id}",
+    summary="Get a catalog job",
+    description="Get catalog job status with per-SKU tracking.",
+    response_description="Catalog job status with per-SKU progress.",
+    operation_id="get_catalog_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_catalog_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -196,7 +222,14 @@ async def get_catalog_job(
     }
 
 
-@router.post("/{job_id}/cancel")
+@router.post(
+    "/{job_id}/cancel",
+    summary="Cancel a catalog job",
+    description="Cancel catalog job and refund credits.",
+    response_description="The cancelled job; reserved credits are refunded.",
+    operation_id="cancel_catalog_job",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def cancel_catalog_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -220,7 +253,14 @@ async def cancel_catalog_job(
     return {"job_id": job.id, "status": "cancelled", "credits_refunded": refund}
 
 
-@router.post("/{job_id}/retry")
+@router.post(
+    "/{job_id}/retry",
+    summary="Retry a catalog job",
+    description="Retry a failed catalog job.",
+    response_description="The catalog job re-queued for processing.",
+    operation_id="retry_catalog_job",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def retry_catalog_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -259,7 +299,14 @@ async def retry_catalog_job(
     return {"job_id": job.id, "status": "queued"}
 
 
-@router.post("/{job_id}/items/{item_id}/retry")
+@router.post(
+    "/{job_id}/items/{item_id}/retry",
+    summary="Retry a catalog item",
+    description="Retry a failed catalog item.",
+    response_description="The catalog item re-queued for processing.",
+    operation_id="retry_catalog_item",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def retry_catalog_item(
     job_id: int,
     item_id: int,

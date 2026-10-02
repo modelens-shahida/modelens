@@ -11,6 +11,7 @@ from app.models.db import get_db, User, BrandModel
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limit import RateLimiter
 from app.services.fluid_service import fluid_service
+from app.api_docs import error_responses
 
 logger = logging.getLogger("modelens.editorial_fluid")
 
@@ -77,7 +78,15 @@ class BrandModelCreateRequest(BaseModel):
 
 # --- Endpoints ---
 
-@router.post("/editorial-sessions", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/editorial-sessions",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a Fluid Studio session",
+    description="Creates a new interactive Fluid Studio Session with non-destructive layer history.",
+    response_description="The created session.",
+    operation_id="create_editorial_session",
+    responses=error_responses(401, 422),
+)
 async def create_editorial_session(
     payload: CreateSessionRequest,
     current_user: User = Depends(get_current_user),
@@ -102,7 +111,14 @@ async def create_editorial_session(
     return session
 
 
-@router.get("/editorial-sessions")
+@router.get(
+    "/editorial-sessions",
+    summary="List Fluid Studio sessions",
+    description="Lists all Fluid Sessions for the authenticated user.",
+    response_description="The caller's Fluid Studio sessions.",
+    operation_id="list_editorial_sessions",
+    responses=error_responses(401),
+)
 async def list_editorial_sessions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -112,7 +128,14 @@ async def list_editorial_sessions(
     return sessions
 
 
-@router.get("/editorial-sessions/{session_id}")
+@router.get(
+    "/editorial-sessions/{session_id}",
+    summary="Get a Fluid Studio session",
+    description="Retrieves Fluid Session and its non-destructive layer graph.",
+    response_description="The session and its layer graph.",
+    operation_id="get_editorial_session",
+    responses=error_responses(401, 404, 422),
+)
 async def get_editorial_session(
     session_id: str,
     current_user: User = Depends(get_current_user),
@@ -128,7 +151,14 @@ async def get_editorial_session(
     return session
 
 
-@router.delete("/editorial-sessions/{session_id}")
+@router.delete(
+    "/editorial-sessions/{session_id}",
+    summary="Delete a Fluid Studio session",
+    description="Deletes a Fluid Session.",
+    response_description="Confirmation that the session was deleted.",
+    operation_id="delete_editorial_session",
+    responses=error_responses(401, 404, 422),
+)
 async def delete_editorial_session(
     session_id: str,
     current_user: User = Depends(get_current_user),
@@ -144,7 +174,14 @@ async def delete_editorial_session(
     return {"message": f"Fluid Session '{session_id}' deleted successfully"}
 
 
-@router.post("/editorial-sessions/{session_id}/generate")
+@router.post(
+    "/editorial-sessions/{session_id}/generate",
+    summary="Generate the base layer",
+    description="Triggers initial base editorial generation for the session.",
+    response_description="The generated base layer.",
+    operation_id="generate_base_layer",
+    responses=error_responses(401, 404, 422),
+)
 async def generate_base_layer(
     session_id: str,
     payload: BaseGenerateRequest,
@@ -163,7 +200,14 @@ async def generate_base_layer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.post("/editorial-sessions/{session_id}/layers/{layer_id}/apply-product")
+@router.post(
+    "/editorial-sessions/{session_id}/layers/{layer_id}/apply-product",
+    summary="Apply a product to a layer",
+    description="Applies a product onto an existing layer while preserving model identity, pose, and background.",
+    response_description="The new layer with the product applied.",
+    operation_id="apply_product_layer",
+    responses=error_responses(401, 404, 422),
+)
 async def apply_product_layer(
     session_id: str,
     layer_id: str,
@@ -185,7 +229,14 @@ async def apply_product_layer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.post("/editorial-sessions/{session_id}/layers/{layer_id}/edit")
+@router.post(
+    "/editorial-sessions/{session_id}/layers/{layer_id}/edit",
+    summary="Edit a layer",
+    description="Performs a region-masked inpainting or prompt edit on a layer.",
+    response_description="The new layer produced by the edit.",
+    operation_id="edit_layer",
+    responses=error_responses(401, 404, 422),
+)
 async def edit_layer(
     session_id: str,
     layer_id: str,
@@ -208,7 +259,14 @@ async def edit_layer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.post("/editorial-sessions/{session_id}/layers/{layer_id}/model-swap")
+@router.post(
+    "/editorial-sessions/{session_id}/layers/{layer_id}/model-swap",
+    summary="Swap the model on a layer",
+    description="Swaps model identity while preserving clothing, pose, and composition.",
+    response_description="The new layer with the swapped model identity.",
+    operation_id="model_swap_layer",
+    responses=error_responses(401, 404, 422),
+)
 async def model_swap_layer(
     session_id: str,
     layer_id: str,
@@ -231,7 +289,14 @@ async def model_swap_layer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.post("/editorial-sessions/{session_id}/layers/{layer_id}/reframe")
+@router.post(
+    "/editorial-sessions/{session_id}/layers/{layer_id}/reframe",
+    summary="Reframe a layer",
+    description="Re-frames and outpaints layer to a new aspect ratio.",
+    response_description="The new reframed/outpainted layer.",
+    operation_id="reframe_layer",
+    responses=error_responses(401, 404, 422),
+)
 async def reframe_layer(
     session_id: str,
     layer_id: str,
@@ -252,7 +317,14 @@ async def reframe_layer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.post("/editorial-sessions/{session_id}/layers/{layer_id}/upscale")
+@router.post(
+    "/editorial-sessions/{session_id}/layers/{layer_id}/upscale",
+    summary="Upscale a layer",
+    description="Upscales layer to 4K, 8K, or 14K resolution using SeedVR2 / Real-ESRGAN adapter.",
+    response_description="The new upscaled layer.",
+    operation_id="upscale_layer",
+    responses=error_responses(401, 404, 422),
+)
 async def upscale_layer(
     session_id: str,
     layer_id: str,
@@ -276,7 +348,15 @@ async def upscale_layer(
 
 # --- Brand Model Management Endpoints ---
 
-@router.post("/brand-models", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/brand-models",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a brand model",
+    description="Creates a custom private brand model identity from full-body and portrait photographs.",
+    response_description="The created private brand model.",
+    operation_id="create_brand_model",
+    responses=error_responses(401, 422),
+)
 async def create_brand_model(
     payload: BrandModelCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -313,7 +393,14 @@ async def create_brand_model(
     }
 
 
-@router.get("/brand-models")
+@router.get(
+    "/brand-models",
+    summary="List brand models",
+    description="Lists private custom brand models available in workspace.",
+    response_description="Private brand models available in the workspace.",
+    operation_id="list_brand_models",
+    responses=error_responses(401),
+)
 async def list_brand_models(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

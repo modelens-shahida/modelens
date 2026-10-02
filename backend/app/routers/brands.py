@@ -10,6 +10,7 @@ from app.models.db import get_db, Brand, BrandMember, User, Invitation
 from app.middleware.auth import get_current_user, require_brand_role, ROLE_HIERARCHY
 from app.models.db import AuditLog
 from app.services.audit import write_audit_log
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/brands",
@@ -92,7 +93,19 @@ class InvitationResponse(BaseModel):
 
 # ========================== Brand CRUD =====================================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=BrandResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=BrandResponse,
+    summary="Create a brand",
+    description=(
+        "Create a new brand. The authenticated caller becomes the owner.\n"
+        "No invite needed — ownership is automatic."
+    ),
+    response_description="The created brand.",
+    operation_id="create_brand",
+    responses=error_responses(401, 422),
+)
 async def create_brand(
     payload: BrandCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -112,7 +125,18 @@ async def create_brand(
     return brand
 
 
-@router.get("", response_model=list[BrandResponse])
+@router.get(
+    "",
+    response_model=list[BrandResponse],
+    summary="List brands",
+    description=(
+        "List all brands the caller owns or is a member of.\n"
+        "Never exposes brands the caller has no relationship with."
+    ),
+    response_description="Brands the caller owns or belongs to.",
+    operation_id="list_brands",
+    responses=error_responses(401),
+)
 async def list_brands(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -146,7 +170,18 @@ async def list_brands(
     return brands
 
 
-@router.get("/{brand_id}", response_model=BrandResponse)
+@router.get(
+    "/{brand_id}",
+    response_model=BrandResponse,
+    summary="Get a brand",
+    description=(
+        "Get a single brand by ID.\n"
+        "Requires at least **viewer** role (or owner)."
+    ),
+    response_description="The requested brand.",
+    operation_id="get_brand",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_brand(
     brand_id: int,
     _caller: User = Depends(require_brand_role("viewer")),
@@ -167,7 +202,18 @@ async def get_brand(
     return brand
 
 
-@router.patch("/{brand_id}", response_model=BrandResponse)
+@router.patch(
+    "/{brand_id}",
+    response_model=BrandResponse,
+    summary="Update a brand",
+    description=(
+        "Update brand details (currently: name).\n"
+        "Requires at least **admin** role (or owner)."
+    ),
+    response_description="The updated brand.",
+    operation_id="update_brand",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def update_brand(
     brand_id: int,
     payload: BrandUpdateRequest,
@@ -201,6 +247,17 @@ async def update_brand(
     "/{brand_id}/members",
     status_code=status.HTTP_201_CREATED,
     response_model=BrandMemberResponse,
+    summary="Add a brand member",
+    description=(
+        "Invite a user to a brand by email and assign a role.\n"
+        "Requires at least **admin** role (or owner).\n"
+        "\n"
+        "Allowed roles for invite: viewer, editor, admin.\n"
+        "The 'owner' role is reserved for the brand creator."
+    ),
+    response_description="The created brand membership.",
+    operation_id="add_brand_member",
+    responses=error_responses(401, 403, 404, 409, 422),
 )
 async def invite_member(
     brand_id: int,
@@ -270,7 +327,18 @@ async def invite_member(
     )
 
 
-@router.get("/{brand_id}/members", response_model=list[BrandMemberResponse])
+@router.get(
+    "/{brand_id}/members",
+    response_model=list[BrandMemberResponse],
+    summary="List brand members",
+    description=(
+        "List all members of a brand.\n"
+        "Requires at least **viewer** role (or owner)."
+    ),
+    response_description="Members of the brand.",
+    operation_id="list_brand_members",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def list_members(
     brand_id: int,
     _caller: User = Depends(require_brand_role("viewer")),
@@ -300,7 +368,15 @@ async def list_members(
     ]
 
 
-@router.delete("/{brand_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{brand_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a brand",
+    description="Delete a brand. Only the owner of the brand can delete it.",
+    response_description="Brand deleted; no content returned.",
+    operation_id="delete_brand",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def delete_brand(
     brand_id: int,
     current_user: User = Depends(get_current_user),
@@ -327,7 +403,19 @@ async def delete_brand(
     return
 
 
-@router.delete("/{brand_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{brand_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a brand member",
+    description=(
+        "Remove a member from a brand.\n"
+        "Requires at least **admin** role on the brand.\n"
+        "Cannot remove the owner of the brand."
+    ),
+    response_description="Member removed; no content returned.",
+    operation_id="remove_brand_member",
+    responses=error_responses(400, 401, 403, 404, 422),
+)
 async def remove_member(
     brand_id: int,
     user_id: int,
@@ -380,11 +468,25 @@ async def remove_member(
 
 
 
-@router.get("/{brand_id}/audit-logs", response_model=list[dict])
+@router.get(
+    "/{brand_id}/audit-logs",
+    response_model=list[dict],
+    summary="Get brand audit logs",
+    description=(
+        "Retrieve the audit log timeline for a brand.\n"
+        "Requires at least **admin** role (or owner).\n"
+        "\n"
+        "Returns activity records such as asset deletions, API key changes,\n"
+        "webhook subscriptions, member role updates, and billing tier changes."
+    ),
+    response_description="Audit log timeline for the brand.",
+    operation_id="get_brand_audit_logs",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_brand_audit_logs(
     brand_id: int,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(50, le=200),
+    offset: int = offset_query(),
     category: Optional[str] = Query(None),
     user_email: Optional[str] = Query(None),
     _caller: User = Depends(require_brand_role("admin")),
@@ -460,7 +562,18 @@ async def get_brand_audit_logs(
 class AuthSettingsUpdate(BaseModel):
     domain_whitelist: Optional[list] = None
 
-@router.patch("/{brand_id}/auth-settings", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{brand_id}/auth-settings",
+    status_code=status.HTTP_200_OK,
+    summary="Update brand SSO settings",
+    description=(
+        "Update brand SSO auth settings including domain whitelist.\n"
+        "Requires at least **admin** role (or owner)."
+    ),
+    response_description="The updated SSO/auth settings.",
+    operation_id="update_brand_auth_settings",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def update_auth_settings(
     brand_id: int,
     payload: AuthSettingsUpdate,
@@ -489,7 +602,14 @@ async def update_auth_settings(
     }
 
 
-@router.get("/{brand_id}/auth-settings")
+@router.get(
+    "/{brand_id}/auth-settings",
+    summary="Get brand SSO settings",
+    description="Get brand SSO auth settings. Requires at least **viewer** role.",
+    response_description="The brand's SSO/auth settings.",
+    operation_id="get_brand_auth_settings",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_auth_settings(
     brand_id: int,
     _caller: User = Depends(require_brand_role("viewer")),
@@ -513,6 +633,15 @@ async def get_auth_settings(
     "/{brand_id}/invites",
     status_code=status.HTTP_201_CREATED,
     response_model=InvitationResponse,
+    summary="Invite a user to a brand",
+    description=(
+        "Invite a user to a brand by email.\n"
+        "Generates a secure token and queues invitation email sending task.\n"
+        "Requires at least **admin** role on the brand."
+    ),
+    response_description="The created invitation.",
+    operation_id="create_brand_invitation",
+    responses=error_responses(400, 401, 403, 404, 422),
 )
 async def create_brand_invitation(
     brand_id: int,
@@ -589,7 +718,19 @@ async def create_brand_invitation(
     return invitation
 
 
-@router.get("/{brand_id}/invites", response_model=list[InvitationResponse])
+@router.get(
+    "/{brand_id}/invites",
+    response_model=list[InvitationResponse],
+    summary="List pending brand invitations",
+    description=(
+        "List all pending invitations for a brand.\n"
+        "Pending means not accepted, not revoked, and not expired.\n"
+        "Requires at least **admin** role on the brand."
+    ),
+    response_description="Pending (not accepted, revoked or expired) invitations.",
+    operation_id="list_pending_brand_invitations",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def list_pending_brand_invitations(
     brand_id: int,
     _caller: User = Depends(require_brand_role("admin")),
@@ -611,7 +752,18 @@ async def list_pending_brand_invitations(
     return invitations
 
 
-@router.delete("/{brand_id}/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{brand_id}/invites/{invite_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a brand invitation",
+    description=(
+        "Revoke a pending brand invitation.\n"
+        "Requires at least **admin** role on the brand."
+    ),
+    response_description="Invitation revoked; no content returned.",
+    operation_id="revoke_brand_invitation",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def revoke_brand_invitation(
     brand_id: int,
     invite_id: int,
@@ -645,7 +797,20 @@ class UpdateMemberRoleRequest(BaseModel):
     role: str = Field(..., pattern="^(viewer|editor|admin)$")
 
 
-@router.patch("/{brand_id}/members/{user_id}", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{brand_id}/members/{user_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Change a brand member's role",
+    description=(
+        "Update a brand member's role.\n"
+        "Requires Admin or Owner role.\n"
+        "Cannot change the brand owner's role.\n"
+        "Users cannot change their own role."
+    ),
+    response_description="The member with the updated role.",
+    operation_id="update_brand_member_role",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def update_member_role(
     brand_id: int,
     user_id: int,

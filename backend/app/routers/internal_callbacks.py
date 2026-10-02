@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import get_db, CreditTransaction, Brand
 from app.config import settings
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/internal", tags=["Internal Callbacks"])
 
@@ -28,7 +29,19 @@ class GenerationFailPayload(BaseModel):
     reason: Optional[str] = None
 
 
-@router.post("/generations/{generation_id}/complete")
+@router.post(
+    "/generations/{generation_id}/complete",
+    summary="Generation completed callback (internal)",
+    description=(
+        "Called by NestJS when generation completes.\n"
+        "Finalizes credit deduction.\n"
+        "\n"
+        "Internal endpoint: requires the `X-Internal-Secret` header."
+    ),
+    response_description="Confirmation that the credit deduction was finalized.",
+    operation_id="internal_generation_complete",
+    responses=error_responses(403, 404, 422),
+)
 async def generation_complete_callback(
     generation_id: str,
     payload: GenerationCompletePayload,
@@ -78,7 +91,19 @@ async def generation_complete_callback(
     return {"status": "completed", "generation_id": generation_id}
 
 
-@router.post("/generations/{generation_id}/fail")
+@router.post(
+    "/generations/{generation_id}/fail",
+    summary="Generation failed callback (internal)",
+    description=(
+        "Called by NestJS when generation fails.\n"
+        "Refunds reserved credits.\n"
+        "\n"
+        "Internal endpoint: requires the `X-Internal-Secret` header."
+    ),
+    response_description="Confirmation that reserved credits were refunded.",
+    operation_id="internal_generation_fail",
+    responses=error_responses(403, 404, 422),
+)
 async def generation_fail_callback(
     generation_id: str,
     payload: GenerationFailPayload,

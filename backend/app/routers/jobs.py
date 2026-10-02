@@ -21,6 +21,7 @@ from app.models.db import (
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 from app.middleware.rate_limit import redis_client, RateLimiter
 from app.worker import process_generation_job, process_workflow_job
+from app.api_docs import error_responses, limit_query, offset_query
 
 logger = logging.getLogger("modelens.jobs")
 
@@ -65,7 +66,23 @@ class JobResponse(BaseModel):
 
 # --- Endpoints ---
 
-@router.post("/generate", status_code=status.HTTP_201_CREATED, response_model=JobResponse, dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))])
+@router.post(
+    "/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=JobResponse,
+    dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))],
+    summary="Submit a generation job",
+    description=(
+        "Triggers an AI generation job.\n"
+        "Validates user has at least 'editor' role, verifies credits, deducts 1 credit,\n"
+        "inserts job record, caches status, and enqueues background worker.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="The created generation job.",
+    operation_id="generate_job",
+    responses=error_responses(400, 401, 403, 404, 422, 429),
+)
 async def generate_job(
     payload: JobGenerateRequest,
     current_user: User = Depends(get_current_user),
@@ -193,7 +210,23 @@ async def generate_job(
     return job
 
 
-@router.post("/workflow", status_code=status.HTTP_201_CREATED, response_model=JobResponse, dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))])
+@router.post(
+    "/workflow",
+    status_code=status.HTTP_201_CREATED,
+    response_model=JobResponse,
+    dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))],
+    summary="Submit a workflow generation job",
+    description=(
+        "Triggers an AI generation workflow job.\n"
+        "Validates user has at least 'editor' role, verifies credits, deducts 1 credit,\n"
+        "inserts job record, caches status, and enqueues background worker.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="The created workflow job.",
+    operation_id="generate_workflow_job",
+    responses=error_responses(400, 401, 403, 404, 422, 429),
+)
 async def generate_workflow_job(
     payload: JobWorkflowRequest,
     current_user: User = Depends(get_current_user),
@@ -368,11 +401,19 @@ async def generate_workflow_job(
     return job
 
 
-@router.get("", response_model=List[JobResponse])
+@router.get(
+    "",
+    response_model=List[JobResponse],
+    summary="List jobs",
+    description="List all AI jobs for brands the user belongs to with pagination.",
+    response_description="A page of jobs for the caller's brands.",
+    operation_id="list_jobs",
+    responses=error_responses(401, 403, 422),
+)
 async def list_jobs(
     brand_id: Optional[int] = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -407,7 +448,15 @@ async def list_jobs(
     return list(result.scalars().all())
 
 
-@router.get("/workflow-templates", response_model=List[dict])
+@router.get(
+    "/workflow-templates",
+    response_model=List[dict],
+    summary="List workflow templates",
+    description="List all available workflow templates.",
+    response_description="All available workflow templates.",
+    operation_id="list_workflow_templates",
+    responses=error_responses(401),
+)
 async def list_workflow_templates(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -429,7 +478,19 @@ async def list_workflow_templates(
     ]
 
 
-@router.get("/{job_id}", response_model=JobResponse)
+@router.get(
+    "/{job_id}",
+    response_model=JobResponse,
+    summary="Get job status",
+    description=(
+        "Checks the status of an AI job.\n"
+        "Tries Redis status cache first to bypass database load, fallback to PostgreSQL on miss.\n"
+        "Verifies that caller has brand access."
+    ),
+    response_description="Current status of the job.",
+    operation_id="get_job_status",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_job_status(
     job_id: int,
     current_user: User = Depends(get_current_user),

@@ -16,6 +16,7 @@ from app.services.audit import write_audit_log
 from app.services.cache_service import invalidate_brand_memory_cache, invalidate_admin_stats_cache
 from app.services.storage import storage_service
 from app.middleware.rate_limit import RateLimiter
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/assets",
@@ -46,13 +47,21 @@ class AssetEmbeddingRequest(BaseModel):
         return v
 
 
-@router.get("", response_model=List[dict])
+@router.get(
+    "",
+    response_model=List[dict],
+    summary="List assets",
+    description="List all assets with optional filtering by brand, tag, or search query with pagination.",
+    response_description="A page of assets visible to the caller.",
+    operation_id="list_assets",
+    responses=error_responses(401, 403, 422),
+)
 async def list_assets(
     brand_id: Optional[int] = None,
     tag: Optional[str] = None,
     search: Optional[str] = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -109,7 +118,15 @@ async def list_assets(
 
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an asset",
+    description="Upload a new asset under a brand.",
+    response_description="The created asset.",
+    operation_id="create_asset",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def create_asset(
     brand_id: int = Form(...),
     name: Optional[str] = Form(None),
@@ -211,7 +228,17 @@ async def create_asset(
 
 # --- API Endpoints ---
 
-@router.get("/metadata/schema")
+@router.get(
+    "/metadata/schema",
+    summary="Get asset metadata schema",
+    description=(
+        "Returns the platform taxonomy schema categories and allowed values.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Taxonomy categories and allowed values for asset metadata.",
+    operation_id="get_metadata_schema",
+)
 async def get_metadata_schema():
     """Returns the platform taxonomy schema categories and allowed values."""
     return {
@@ -249,7 +276,18 @@ async def get_metadata_schema():
         ]
     }
 
-@router.post("/{id}/embedding")
+@router.post(
+    "/{id}/embedding",
+    summary="Write asset tag embeddings",
+    description=(
+        "Allows writing semantic tag embeddings back to the asset_tags table.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Confirmation that the embeddings were stored.",
+    operation_id="add_asset_embedding",
+    responses=error_responses(404, 422),
+)
 async def add_asset_embedding(
     id: int,
     payload: AssetEmbeddingRequest,
@@ -293,7 +331,21 @@ async def add_asset_embedding(
     }
 
 
-@router.post("/upload-url", status_code=status.HTTP_200_OK, dependencies=[Depends(RateLimiter(requests_limit=20, window_seconds=60))])
+@router.post(
+    "/upload-url",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(RateLimiter(requests_limit=20, window_seconds=60))],
+    summary="Request an asset upload URL",
+    description=(
+        "Generates a pre-signed S3 URL or a local upload endpoint (based on config)\n"
+        "for uploading a new asset. Registers the asset as 'pending' in the database.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="Upload URL (pre-signed S3 or local mock) and the pending asset record.",
+    operation_id="get_upload_url",
+    responses=error_responses(401, 403, 404, 422, 429),
+)
 async def get_upload_url(
     payload: AssetUploadUrlRequest,
     current_user: User = Depends(get_current_user),
@@ -371,7 +423,20 @@ async def get_upload_url(
     }
 
 
-@router.post("/confirm", dependencies=[Depends(RateLimiter(requests_limit=20, window_seconds=60))])
+@router.post(
+    "/confirm",
+    dependencies=[Depends(RateLimiter(requests_limit=20, window_seconds=60))],
+    summary="Confirm an asset upload",
+    description=(
+        "Confirms upload of the asset, moves status to active, parses tags,\n"
+        "and fires off a Celery processing task.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="The activated asset; background processing has been queued.",
+    operation_id="confirm_asset_upload",
+    responses=error_responses(400, 401, 403, 404, 422, 429),
+)
 async def confirm_upload(
     payload: AssetConfirmRequest,
     current_user: User = Depends(get_current_user),
@@ -462,7 +527,19 @@ async def confirm_upload(
     }
 
 
-@router.put("/upload-mock/{unique_filename}")
+@router.put(
+    "/upload-mock/{unique_filename}",
+    summary="Upload a file to local mock storage",
+    description=(
+        "Mock PUT endpoint that accepts binary raw files and saves them to local uploads folder.\n"
+        "Enables local development upload simulation without S3.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Confirmation that the file was saved locally.",
+    operation_id="upload_mock_file",
+    responses=error_responses(422),
+)
 async def upload_mock_file(unique_filename: str, request: Request):
     """
     Mock PUT endpoint that accepts binary raw files and saves them to local uploads folder.
@@ -483,7 +560,7 @@ async def upload_mock_file(unique_filename: str, request: Request):
 class AssetSimilarSearchRequest(BaseModel):
     embedding: List[float]
     brand_id: Optional[int] = None
-    limit: int = Field(default=5, ge=1, le=50)
+    limit: int = Field(default=5, ge=1, le=50, description="Maximum number of similar assets to return, between 1 and 50. Defaults to 5.", examples=[5])
 
     @field_validator("embedding")
     @classmethod
@@ -493,7 +570,21 @@ class AssetSimilarSearchRequest(BaseModel):
         return v
 
 
-@router.get("/search", response_model=List[dict], dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))])
+@router.get(
+    "/search",
+    response_model=List[dict],
+    dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))],
+    summary="Full-text search assets",
+    description=(
+        "Full-Text Search against the assets name and metadata fields.\n"
+        "Enforces brand-level access control.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="Assets matching the search query.",
+    operation_id="search_assets_fulltext",
+    responses=error_responses(401, 403, 422, 429),
+)
 async def search_assets(
     q: str,
     brand_id: Optional[int] = None,
@@ -559,7 +650,22 @@ async def search_assets(
     return resp
 
 
-@router.post("/search/similar", response_model=List[dict], dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))])
+@router.post(
+    "/search/similar",
+    response_model=List[dict],
+    dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))],
+    summary="Find visually similar assets",
+    description=(
+        "pgvector-based Approximate Nearest Neighbor (ANN) search.\n"
+        "Finds assets with tags having closest embedding cosine distance to query.\n"
+        "Enforces brand-level access control.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="Assets ranked by embedding similarity.",
+    operation_id="search_similar_assets",
+    responses=error_responses(401, 403, 422, 429),
+)
 async def search_similar_assets(
     payload: AssetSimilarSearchRequest,
     current_user: User = Depends(get_current_user),
@@ -645,7 +751,19 @@ async def search_similar_assets(
 
 
 
-@router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{asset_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an asset",
+    description=(
+        "Delete an asset: removes the main file, 256px and 512px thumbnails from storage,\n"
+        "and removes the asset row from the database (cascades to asset_tags).\n"
+        "Requires owner or admin role on the asset's brand."
+    ),
+    response_description="Asset deleted; no content returned.",
+    operation_id="delete_asset",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def delete_asset(
     asset_id: int,
     request: Request,
@@ -701,11 +819,19 @@ async def delete_asset(
 
 # ========================== Trash & Restore Endpoints =============
 
-@router.get("/trash", response_model=List[dict])
+@router.get(
+    "/trash",
+    response_model=List[dict],
+    summary="List deleted assets",
+    description="List all soft-deleted assets. Requires Viewer role minimum.",
+    response_description="A page of soft-deleted assets.",
+    operation_id="list_trash",
+    responses=error_responses(401, 403, 422),
+)
 async def list_trash(
     brand_id: Optional[int] = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -746,7 +872,15 @@ async def list_trash(
     ]
 
 
-@router.post("/{asset_id}/restore", status_code=status.HTTP_200_OK)
+@router.post(
+    "/{asset_id}/restore",
+    status_code=status.HTTP_200_OK,
+    summary="Restore a deleted asset",
+    description="Restore a soft-deleted asset. Requires Editor role minimum.",
+    response_description="The restored asset.",
+    operation_id="restore_asset",
+    responses=error_responses(400, 401, 403, 404, 422),
+)
 async def restore_asset(
     asset_id: int,
     request: Request,
@@ -794,7 +928,14 @@ async def restore_asset(
 
 # ========================== Asset Tags Endpoints =================
 
-@router.get("/{asset_id}/tags")
+@router.get(
+    "/{asset_id}/tags",
+    summary="List asset tags",
+    description="Get all tags for an asset.",
+    response_description="Tags attached to the asset.",
+    operation_id="get_asset_tags",
+    responses=error_responses(401, 404, 422),
+)
 async def get_asset_tags(
     asset_id: int,
     current_user: User = Depends(get_current_user),
@@ -814,7 +955,15 @@ async def get_asset_tags(
     return [{"id": t.id, "tag": t.tag} for t in tags]
 
 
-@router.post("/{asset_id}/tags", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{asset_id}/tags",
+    status_code=status.HTTP_201_CREATED,
+    summary="Add an asset tag",
+    description="Manually add a tag to an asset.",
+    response_description="The created tag.",
+    operation_id="add_asset_tag",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def add_asset_tag(
     asset_id: int,
     tag: str,
@@ -846,7 +995,15 @@ async def add_asset_tag(
     return {"id": new_tag.id, "tag": new_tag.tag}
 
 
-@router.delete("/{asset_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{asset_id}/tags/{tag_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an asset tag",
+    description="Delete a tag from an asset.",
+    response_description="Tag deleted; no content returned.",
+    operation_id="delete_asset_tag",
+    responses=error_responses(401, 404, 422),
+)
 async def delete_asset_tag(
     asset_id: int,
     tag_id: int,

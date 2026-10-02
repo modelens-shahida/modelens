@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.db import get_db, User, Asset, QAProfile, QAEvaluation, QAArtifact
 from app.middleware.auth import get_current_user
 from app.services.qa_service import qa_service
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/qa", tags=["QA Scoring"])
 
@@ -30,7 +31,15 @@ class QAReviewRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.post("/evaluate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/evaluate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Run a QA evaluation",
+    description="Run multi-dimensional QA evaluation on an asset.",
+    response_description="The created QA evaluation.",
+    operation_id="evaluate_asset_quality",
+    responses=error_responses(401, 404, 422),
+)
 async def evaluate_asset(
     payload: QAEvaluateRequest,
     current_user: User = Depends(get_current_user),
@@ -101,7 +110,19 @@ async def evaluate_asset(
     }
 
 
-@router.get("/evaluations/{asset_id}")
+@router.get(
+    "/evaluations/{asset_id}",
+    summary="Get the latest QA evaluation",
+    description=(
+        "Get latest QA evaluation for an asset.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `get_generation_qa_evaluation`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Latest QA evaluation for the asset.",
+    operation_id="get_asset_qa_evaluation",
+    responses=error_responses(401, 404, 422),
+    include_in_schema=False,
+)
 async def get_asset_evaluations(
     asset_id: int,
     current_user: User = Depends(get_current_user),
@@ -159,7 +180,14 @@ async def get_asset_evaluations(
     }
 
 
-@router.post("/evaluations/{evaluation_id}/review")
+@router.post(
+    "/evaluations/{evaluation_id}/review",
+    summary="Review a QA evaluation",
+    description="Human review override for QA evaluation.",
+    response_description="The QA evaluation with the human review applied.",
+    operation_id="review_qa_evaluation",
+    responses=error_responses(401, 404, 422),
+)
 async def review_evaluation(
     evaluation_id: int,
     payload: QAReviewRequest,
@@ -202,7 +230,14 @@ async def review_evaluation(
 
 # ========================== Heatmap Endpoint ====================
 
-@router.get("/evaluations/{evaluation_id}/heatmap")
+@router.get(
+    "/evaluations/{evaluation_id}/heatmap",
+    summary="Get a QA defect heatmap",
+    description="Get defect heatmap for a QA evaluation.",
+    response_description="Defect heatmap for the evaluation.",
+    operation_id="get_qa_heatmap",
+    responses=error_responses(401, 404, 422),
+)
 async def get_qa_heatmap(
     evaluation_id: int,
     current_user: User = Depends(get_current_user),
@@ -256,7 +291,14 @@ class BrandThresholdRequest(BaseModel):
     thresholds: dict
 
 
-@router.post("/brand-thresholds")
+@router.post(
+    "/brand-thresholds",
+    summary="Set brand QA thresholds",
+    description="Set configurable QA thresholds for a brand.",
+    response_description="The saved QA thresholds for the brand.",
+    operation_id="set_brand_qa_thresholds",
+    responses=error_responses(401, 422),
+)
 async def set_brand_thresholds(
     payload: BrandThresholdRequest,
     current_user: User = Depends(get_current_user),
@@ -274,7 +316,14 @@ async def set_brand_thresholds(
     }
 
 
-@router.get("/brand-thresholds/defaults")
+@router.get(
+    "/brand-thresholds/defaults",
+    summary="Get default QA thresholds",
+    description="Get default QA thresholds.",
+    response_description="Platform default QA thresholds.",
+    operation_id="get_default_qa_thresholds",
+    responses=error_responses(401),
+)
 async def get_default_thresholds(
     current_user: User = Depends(get_current_user),
 ):

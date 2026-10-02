@@ -4,6 +4,7 @@ from sqlalchemy import select
 from app.models.db import get_db, User, CreditTransaction
 from app.config import settings
 import json
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/stripe",
@@ -43,7 +44,19 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
     print(f"[Stripe] Provisioned {credits} credits to user {user_id}. New balance: {user.credits}")
 
 
-@router.post("/webhook")
+@router.post(
+    "/webhook",
+    summary="Receive a Stripe webhook",
+    description=(
+        "Handle Stripe webhook events.\n"
+        "Verifies signature and provisions credits on successful payments.\n"
+        "\n"
+        "Called by Stripe; authenticated with the `Stripe-Signature` header (skipped in mock mode)."
+    ),
+    response_description="Acknowledgement that the event was received.",
+    operation_id="receive_stripe_webhook",
+    responses=error_responses(400),
+)
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Handle Stripe webhook events.

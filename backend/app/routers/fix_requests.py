@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, FixRequest, Asset, Brand, BrandMember, User
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/fix-requests",
@@ -53,7 +54,16 @@ async def get_user_role_in_brand(user_id: int, brand_id: int, db: AsyncSession) 
 
 # ========================== Endpoints ==============================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=FixRequestResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FixRequestResponse,
+    summary="Create a fix request",
+    description="Create a new fix/adjustment request for an asset. Requires Editor role or higher.",
+    response_description="The created fix request.",
+    operation_id="create_fix_request",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def create_fix_request(
     payload: FixRequestCreate,
     current_user: User = Depends(get_current_user),
@@ -83,11 +93,19 @@ async def create_fix_request(
     return fix_request
 
 
-@router.get("", response_model=List[FixRequestResponse])
+@router.get(
+    "",
+    response_model=List[FixRequestResponse],
+    summary="List fix requests",
+    description="List all fix requests for a brand. Requires Viewer role or higher.",
+    response_description="A page of fix requests for the brand.",
+    operation_id="list_fix_requests",
+    responses=error_responses(401, 403, 422),
+)
 async def list_fix_requests(
     brand_id: int = Query(...),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -108,7 +126,15 @@ async def list_fix_requests(
     return list(result.scalars().all())
 
 
-@router.patch("/{fix_request_id}", response_model=FixRequestResponse)
+@router.patch(
+    "/{fix_request_id}",
+    response_model=FixRequestResponse,
+    summary="Update a fix request",
+    description="Update fix request status and reviewer notes. Requires Admin or Owner role.",
+    response_description="The updated fix request.",
+    operation_id="update_fix_request",
+    responses=error_responses(400, 401, 403, 404, 422),
+)
 async def update_fix_request(
     fix_request_id: int,
     payload: FixRequestUpdate,

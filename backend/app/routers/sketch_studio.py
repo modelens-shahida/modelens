@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db, User
 from app.middleware.auth import get_current_user
 from app.services.sketch_service import sketch_service, SKETCH_MODES, FABRIC_TEXTURES, PANTONE_COLORWAYS
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/sketch", tags=["Sketch Studio"])
 
@@ -28,7 +29,14 @@ class SketchJobRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("/modes")
+@router.get(
+    "/modes",
+    summary="List sketch modes",
+    description="List available sketch modes.",
+    response_description="Available sketch modes.",
+    operation_id="list_sketch_modes",
+    responses=error_responses(401),
+)
 async def list_sketch_modes(
     current_user: User = Depends(get_current_user),
 ):
@@ -40,7 +48,15 @@ async def list_sketch_modes(
     }
 
 
-@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a sketch-to-product job",
+    description="Submit a sketch-to-product generation job.",
+    response_description="The sketch job was accepted and queued.",
+    operation_id="create_sketch_studio_job",
+    responses=error_responses(400, 401, 402, 422),
+)
 async def create_sketch_job(
     payload: SketchJobRequest,
     current_user: User = Depends(get_current_user),

@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.db import get_db, User, Asset
 from app.middleware.auth import get_current_user
 from app.services.video_service import video_service, MOTION_PRESETS
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/video", tags=["Motion Video Studio"])
 
@@ -27,7 +28,14 @@ class VideoJobRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("/presets")
+@router.get(
+    "/presets",
+    summary="List motion presets",
+    description="List all available motion presets.",
+    response_description="Available motion presets.",
+    operation_id="list_motion_presets",
+    responses=error_responses(401),
+)
 async def list_motion_presets(
     current_user: User = Depends(get_current_user),
 ):
@@ -38,7 +46,14 @@ async def list_motion_presets(
     }
 
 
-@router.get("/presets/{preset_id}")
+@router.get(
+    "/presets/{preset_id}",
+    summary="Get a motion preset",
+    description="Get a specific motion preset.",
+    response_description="The requested motion preset.",
+    operation_id="get_motion_preset",
+    responses=error_responses(401, 404, 422),
+)
 async def get_motion_preset(
     preset_id: str,
     current_user: User = Depends(get_current_user),
@@ -50,7 +65,15 @@ async def get_motion_preset(
     return preset
 
 
-@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a motion video job",
+    description="Submit a motion video generation job.",
+    response_description="The video job was accepted and queued.",
+    operation_id="create_video_job",
+    responses=error_responses(400, 401, 422),
+)
 async def create_video_job(
     payload: VideoJobRequest,
     current_user: User = Depends(get_current_user),

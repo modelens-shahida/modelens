@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.models.db import get_db, User, TaxonomyItem, WorkflowNodeMap
 from app.middleware.auth import get_current_user
 from app.services.compatibility import validate_compatibility
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["Taxonomy Resolver"])
 
@@ -34,7 +35,17 @@ class ResolveResponse(BaseModel):
 
 # ========================== Resolver ============================
 
-@router.post("/resolve")
+@router.post(
+    "/resolve",
+    summary="Resolve taxonomy to execution parameters",
+    description=(
+        "Resolve taxonomy IDs to execution parameters.\n"
+        "Supports RESOLVE_ONLY dry-run mode for previewing settings."
+    ),
+    response_description="Resolved execution parameters.",
+    operation_id="resolve_taxonomy",
+    responses=error_responses(401, 422),
+)
 async def resolve_taxonomy(
     payload: ResolveRequest,
     current_user: User = Depends(get_current_user),
@@ -137,7 +148,14 @@ async def resolve_taxonomy(
 
 # ========================== Node Map Admin =======================
 
-@router.get("/workflow-node-maps/{workflow_id}")
+@router.get(
+    "/workflow-node-maps/{workflow_id}",
+    summary="Get workflow node mappings",
+    description="Get ComfyUI node mappings for a workflow.",
+    response_description="ComfyUI node mappings for the workflow.",
+    operation_id="get_workflow_node_maps",
+    responses=error_responses(401, 422),
+)
 async def get_workflow_node_maps(
     workflow_id: str,
     current_user: User = Depends(get_current_user),

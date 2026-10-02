@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db, User
 from app.middleware.auth import get_current_user
 from app.services.fluid_service import fluid_service, LIGHTING_PRESETS, FOCAL_LENGTHS, APERTURES
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/fluid", tags=["Fluid Studio"])
 
@@ -26,7 +27,14 @@ class FluidJobRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("/presets")
+@router.get(
+    "/presets",
+    summary="List Fluid lighting presets",
+    description="List all available lighting presets.",
+    response_description="Available lighting presets.",
+    operation_id="list_fluid_presets",
+    responses=error_responses(401),
+)
 async def list_fluid_presets(
     current_user: User = Depends(get_current_user),
 ):
@@ -39,7 +47,14 @@ async def list_fluid_presets(
     }
 
 
-@router.get("/presets/{preset_id}")
+@router.get(
+    "/presets/{preset_id}",
+    summary="Get a Fluid lighting preset",
+    description="Get a specific lighting preset.",
+    response_description="The requested lighting preset.",
+    operation_id="get_fluid_preset",
+    responses=error_responses(401, 404, 422),
+)
 async def get_fluid_preset(
     preset_id: str,
     current_user: User = Depends(get_current_user),
@@ -51,7 +66,15 @@ async def get_fluid_preset(
     return preset
 
 
-@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a Fluid Studio job",
+    description="Submit a Fluid Studio editorial generation job.",
+    response_description="The Fluid Studio job was accepted and queued.",
+    operation_id="create_fluid_job",
+    responses=error_responses(400, 401, 422),
+)
 async def create_fluid_job(
     payload: FluidJobRequest,
     current_user: User = Depends(get_current_user),

@@ -11,11 +11,19 @@ from app.services.provider_names import (
     get_dispatch_config,
     sanitize_api_response,
 )
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/tiers", tags=["Quality Tiers"])
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="List quality tiers",
+    description="List all available quality tiers.",
+    response_description="All available quality tiers.",
+    operation_id="list_quality_tiers",
+    responses=error_responses(401),
+)
 async def list_quality_tiers(
     current_user: User = Depends(get_current_user),
 ):
@@ -28,7 +36,14 @@ async def list_quality_tiers(
     }
 
 
-@router.get("/{tier}")
+@router.get(
+    "/{tier}",
+    summary="Get a quality tier",
+    description="Get info for a specific quality tier.",
+    response_description="Details of the requested quality tier.",
+    operation_id="get_quality_tier",
+    responses=error_responses(401, 422),
+)
 async def get_tier(
     tier: str,
     current_user: User = Depends(get_current_user),
@@ -38,7 +53,14 @@ async def get_tier(
     return get_tier_info(normalized)
 
 
-@router.post("/normalize")
+@router.post(
+    "/normalize",
+    summary="Normalize a legacy quality mode",
+    description="Normalize a legacy quality mode to standardized tier.",
+    response_description="The standardized tier for the legacy mode.",
+    operation_id="normalize_quality_tier",
+    responses=error_responses(401, 422),
+)
 async def normalize_tier(
     quality_mode: str,
     current_user: User = Depends(get_current_user),
@@ -52,7 +74,14 @@ async def normalize_tier(
     }
 
 
-@router.get("/{tier}/dispatch-config")
+@router.get(
+    "/{tier}/dispatch-config",
+    summary="Get tier dispatch configuration",
+    description="Get dispatch configuration for a quality tier.",
+    response_description="Dispatch configuration for the quality tier.",
+    operation_id="get_tier_dispatch_config",
+    responses=error_responses(401, 422),
+)
 async def get_tier_dispatch_config(
     tier: str,
     current_user: User = Depends(get_current_user),

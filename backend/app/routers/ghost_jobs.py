@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput, CreditTransaction, Brand, BrandMember
 from app.middleware.auth import get_current_user
 from app.worker import process_ghost_job
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/ghost-jobs", tags=["Ghost Studio"])
 
@@ -33,13 +34,31 @@ class GhostJobCreate(BaseModel):
     generation_mode: Optional[str] = "studio"
 
 
-@router.get("/views")
+@router.get(
+    "/views",
+    summary="Get ghost mannequin views",
+    description=(
+        "Get available ghost mannequin views.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Available ghost mannequin views.",
+    operation_id="get_ghost_views",
+)
 async def get_ghost_views():
     """Get available ghost mannequin views."""
     return {"views": ["front", "back", "side", "flatlay"]}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a ghost mannequin job",
+    description="Create a new ghost mannequin generation job supporting both JSON and FormData.",
+    response_description="The created ghost job with reserved credits.",
+    operation_id="create_ghost_job",
+    responses=error_responses(400, 401, 402),
+)
 async def create_ghost_job(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -157,7 +176,14 @@ async def create_ghost_job(
     }
 
 
-@router.get("/{job_id}")
+@router.get(
+    "/{job_id}",
+    summary="Get a ghost mannequin job",
+    description="Get ghost job status and progress.",
+    response_description="Ghost job status and progress.",
+    operation_id="get_ghost_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_ghost_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -180,7 +206,14 @@ async def get_ghost_job(
     }
 
 
-@router.post("/{job_id}/retry")
+@router.post(
+    "/{job_id}/retry",
+    summary="Retry a ghost mannequin job",
+    description="Retry a failed ghost job.",
+    response_description="The ghost job re-queued for processing.",
+    operation_id="retry_ghost_job",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def retry_ghost_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -207,7 +240,14 @@ async def retry_ghost_job(
     return {"job_id": job.id, "status": "queued"}
 
 
-@router.post("/{job_id}/cancel")
+@router.post(
+    "/{job_id}/cancel",
+    summary="Cancel a ghost mannequin job",
+    description="Cancel an active ghost job.",
+    response_description="The cancelled ghost job.",
+    operation_id="cancel_ghost_job",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def cancel_ghost_job(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -229,7 +269,14 @@ async def cancel_ghost_job(
     return {"job_id": job.id, "status": "cancelled", "credits_refunded": job.credits_reserved}
 
 
-@router.get("/{job_id}/outputs")
+@router.get(
+    "/{job_id}/outputs",
+    summary="Get ghost mannequin job outputs",
+    description="Get completed ghost job outputs.",
+    response_description="Output assets of the completed ghost job.",
+    operation_id="get_ghost_job_outputs",
+    responses=error_responses(401, 404, 422),
+)
 async def get_ghost_job_outputs(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -279,7 +326,15 @@ class GhostJobBatchCreate(BaseModel):
 
 # ========================== Batch Endpoint =======================
 
-@router.post("/batch", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/batch",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a batch of ghost mannequin jobs",
+    description="Create a batch of ghost mannequin generation jobs atomically.",
+    response_description="The created ghost jobs.",
+    operation_id="create_ghost_job_batch",
+    responses=error_responses(400, 401, 402, 422),
+)
 async def create_ghost_job_batch(
     payload: GhostJobBatchCreate,
     current_user: User = Depends(get_current_user),
@@ -361,7 +416,15 @@ class GhostVolumetricRequest(BaseModel):
     generation_mode: Optional[str] = "studio_quality"
 
 
-@router.post("/volumetric", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/volumetric",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a volumetric ghost mannequin job",
+    description="Submit a 3D volumetric ghost mannequin job.",
+    response_description="The volumetric ghost job was accepted and queued.",
+    operation_id="create_volumetric_ghost_job",
+    responses=error_responses(400, 401, 402, 422),
+)
 async def create_volumetric_ghost_job(
     payload: GhostVolumetricRequest,
     current_user: User = Depends(get_current_user),
@@ -419,7 +482,19 @@ async def create_volumetric_ghost_job(
     }
 
 
-@router.get("/views")
+@router.get(
+    "/views",
+    summary="List ghost mannequin views",
+    description=(
+        "List available ghost mannequin views.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `get_ghost_views`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Available ghost mannequin views.",
+    operation_id="list_ghost_views",
+    responses=error_responses(401),
+    include_in_schema=False,
+)
 async def list_ghost_views(
     current_user: User = Depends(get_current_user),
 ):

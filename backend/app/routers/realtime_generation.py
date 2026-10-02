@@ -10,6 +10,7 @@ import logging
 from app.models.db import get_db, User, Brand, BrandMember, async_session_maker
 from app.middleware.auth import get_current_user
 from app.services.generation_events import generation_events, GenerationEvent, GENERATION_STEPS
+from app.api_docs import error_responses
 
 logger = logging.getLogger("modelens.realtime")
 
@@ -208,7 +209,14 @@ async def brand_events_ws(
 
 # ========================== REST Endpoints =======================
 
-@router.get("/generation/{job_id}/steps")
+@router.get(
+    "/generation/{job_id}/steps",
+    summary="Get generation steps",
+    description="Get generation step taxonomy for a workflow.",
+    response_description="Generation step taxonomy for the workflow.",
+    operation_id="get_generation_steps",
+    responses=error_responses(401, 422),
+)
 async def get_generation_steps(
     job_id: str,
     workflow: str = "catalog",
@@ -224,7 +232,14 @@ async def get_generation_steps(
     }
 
 
-@router.post("/generation/{job_id}/emit")
+@router.post(
+    "/generation/{job_id}/emit",
+    summary="Emit a generation event",
+    description="Emit a generation event manually (internal/admin use).",
+    response_description="Confirmation that the event was published.",
+    operation_id="emit_generation_event",
+    responses=error_responses(401, 403, 422),
+)
 async def emit_generation_event(
     job_id: str,
     event: str,

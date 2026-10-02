@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, Notification, User
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/notifications",
@@ -35,11 +36,19 @@ class PreferencesUpdate(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("", response_model=List[NotificationResponse])
+@router.get(
+    "",
+    response_model=List[NotificationResponse],
+    summary="List notifications",
+    description="List current user's notifications, newest first.",
+    response_description="A page of the caller's notifications, newest first.",
+    operation_id="list_notifications",
+    responses=error_responses(401, 422),
+)
 async def list_notifications(
     unread_only: bool = Query(False),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -56,7 +65,15 @@ async def list_notifications(
     return list(result.scalars().all())
 
 
-@router.put("/{notification_id}/read", response_model=NotificationResponse)
+@router.put(
+    "/{notification_id}/read",
+    response_model=NotificationResponse,
+    summary="Mark a notification as read",
+    description="Mark a specific notification as read.",
+    response_description="The updated notification.",
+    operation_id="mark_notification_read",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def mark_as_read(
     notification_id: int,
     current_user: User = Depends(get_current_user),
@@ -76,7 +93,15 @@ async def mark_as_read(
     return notification
 
 
-@router.put("/read-all", status_code=status.HTTP_200_OK)
+@router.put(
+    "/read-all",
+    status_code=status.HTTP_200_OK,
+    summary="Mark all notifications as read",
+    description="Mark all notifications as read for current user.",
+    response_description="Number of notifications marked as read.",
+    operation_id="mark_all_notifications_read",
+    responses=error_responses(401),
+)
 async def mark_all_as_read(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -95,7 +120,15 @@ async def mark_all_as_read(
     return {"message": f"Marked {len(notifications)} notifications as read."}
 
 
-@router.delete("/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{notification_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a notification",
+    description="Delete a specific notification.",
+    response_description="Notification deleted; no content returned.",
+    operation_id="delete_notification",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def delete_notification(
     notification_id: int,
     current_user: User = Depends(get_current_user),
@@ -113,7 +146,15 @@ async def delete_notification(
     await db.commit()
 
 
-@router.get("/preferences", response_model=PreferencesResponse)
+@router.get(
+    "/preferences",
+    response_model=PreferencesResponse,
+    summary="Get notification preferences",
+    description="Get current user's notification preferences.",
+    response_description="The caller's notification preferences.",
+    operation_id="get_notification_preferences",
+    responses=error_responses(401),
+)
 async def get_preferences(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -127,7 +168,15 @@ async def get_preferences(
     )
 
 
-@router.put("/preferences", response_model=PreferencesResponse)
+@router.put(
+    "/preferences",
+    response_model=PreferencesResponse,
+    summary="Update notification preferences",
+    description="Update current user's notification preferences.",
+    response_description="The updated notification preferences.",
+    operation_id="update_notification_preferences",
+    responses=error_responses(401, 422),
+)
 async def update_preferences(
     payload: PreferencesUpdate,
     current_user: User = Depends(get_current_user),

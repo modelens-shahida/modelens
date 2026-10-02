@@ -12,7 +12,19 @@ router = APIRouter(
 )
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="Check Celery worker health",
+    description=(
+        "Check if Celery workers are alive by pinging them (3 second timeout).\n"
+        "\n"
+        "Always returns HTTP 200; inspect `status` (`healthy` or `unhealthy`), `workers` and `error`.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="Worker health: `status`, responding `workers` count and, when unhealthy, `error`.",
+    operation_id="check_celery_workers",
+)
 
 
 async def check_celery_workers() -> dict:

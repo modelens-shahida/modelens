@@ -7,6 +7,7 @@ from app.models.db import get_db, Asset, AssetTag, Campaign, Brand, BrandMember,
 from app.middleware.auth import get_current_user
 from app.services.cache_service import get_cached, set_cached, brand_memory_cache_key
 from app.config import settings
+from app.api_docs import error_responses
 
 router = APIRouter(tags=["Memory"])
 
@@ -33,9 +34,20 @@ class MemoryResponse(BaseModel):
 
 # ========================== Brand Memory ==========================
 
-brand_router = APIRouter(prefix="/api/v1/brands")
+brand_router = APIRouter(prefix="/api/v1/brands", tags=["Memory"])
 
-@brand_router.get("/{brand_id}/memory", response_model=MemoryResponse)
+@brand_router.get(
+    "/{brand_id}/memory",
+    response_model=MemoryResponse,
+    summary="Get brand memory",
+    description=(
+        "Returns asset count and tag frequency for a brand.\n"
+        "Requires at least Viewer role on the brand."
+    ),
+    response_description="Asset count and tag frequency for the brand.",
+    operation_id="get_brand_memory",
+    responses=error_responses(401, 403, 422),
+)
 async def get_brand_memory(
     brand_id: int,
     current_user: User = Depends(get_current_user),
@@ -76,9 +88,20 @@ async def get_brand_memory(
 
 # ========================== Campaign Memory =======================
 
-campaign_router = APIRouter(prefix="/api/v1/campaigns")
+campaign_router = APIRouter(prefix="/api/v1/campaigns", tags=["Memory"])
 
-@campaign_router.get("/{campaign_id}/memory", response_model=MemoryResponse)
+@campaign_router.get(
+    "/{campaign_id}/memory",
+    response_model=MemoryResponse,
+    summary="Get campaign memory",
+    description=(
+        "Returns asset count and tag frequency for a campaign.\n"
+        "Requires at least Viewer role on the campaign's brand."
+    ),
+    response_description="Asset count and tag frequency for the campaign.",
+    operation_id="get_campaign_memory",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_campaign_memory(
     campaign_id: int,
     current_user: User = Depends(get_current_user),

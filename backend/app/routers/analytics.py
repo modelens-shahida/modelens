@@ -11,6 +11,7 @@ from app.services.analytics_export_service import (
     export_as_json,
     export_as_csv,
 )
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/analytics",
@@ -31,7 +32,22 @@ async def _verify_brand_admin_access(user_id: int, brand_id: int, db: AsyncSessi
     return member.scalars().first() is not None
 
 
-@router.get("/export")
+@router.get(
+    "/export",
+    summary="Export brand analytics",
+    description=(
+        "Export brand analytics data as JSON or CSV.\n"
+        "Requires Admin or Owner role for the brand.\n"
+        "\n"
+        "Includes:\n"
+        "- Webhook delivery success/failure counts and latency stats\n"
+        "- Job status stats (completed vs failed)\n"
+        "- Quota usage history (last 30 days credit transactions)"
+    ),
+    response_description="Brand analytics as JSON, or a CSV file download when `format=csv`.",
+    operation_id="export_analytics",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def export_analytics(
     brand_id: int = Query(..., description="Brand ID to export analytics for"),
     format: str = Query("json", pattern="^(json|csv)$", description="Export format: json or csv"),

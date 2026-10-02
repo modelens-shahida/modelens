@@ -13,6 +13,7 @@ import io
 
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, CanonicalAsset
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["Phase 2 - Batch, QA & Export"])
 
@@ -72,7 +73,15 @@ class CollectionCreate(BaseModel):
 
 # ========================== Batch Generation =====================
 
-@router.post("/generate/batch", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate/batch",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a multi-angle batch generation",
+    description="Multi-angle batch generation with parallel processing.",
+    response_description="The created batch job.",
+    operation_id="create_batch_generation",
+    responses=error_responses(401, 422),
+)
 async def create_batch_generation(
     payload: BatchGenerationRequest,
     current_user: User = Depends(get_current_user),
@@ -134,7 +143,14 @@ async def create_batch_generation(
     }
 
 
-@router.get("/generate/batch/{job_id}")
+@router.get(
+    "/generate/batch/{job_id}",
+    summary="Get a batch generation job",
+    description="Get batch job status with per-angle tile progress.",
+    response_description="Batch job status with per-angle tile progress.",
+    operation_id="get_batch_generation_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_batch_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -219,7 +235,14 @@ async def batch_websocket(
 
 # ========================== QA Override & Regenerate ============
 
-@router.patch("/qa/evaluations/{asset_id}/override")
+@router.patch(
+    "/qa/evaluations/{asset_id}/override",
+    summary="Override a QA gate",
+    description="Override QA gate for a generated asset.",
+    response_description="The QA evaluation with the override applied.",
+    operation_id="override_qa_evaluation",
+    responses=error_responses(400, 401, 422),
+)
 async def override_qa_evaluation(
     asset_id: str,
     payload: QAOverrideRequest,
@@ -251,7 +274,15 @@ async def override_qa_evaluation(
     }
 
 
-@router.post("/generate/regenerate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate/regenerate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Regenerate an asset",
+    description="Regenerate a failed/borderline asset with adjusted parameters.",
+    response_description="The created regeneration job.",
+    operation_id="regenerate_asset",
+    responses=error_responses(401, 422),
+)
 async def regenerate_asset(
     payload: RegenerateRequest,
     current_user: User = Depends(get_current_user),
@@ -291,7 +322,15 @@ async def regenerate_asset(
 
 # ========================== Collections ==========================
 
-@router.post("/collections", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/collections",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a lookbook collection",
+    description="Create a lookbook collection from generated assets.",
+    response_description="The created collection.",
+    operation_id="create_collection",
+    responses=error_responses(401, 422),
+)
 async def create_collection(
     payload: CollectionCreate,
     current_user: User = Depends(get_current_user),
@@ -313,7 +352,14 @@ async def create_collection(
 
 # ========================== Export & Delivery ====================
 
-@router.post("/assets/export/zip")
+@router.post(
+    "/assets/export/zip",
+    summary="Export assets as ZIP",
+    description="Export assets as ZIP with C2PA metadata manifest.",
+    response_description="ZIP archive of the assets with a C2PA metadata manifest.",
+    operation_id="export_assets_zip",
+    responses=error_responses(401, 422),
+)
 async def export_assets_zip(
     payload: ExportRequest,
     current_user: User = Depends(get_current_user),
@@ -353,7 +399,14 @@ async def export_assets_zip(
     }
 
 
-@router.get("/assets/export/shopify")
+@router.get(
+    "/assets/export/shopify",
+    summary="Export assets for Shopify",
+    description="Export assets with Shopify ecommerce preset dimensions.",
+    response_description="Assets resized to Shopify preset dimensions.",
+    operation_id="export_shopify_preset",
+    responses=error_responses(401, 422),
+)
 async def export_shopify_preset(
     asset_ids: str,
     current_user: User = Depends(get_current_user),

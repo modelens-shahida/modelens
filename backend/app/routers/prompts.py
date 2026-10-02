@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, PromptTemplate, User
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/prompts",
@@ -27,7 +28,16 @@ class PromptResponse(BaseModel):
 
 # ========================== Prompts CRUD ===================================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=PromptResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PromptResponse,
+    summary="Create a prompt template",
+    description="Create a new prompt template.",
+    response_description="The created prompt template.",
+    operation_id="create_prompt",
+    responses=error_responses(401, 422),
+)
 async def create_prompt(
     payload: PromptCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -45,10 +55,18 @@ async def create_prompt(
     await db.refresh(prompt)
     return prompt
 
-@router.get("", response_model=List[PromptResponse])
+@router.get(
+    "",
+    response_model=List[PromptResponse],
+    summary="List prompt templates",
+    description="List all prompt templates.",
+    response_description="A page of prompt templates.",
+    operation_id="list_prompts",
+    responses=error_responses(401, 422),
+)
 async def list_prompts(
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,7 +89,15 @@ class PromptUpdateRequest(BaseModel):
     prompt_text: Optional[str] = Field(None, min_length=1)
 
 
-@router.get("/{prompt_id}", response_model=PromptResponse)
+@router.get(
+    "/{prompt_id}",
+    response_model=PromptResponse,
+    summary="Get a prompt template",
+    description="Retrieve a specific prompt template by ID.",
+    response_description="The requested prompt template.",
+    operation_id="get_prompt",
+    responses=error_responses(401, 404, 422),
+)
 async def get_prompt(
     prompt_id: int,
     current_user: User = Depends(get_current_user),
@@ -85,7 +111,15 @@ async def get_prompt(
     return prompt
 
 
-@router.patch("/{prompt_id}", response_model=PromptResponse)
+@router.patch(
+    "/{prompt_id}",
+    response_model=PromptResponse,
+    summary="Update a prompt template",
+    description="Update a prompt template.",
+    response_description="The updated prompt template.",
+    operation_id="update_prompt",
+    responses=error_responses(401, 404, 422),
+)
 async def update_prompt(
     prompt_id: int,
     payload: PromptUpdateRequest,
@@ -106,7 +140,15 @@ async def update_prompt(
     return prompt
 
 
-@router.delete("/{prompt_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{prompt_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a prompt template",
+    description="Delete a prompt template.",
+    response_description="Prompt template deleted; no content returned.",
+    operation_id="delete_prompt",
+    responses=error_responses(401, 404, 422),
+)
 async def delete_prompt(
     prompt_id: int,
     current_user: User = Depends(get_current_user),

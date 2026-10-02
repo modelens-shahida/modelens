@@ -9,6 +9,7 @@ import uuid
 from app.models.db import get_db, User, GhostJob
 from app.middleware.auth import get_current_user
 from app.services.credits_sync_service import credits_sync_service, estimate_credits
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/ghost", tags=["Ghost Studio Batch"])
 
@@ -95,7 +96,14 @@ def estimate_ghost_batch_credits(
 
 # ========================== Endpoints ============================
 
-@router.post("/batch/estimate")
+@router.post(
+    "/batch/estimate",
+    summary="Estimate ghost batch credits",
+    description="Estimate credits for ghost batch job.",
+    response_description="Estimated credit cost for the batch.",
+    operation_id="estimate_ghost_batch_credits",
+    responses=error_responses(401, 422),
+)
 async def estimate_ghost_batch(
     payload: GhostCreditEstimateRequest,
     current_user: User = Depends(get_current_user),
@@ -105,7 +113,14 @@ async def estimate_ghost_batch(
     return estimate
 
 
-@router.post("/batch/check")
+@router.post(
+    "/batch/check",
+    summary="Check ghost batch credits",
+    description="Pre-flight credit check for ghost batch job.",
+    response_description="Whether the brand has enough credits, with balance and shortfall.",
+    operation_id="check_ghost_batch_credits",
+    responses=error_responses(401, 404, 422),
+)
 async def check_ghost_batch_credits(
     payload: GhostCreditEstimateRequest,
     current_user: User = Depends(get_current_user),
@@ -127,7 +142,15 @@ async def check_ghost_batch_credits(
     }
 
 
-@router.post("/batch", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/batch",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a ghost batch job",
+    description="Create multi-garment ghost batch job with credit reservation.",
+    response_description="The created batch job with reserved credits.",
+    operation_id="create_ghost_batch_job",
+    responses=error_responses(401, 402, 404, 422),
+)
 async def create_ghost_batch(
     payload: GhostBatchRequest,
     current_user: User = Depends(get_current_user),
@@ -199,7 +222,14 @@ async def create_ghost_batch(
     }
 
 
-@router.get("/batch/{job_id}")
+@router.get(
+    "/batch/{job_id}",
+    summary="Get a ghost batch job",
+    description="Get ghost batch job status.",
+    response_description="Ghost batch job status.",
+    operation_id="get_ghost_batch_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_ghost_batch(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -225,7 +255,14 @@ async def get_ghost_batch(
     }
 
 
-@router.post("/batch/{job_id}/complete")
+@router.post(
+    "/batch/{job_id}/complete",
+    summary="Finalize ghost batch credits",
+    description="Finalize credits on ghost batch completion.",
+    response_description="Confirmation that reserved credits were finalized.",
+    operation_id="complete_ghost_batch_job",
+    responses=error_responses(401, 404, 422),
+)
 async def complete_ghost_batch(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -236,7 +273,14 @@ async def complete_ghost_batch(
     return result
 
 
-@router.post("/batch/{job_id}/fail")
+@router.post(
+    "/batch/{job_id}/fail",
+    summary="Refund ghost batch credits",
+    description="Refund credits on ghost batch failure.",
+    response_description="Confirmation that reserved credits were refunded.",
+    operation_id="fail_ghost_batch_job",
+    responses=error_responses(401, 404, 422),
+)
 async def fail_ghost_batch(
     job_id: str,
     reason: str = "Ghost generation failed",
@@ -252,7 +296,14 @@ async def fail_ghost_batch(
     return result
 
 
-@router.get("/rates")
+@router.get(
+    "/rates",
+    summary="Get Ghost Studio credit rates",
+    description="Get ghost studio credit rates.",
+    response_description="Credit rates for Ghost Studio jobs.",
+    operation_id="get_ghost_rates",
+    responses=error_responses(401),
+)
 async def get_ghost_rates(
     current_user: User = Depends(get_current_user),
 ):

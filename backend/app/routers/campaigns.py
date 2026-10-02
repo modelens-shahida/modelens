@@ -18,6 +18,7 @@ from app.models.db import (
     ShootAngleShot,
 )
 from app.middleware.auth import get_current_user, ROLE_HIERARCHY
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/campaigns",
@@ -101,7 +102,16 @@ async def check_campaign_access(
 
 # --- REST Operations ---
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=CampaignResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CampaignResponse,
+    summary="Create a campaign",
+    description="Create a new campaign under a brand. Requires brand 'editor' role.",
+    response_description="The created campaign.",
+    operation_id="create_campaign",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def create_campaign(
     payload: CampaignCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -148,11 +158,19 @@ async def create_campaign(
     return campaign
 
 
-@router.get("", response_model=List[CampaignResponse])
+@router.get(
+    "",
+    response_model=List[CampaignResponse],
+    summary="List campaigns",
+    description="List all campaigns matching the brand_id or those accessible to the caller with pagination.",
+    response_description="A page of campaigns visible to the caller.",
+    operation_id="list_campaigns",
+    responses=error_responses(401, 403, 422),
+)
 async def list_campaigns(
     brand_id: Optional[int] = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -185,7 +203,15 @@ async def list_campaigns(
     return list(result.scalars().all())
 
 
-@router.get("/{campaign_id}", response_model=CampaignResponse)
+@router.get(
+    "/{campaign_id}",
+    response_model=CampaignResponse,
+    summary="Get a campaign",
+    description="Retrieve details of a campaign. Requires 'viewer' role on parent brand.",
+    response_description="The requested campaign.",
+    operation_id="get_campaign",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_campaign(
     campaign_id: int,
     current_user: User = Depends(get_current_user),
@@ -196,7 +222,15 @@ async def get_campaign(
     return campaign
 
 
-@router.patch("/{campaign_id}", response_model=CampaignResponse)
+@router.patch(
+    "/{campaign_id}",
+    response_model=CampaignResponse,
+    summary="Update a campaign",
+    description="Update name or description of a campaign. Requires 'editor' role.",
+    response_description="The updated campaign.",
+    operation_id="update_campaign",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def update_campaign(
     campaign_id: int,
     payload: CampaignUpdateRequest,
@@ -216,7 +250,15 @@ async def update_campaign(
     return campaign
 
 
-@router.delete("/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{campaign_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a campaign",
+    description="Delete a campaign. Requires 'editor' role.",
+    response_description="Campaign deleted; no content returned.",
+    operation_id="delete_campaign",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def delete_campaign(
     campaign_id: int,
     current_user: User = Depends(get_current_user),
@@ -231,7 +273,15 @@ async def delete_campaign(
 
 # --- Asset Linking Endpoints ---
 
-@router.post("/{campaign_id}/assets/{asset_id}", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{campaign_id}/assets/{asset_id}",
+    status_code=status.HTTP_201_CREATED,
+    summary="Link an asset to a campaign",
+    description="Link an asset to a campaign. Requires 'editor' role on parent brand.",
+    response_description="Confirmation that the asset was linked.",
+    operation_id="link_campaign_asset",
+    responses=error_responses(400, 401, 403, 404, 422),
+)
 async def link_asset(
     campaign_id: int,
     asset_id: int,
@@ -271,7 +321,15 @@ async def link_asset(
     return {"message": "Asset successfully linked to campaign"}
 
 
-@router.delete("/{campaign_id}/assets/{asset_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/{campaign_id}/assets/{asset_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Unlink an asset from a campaign",
+    description="Unlink an asset from a campaign. Requires 'editor' role on parent brand.",
+    response_description="Confirmation that the asset was unlinked.",
+    operation_id="unlink_campaign_asset",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def unlink_asset(
     campaign_id: int,
     asset_id: int,
@@ -300,7 +358,15 @@ async def unlink_asset(
 
 # --- Workflow Linking Endpoints ---
 
-@router.post("/{campaign_id}/workflows/{workflow_id}", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{campaign_id}/workflows/{workflow_id}",
+    status_code=status.HTTP_201_CREATED,
+    summary="Link a workflow to a campaign",
+    description="Link a workflow template to a campaign. Requires 'editor' role on parent brand.",
+    response_description="Confirmation that the workflow was linked.",
+    operation_id="link_campaign_workflow",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def link_workflow(
     campaign_id: int,
     workflow_id: int,
@@ -334,7 +400,15 @@ async def link_workflow(
     return {"message": "Workflow successfully linked to campaign"}
 
 
-@router.delete("/{campaign_id}/workflows/{workflow_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/{campaign_id}/workflows/{workflow_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Unlink a workflow from a campaign",
+    description="Unlink a workflow template from a campaign. Requires 'editor' role on parent brand.",
+    response_description="Confirmation that the workflow was unlinked.",
+    operation_id="unlink_campaign_workflow",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def unlink_workflow(
     campaign_id: int,
     workflow_id: int,
@@ -361,7 +435,15 @@ async def unlink_workflow(
     return {"message": "Workflow successfully unlinked from campaign"}
 
 
-@router.get("/{campaign_id}/assets", response_model=List[dict])
+@router.get(
+    "/{campaign_id}/assets",
+    response_model=List[dict],
+    summary="List campaign assets",
+    description="List all assets linked to a campaign. Requires 'viewer' role.",
+    response_description="Assets linked to the campaign.",
+    operation_id="list_campaign_assets",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def list_campaign_assets(
     campaign_id: int,
     current_user: User = Depends(get_current_user),
@@ -388,7 +470,15 @@ async def list_campaign_assets(
     ]
 
 
-@router.get("/{campaign_id}/workflows", response_model=List[dict])
+@router.get(
+    "/{campaign_id}/workflows",
+    response_model=List[dict],
+    summary="List campaign workflows",
+    description="List all workflow templates linked to a campaign. Requires 'viewer' role.",
+    response_description="Workflow templates linked to the campaign.",
+    operation_id="list_campaign_workflows",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def list_campaign_workflows(
     campaign_id: int,
     current_user: User = Depends(get_current_user),
@@ -418,7 +508,14 @@ class ApplyAngleShotRequest(BaseModel):
     productIds: Optional[List[str]] = []
 
 
-@router.post("/{campaign_id}/angle-shots/apply")
+@router.post(
+    "/{campaign_id}/angle-shots/apply",
+    summary="Apply angle shots to a campaign",
+    description="Apply multiple angle shots to products in a campaign/shoot and save snapshot configurations.",
+    response_description="The saved angle-shot snapshot configuration.",
+    operation_id="apply_angle_shots_to_campaign",
+    responses=error_responses(400, 401, 403, 404, 422),
+)
 async def apply_angle_shots_to_campaign(
     campaign_id: int,
     payload: ApplyAngleShotRequest,

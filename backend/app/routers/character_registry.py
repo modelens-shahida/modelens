@@ -14,6 +14,7 @@ from app.models.db import (
     CharacterRuntimeProfile,
 )
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/characters", tags=["Character Registry"])
 
@@ -99,7 +100,14 @@ class CharacterRuntimeCreate(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("")
+@router.get(
+    "",
+    summary="List characters",
+    description="List all characters.",
+    response_description="All characters in the registry.",
+    operation_id="list_registry_characters",
+    responses=error_responses(401, 422),
+)
 async def list_characters(
     workspace_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -125,7 +133,15 @@ async def list_characters(
     ]}
 
 
-@router.post("/identity", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/identity",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character identity",
+    description="Create a character identity profile.",
+    response_description="The created character identity profile.",
+    operation_id="create_character_identity",
+    responses=error_responses(401, 409, 422),
+)
 async def create_character_identity(
     payload: CharacterIdentityCreate,
     current_user: User = Depends(get_current_user),
@@ -147,7 +163,14 @@ async def create_character_identity(
     return {"character_id": profile.character_id, "status": profile.status}
 
 
-@router.get("/{character_id}")
+@router.get(
+    "/{character_id}",
+    summary="Get a character",
+    description="Get full character profile.",
+    response_description="Full character profile.",
+    operation_id="get_registry_character",
+    responses=error_responses(401, 404, 422),
+)
 async def get_character(
     character_id: str,
     current_user: User = Depends(get_current_user),
@@ -191,7 +214,15 @@ async def get_character(
     }
 
 
-@router.post("/{character_id}/body", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/body",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character body profile",
+    description="Create character body profile.",
+    response_description="The created body profile.",
+    operation_id="create_body_profile",
+    responses=error_responses(401, 422),
+)
 async def create_body_profile(
     character_id: str,
     payload: CharacterBodyCreate,
@@ -205,7 +236,15 @@ async def create_body_profile(
     return {"body_profile_id": profile.body_profile_id, "status": "created"}
 
 
-@router.post("/{character_id}/skin", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/skin",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character skin profile",
+    description="Create character skin profile.",
+    response_description="The created skin profile.",
+    operation_id="create_skin_profile",
+    responses=error_responses(401, 422),
+)
 async def create_skin_profile(
     character_id: str,
     payload: CharacterSkinCreate,
@@ -219,7 +258,15 @@ async def create_skin_profile(
     return {"skin_profile_id": profile.skin_profile_id, "status": "created"}
 
 
-@router.post("/{character_id}/hair", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/hair",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character hair profile",
+    description="Create character hair DNA profile.",
+    response_description="The created hair DNA profile.",
+    operation_id="create_hair_profile",
+    responses=error_responses(401, 422),
+)
 async def create_hair_profile(
     character_id: str,
     payload: CharacterHairCreate,
@@ -233,7 +280,15 @@ async def create_hair_profile(
     return {"hair_dna_id": profile.hair_dna_id, "status": "created"}
 
 
-@router.post("/{character_id}/runtime", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/runtime",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character runtime profile",
+    description="Create character runtime profile.",
+    response_description="The created runtime profile.",
+    operation_id="create_runtime_profile",
+    responses=error_responses(401, 422),
+)
 async def create_runtime_profile(
     character_id: str,
     payload: CharacterRuntimeCreate,
@@ -247,7 +302,14 @@ async def create_runtime_profile(
     return {"runtime_profile_id": profile.runtime_profile_id, "status": "created"}
 
 
-@router.patch("/{character_id}/status")
+@router.patch(
+    "/{character_id}/status",
+    summary="Update character status",
+    description="Update character lifecycle status.",
+    response_description="The character with its updated lifecycle status.",
+    operation_id="update_registry_character_status",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def update_character_status(
     character_id: str,
     new_status: str,

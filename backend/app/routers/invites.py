@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, Brand, BrandMember, User, Invitation
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/invites",
@@ -24,7 +25,21 @@ class AcceptInvitationResponse(BaseModel):
     role: str
 
 
-@router.post("/accept", status_code=status.HTTP_200_OK, response_model=AcceptInvitationResponse)
+@router.post(
+    "/accept",
+    status_code=status.HTTP_200_OK,
+    response_model=AcceptInvitationResponse,
+    summary="Accept an invitation",
+    description=(
+        "Accept a pending invitation.\n"
+        "Verifies that the invitation token is valid, has not expired, is not revoked, and is not already accepted.\n"
+        "Enforces that the logged-in user's email matches the invitation email.\n"
+        "Provisions the user into the brand with the invited role."
+    ),
+    response_description="The brand membership created from the invitation.",
+    operation_id="accept_invitation",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def accept_invitation(
     payload: AcceptInvitationRequest,
     current_user: User = Depends(get_current_user),

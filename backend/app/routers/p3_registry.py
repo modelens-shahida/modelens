@@ -12,6 +12,7 @@ from app.models.db import (
     ModelArtifact, RightsRegistry,
 )
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["P3 Registry"])
 
@@ -84,7 +85,15 @@ class RightsRegistryCreate(BaseModel):
 
 # ========================== Dataset Endpoints ====================
 
-@router.post("/datasets", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/datasets",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a dataset",
+    description="Create a new dataset.",
+    response_description="The created dataset.",
+    operation_id="create_dataset",
+    responses=error_responses(401, 422),
+)
 async def create_dataset(
     payload: DatasetCreate,
     current_user: User = Depends(get_current_user),
@@ -97,7 +106,14 @@ async def create_dataset(
     return {"dataset_id": dataset.dataset_id, "status": "created"}
 
 
-@router.get("/datasets")
+@router.get(
+    "/datasets",
+    summary="List datasets",
+    description="List datasets.",
+    response_description="Registered datasets.",
+    operation_id="list_datasets",
+    responses=error_responses(401, 422),
+)
 async def list_datasets(
     character_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
@@ -125,7 +141,15 @@ async def list_datasets(
     ]}
 
 
-@router.post("/datasets/{dataset_id}/items", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/datasets/{dataset_id}/items",
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a dataset item",
+    description="Add item to dataset.",
+    response_description="The created dataset item.",
+    operation_id="add_dataset_item",
+    responses=error_responses(401, 422),
+)
 async def add_dataset_item(
     dataset_id: str,
     payload: DatasetItemCreate,
@@ -148,7 +172,14 @@ async def add_dataset_item(
     return {"dataset_id": dataset_id, "item_id": item.id, "status": "added"}
 
 
-@router.post("/datasets/{dataset_id}/freeze")
+@router.post(
+    "/datasets/{dataset_id}/freeze",
+    summary="Freeze a dataset",
+    description="Freeze dataset for training.",
+    response_description="The frozen dataset.",
+    operation_id="freeze_dataset",
+    responses=error_responses(401, 404, 422),
+)
 async def freeze_dataset(
     dataset_id: str,
     current_user: User = Depends(get_current_user),
@@ -171,7 +202,15 @@ async def freeze_dataset(
 
 # ========================== Experiment Endpoints =================
 
-@router.post("/experiments", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/experiments",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an experiment run",
+    description="Create a training experiment run.",
+    response_description="The created experiment run.",
+    operation_id="create_experiment_run",
+    responses=error_responses(401, 422),
+)
 async def create_experiment_run(
     payload: ExperimentRunCreate,
     current_user: User = Depends(get_current_user),
@@ -184,7 +223,14 @@ async def create_experiment_run(
     return {"run_id": run.run_id, "status": "QUEUED"}
 
 
-@router.get("/experiments")
+@router.get(
+    "/experiments",
+    summary="List experiment runs",
+    description="List experiment runs.",
+    response_description="Registered experiment runs.",
+    operation_id="list_experiments",
+    responses=error_responses(401, 422),
+)
 async def list_experiments(
     character_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -209,7 +255,15 @@ async def list_experiments(
     ]}
 
 
-@router.post("/experiments/{run_id}/metrics", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/experiments/{run_id}/metrics",
+    status_code=status.HTTP_201_CREATED,
+    summary="Log an experiment metric",
+    description="Log metric for experiment run.",
+    response_description="The recorded metric.",
+    operation_id="log_experiment_metric",
+    responses=error_responses(401, 422),
+)
 async def log_experiment_metric(
     run_id: str,
     payload: ExperimentMetricCreate,
@@ -225,7 +279,15 @@ async def log_experiment_metric(
 
 # ========================== Model Artifact Endpoints =============
 
-@router.post("/models", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/models",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a model artifact",
+    description="Register a model artifact.",
+    response_description="The registered model artifact.",
+    operation_id="create_model_artifact",
+    responses=error_responses(401, 422),
+)
 async def create_model_artifact(
     payload: ModelArtifactCreate,
     current_user: User = Depends(get_current_user),
@@ -238,7 +300,14 @@ async def create_model_artifact(
     return {"model_id": artifact.model_id, "status": "EXPERIMENTAL"}
 
 
-@router.get("/models")
+@router.get(
+    "/models",
+    summary="List model artifacts",
+    description="List model artifacts.",
+    response_description="Registered model artifacts.",
+    operation_id="list_model_artifacts",
+    responses=error_responses(401, 422),
+)
 async def list_models(
     character_id: Optional[str] = None,
     status_filter: Optional[str] = None,
@@ -267,7 +336,14 @@ async def list_models(
     ]}
 
 
-@router.patch("/models/{model_id}/promote")
+@router.patch(
+    "/models/{model_id}/promote",
+    summary="Promote a model artifact",
+    description="Promote model through lifecycle stages.",
+    response_description="The model artifact at its new lifecycle stage.",
+    operation_id="promote_model_artifact",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def promote_model(
     model_id: str,
     new_status: str,
@@ -299,7 +375,15 @@ async def promote_model(
 
 # ========================== Rights Registry Endpoints ============
 
-@router.post("/rights", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/rights",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a rights record",
+    description="Create a rights registry record.",
+    response_description="The created rights record.",
+    operation_id="create_rights_record",
+    responses=error_responses(401, 422),
+)
 async def create_rights_record(
     payload: RightsRegistryCreate,
     current_user: User = Depends(get_current_user),
@@ -312,7 +396,14 @@ async def create_rights_record(
     return {"rights_id": record.rights_id, "status": "created"}
 
 
-@router.get("/rights/{resource_type}/{resource_id}")
+@router.get(
+    "/rights/{resource_type}/{resource_id}",
+    summary="Get a rights record",
+    description="Get rights record for a resource.",
+    response_description="The rights record for the resource.",
+    operation_id="get_rights_record",
+    responses=error_responses(401, 404, 422),
+)
 async def get_rights(
     resource_type: str,
     resource_id: str,

@@ -14,6 +14,7 @@ from app.services.credits_sync_service import (
     CREDIT_RATES,
 )
 from app.config import settings
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["Generation Credits Sync"])
 
@@ -55,7 +56,19 @@ class FailCallbackRequest(BaseModel):
 
 # ========================== Credit Balance =======================
 
-@router.get("/credits/balance")
+@router.get(
+    "/credits/balance",
+    summary="Get brand credit balance",
+    description=(
+        "Get current credit balance for the user's brand.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `get_user_credit_balance`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Credit balance for the caller's brand.",
+    operation_id="get_brand_credit_balance",
+    responses=error_responses(401, 404),
+    include_in_schema=False,
+)
 async def get_credit_balance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -71,7 +84,14 @@ async def get_credit_balance(
     }
 
 
-@router.get("/credits/rates")
+@router.get(
+    "/credits/rates",
+    summary="Get credit rates",
+    description="Get credit rates for all quality modes and resolutions.",
+    response_description="Credit rates for every quality mode and resolution.",
+    operation_id="get_credit_rates",
+    responses=error_responses(401),
+)
 async def get_credit_rates(
     current_user: User = Depends(get_current_user),
 ):
@@ -89,7 +109,14 @@ async def get_credit_rates(
 
 # ========================== Credit Estimation ====================
 
-@router.post("/credits/estimate")
+@router.post(
+    "/credits/estimate",
+    summary="Estimate generation credits",
+    description="Estimate credits before generation.",
+    response_description="Estimated credit cost for the generation.",
+    operation_id="estimate_generation_credits",
+    responses=error_responses(401, 422),
+)
 async def estimate_generation_credits(
     payload: CreditEstimateRequest,
     current_user: User = Depends(get_current_user),
@@ -123,7 +150,14 @@ async def estimate_generation_credits(
 
 # ========================== Credit Check =========================
 
-@router.post("/credits/check")
+@router.post(
+    "/credits/check",
+    summary="Check credit sufficiency",
+    description="Check if brand has sufficient credits before generation.",
+    response_description="Whether the brand has enough credits, with balance and shortfall.",
+    operation_id="check_generation_credits",
+    responses=error_responses(401, 404, 422),
+)
 async def check_credits(
     payload: CreditEstimateRequest,
     current_user: User = Depends(get_current_user),
@@ -156,7 +190,21 @@ async def check_credits(
 
 # ========================== Internal Callbacks ===================
 
-@router.post("/internal/generations/{generation_id}/complete")
+@router.post(
+    "/internal/generations/{generation_id}/complete",
+    summary="Finalize generation credits (internal)",
+    description=(
+        "Internal callback: finalize credits on generation success.\n"
+        "\n"
+        "Internal endpoint: requires the `X-Internal-Secret` header.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `internal_generation_complete`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Confirmation that reserved credits were finalized.",
+    operation_id="internal_finalize_generation_credits",
+    responses=error_responses(403, 404, 422),
+    include_in_schema=False,
+)
 async def complete_generation_callback(
     generation_id: str,
     payload: CompleteCallbackRequest,
@@ -168,7 +216,21 @@ async def complete_generation_callback(
     return result
 
 
-@router.post("/internal/generations/{generation_id}/fail")
+@router.post(
+    "/internal/generations/{generation_id}/fail",
+    summary="Refund generation credits (internal)",
+    description=(
+        "Internal callback: refund credits on generation failure.\n"
+        "\n"
+        "Internal endpoint: requires the `X-Internal-Secret` header.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `internal_generation_fail`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Confirmation that reserved credits were refunded.",
+    operation_id="internal_refund_generation_credits",
+    responses=error_responses(403, 404, 422),
+    include_in_schema=False,
+)
 async def fail_generation_callback(
     generation_id: str,
     payload: FailCallbackRequest,
@@ -186,7 +248,14 @@ async def fail_generation_callback(
 
 # ========================== Billing Layout Fix ===================
 
-@router.get("/billing/summary")
+@router.get(
+    "/billing/summary",
+    summary="Get billing summary",
+    description="Get billing summary for dashboard TopBar.",
+    response_description="Billing summary for the dashboard top bar.",
+    operation_id="get_billing_summary",
+    responses=error_responses(401, 404),
+)
 async def get_billing_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

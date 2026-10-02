@@ -12,6 +12,7 @@ from app.services.admin_stats_service import (
     get_user_growth,
     get_credit_usage,
 )
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/admin/stats",
@@ -53,7 +54,17 @@ async def _require_admin_or_owner(
     )
 
 
-@router.get("/summary")
+@router.get(
+    "/summary",
+    summary="Get platform summary statistics",
+    description=(
+        "Returns platform-wide summary statistics.\n"
+        "Requires Admin or Owner role."
+    ),
+    response_description="Platform-wide totals (users, brands, jobs, credits).",
+    operation_id="get_stats_summary",
+    responses=error_responses(401, 403),
+)
 async def get_stats_summary(
     _caller: User = Depends(_require_admin_or_owner),
     db: AsyncSession = Depends(get_db),
@@ -72,7 +83,17 @@ async def get_stats_summary(
     return result
 
 
-@router.get("/jobs/daily")
+@router.get(
+    "/jobs/daily",
+    summary="Get daily job counts",
+    description=(
+        "Returns jobs created per day for the last 30 days.\n"
+        "Requires Admin or Owner role."
+    ),
+    response_description="Jobs created per day for the last 30 days.",
+    operation_id="get_daily_jobs_stats",
+    responses=error_responses(401, 403),
+)
 async def get_daily_jobs_stats(
     _caller: User = Depends(_require_admin_or_owner),
     db: AsyncSession = Depends(get_db),
@@ -84,7 +105,17 @@ async def get_daily_jobs_stats(
     return await get_daily_jobs(db)
 
 
-@router.get("/users/growth")
+@router.get(
+    "/users/growth",
+    summary="Get daily user sign-ups",
+    description=(
+        "Returns new user registrations per day for the last 30 days.\n"
+        "Requires Admin or Owner role."
+    ),
+    response_description="New user registrations per day for the last 30 days.",
+    operation_id="get_user_growth_stats",
+    responses=error_responses(401, 403),
+)
 async def get_user_growth_stats(
     _caller: User = Depends(_require_admin_or_owner),
     db: AsyncSession = Depends(get_db),
@@ -96,7 +127,17 @@ async def get_user_growth_stats(
     return await get_user_growth(db)
 
 
-@router.get("/credits/usage")
+@router.get(
+    "/credits/usage",
+    summary="Get daily credit usage",
+    description=(
+        "Returns credit consumption per day for the last 30 days.\n"
+        "Requires Admin or Owner role."
+    ),
+    response_description="Credits consumed per day for the last 30 days.",
+    operation_id="get_credit_usage_stats",
+    responses=error_responses(401, 403),
+)
 async def get_credit_usage_stats(
     _caller: User = Depends(_require_admin_or_owner),
     db: AsyncSession = Depends(get_db),

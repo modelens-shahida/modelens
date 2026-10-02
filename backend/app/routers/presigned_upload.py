@@ -6,6 +6,7 @@ from app.middleware.auth import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 from datetime import datetime
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/assets", tags=["Presigned Upload"])
 
@@ -28,7 +29,15 @@ class PresignedUploadResponse(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.post("/presigned-upload", status_code=status.HTTP_200_OK)
+@router.post(
+    "/presigned-upload",
+    status_code=status.HTTP_200_OK,
+    summary="Create a presigned S3 upload",
+    description="Generate direct S3 presigned upload URL bypassing API gateway.",
+    response_description="Presigned S3 upload URL and fields.",
+    operation_id="generate_presigned_upload",
+    responses=error_responses(401, 422, 500),
+)
 async def generate_presigned_upload(
     payload: PresignedUploadRequest,
     current_user: User = Depends(get_current_user),
@@ -86,7 +95,14 @@ async def generate_presigned_upload(
         }
 
 
-@router.post("/confirm-upload")
+@router.post(
+    "/confirm-upload",
+    summary="Confirm a presigned S3 upload",
+    description="Confirm successful S3 upload and register asset in database.",
+    response_description="The registered asset.",
+    operation_id="confirm_presigned_upload",
+    responses=error_responses(401, 422),
+)
 async def confirm_upload(
     asset_key: str,
     brand_id: int,

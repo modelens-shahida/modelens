@@ -97,6 +97,15 @@ from app.routers.pipeline_hardening import router as pipeline_hardening_router
 from app.routers.rosanne_pipeline import router as rosanne_pipeline_router
 from app.routers.provider_names_cleanup import router as provider_names_cleanup_router
 from app.middleware.api_versioning import APIVersionMiddleware
+from app.api_docs import (
+    API_CONTACT,
+    API_DESCRIPTION,
+    API_LICENSE,
+    API_TITLE,
+    API_VERSION,
+    TAGS_METADATA,
+    add_webhook_docs,
+)
 import app.services.metrics
 
 # ContextVar to hold the request ID for the current async task execution
@@ -159,38 +168,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="Mode Lens API",
-    description="""
-## Mode Lens — AI Fashion Content Production Platform
-
-### Authentication
-- `Authorization: Bearer <JWT token>` — for web dashboard users
-- `X-API-Key: <api_key>` — for programmatic API access
-
-### Rate Limiting
-- Web users: 20 requests/minute on resource-heavy endpoints
-- API key clients: 60 requests/minute (configurable per endpoint)
-    """,
-    version="1.0.0",
-    contact={
-        "name": "Mode Lens Engineering",
-        "email": "modelens@shahidaparides.com",
-    },
-    openapi_tags=[
-        {"name": "Auth", "description": "User registration, login, and profile management"},
-        {"name": "Brands", "description": "Brand workspace management and member invitations"},
-        {"name": "Assets", "description": "Asset upload, management, search, and soft-delete"},
-        {"name": "Jobs", "description": "AI generation job submission and status tracking"},
-        {"name": "Characters", "description": "Character identity library with versioning and LoRA training"},
-        {"name": "Campaign Themes", "description": "Visual theme packages for campaign aesthetics"},
-        {"name": "Prompts", "description": "Reusable prompt template management"},
-        {"name": "Campaigns", "description": "Campaign management and asset linking"},
-        {"name": "Search", "description": "Unified FTS + vector + hybrid search across assets"},
-        {"name": "API Keys", "description": "Programmatic API key management"},
-        {"name": "Webhooks", "description": "Brand webhook subscription management"},
-        {"name": "Memory", "description": "Brand and campaign tag frequency analytics"},
-    ],
+    title=API_TITLE,
+    description=API_DESCRIPTION,
+    version=API_VERSION,
+    contact=API_CONTACT,
+    license_info=API_LICENSE,
+    openapi_tags=TAGS_METADATA,
 )
+add_webhook_docs(app.webhooks)
 
 
 # Request ID & Logging Middleware
@@ -376,17 +361,39 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-@app.get("/")
+@app.get(
+    "/",
+    tags=["System"],
+    summary="API root",
+    description="Returns a welcome message. No authentication required.",
+    response_description="Welcome message.",
+    operation_id="get_api_root",
+)
 async def root():
     return {"message": "Welcome to ModeLens API"}
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["System"],
+    summary="Liveness check",
+    description="Lightweight liveness probe that does not check dependencies. No authentication required. See `GET /api/v1/health` for a full dependency check.",
+    response_description="The API process is up.",
+    operation_id="get_liveness",
+)
 async def health():
     return {"status": "healthy"}
 
 
-@app.get("/metrics")
+@app.get(
+    "/metrics",
+    tags=["System"],
+    summary="Prometheus metrics",
+    description="Exposes Prometheus metrics in the text exposition format. No authentication required.",
+    response_description="Prometheus metrics in text format.",
+    operation_id="get_prometheus_metrics",
+    responses={200: {"content": {"text/plain": {"schema": {"type": "string"}}}}},
+)
 async def metrics():
     from fastapi import Response
     from prometheus_client import generate_latest, CONTENT_TYPE_LATEST

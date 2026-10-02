@@ -19,10 +19,20 @@ ALGORITHM = settings.ALGORITHM
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/login",
     auto_error=False,
+    description=(
+        "JWT access token sent as `Authorization: Bearer <token>`. Obtain one from "
+        "`POST /api/v1/auth/login` (the web dashboard may send it as the "
+        "`modelens_access_token` cookie instead)."
+    ),
 )
 api_key_header = APIKeyHeader(
     name="X-API-Key",
     auto_error=False,
+    description=(
+        "API key for programmatic access, e.g. `X-API-Key: mlk_test_0000000000000000`. "
+        "Create keys with `POST /api/v1/api-keys`; the plaintext key is shown only once. "
+        "Takes precedence over a Bearer token when both are sent."
+    ),
 )
 
 # ---------------------------------------------------------------------------

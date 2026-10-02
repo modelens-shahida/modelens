@@ -10,11 +10,19 @@ from sqlalchemy import select
 
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Asset, QAEvaluation
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Export"])
 
 
-@router.get("/{job_id}/export-zip")
+@router.get(
+    "/{job_id}/export-zip",
+    summary="Export a catalog job as ZIP",
+    description="Export catalog job outputs as ZIP with manifest.json.",
+    response_description="ZIP archive of catalog outputs with manifest.json.",
+    operation_id="export_catalog_zip",
+    responses=error_responses(401, 404, 422),
+)
 async def export_catalog_zip(
     job_id: int,
     current_user: User = Depends(get_current_user),
@@ -146,7 +154,19 @@ Each SKU entry in manifest.json contains:
 
 # ========================== Marketplace Feed Endpoints ==========
 
-@router.get("/marketplaces")
+@router.get(
+    "/marketplaces",
+    summary="List supported marketplaces",
+    description=(
+        "List all supported marketplaces.\n"
+        "\n"
+        "**Note:** the same method and path is registered earlier as `get_catalog_marketplaces`, which handles every request. This handler is unreachable, so it is hidden from the schema."
+    ),
+    response_description="Supported marketplaces and their feed formats.",
+    operation_id="list_catalog_marketplaces",
+    responses=error_responses(401),
+    include_in_schema=False,
+)
 async def list_marketplaces(
     current_user: User = Depends(get_current_user),
 ):
@@ -158,7 +178,14 @@ async def list_marketplaces(
     }
 
 
-@router.get("/{job_id}/export-feed/{marketplace}")
+@router.get(
+    "/{job_id}/export-feed/{marketplace}",
+    summary="Export a marketplace feed",
+    description="Export catalog job as marketplace-specific feed.",
+    response_description="Marketplace-specific feed file for the catalog job.",
+    operation_id="export_marketplace_feed",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def export_marketplace_feed(
     job_id: int,
     marketplace: str,
@@ -211,7 +238,14 @@ async def export_marketplace_feed(
     )
 
 
-@router.get("/{job_id}/export-multi-feed")
+@router.get(
+    "/{job_id}/export-multi-feed",
+    summary="Export all marketplace feeds as ZIP",
+    description="Export all marketplace feeds in a single ZIP.",
+    response_description="ZIP archive containing every marketplace feed.",
+    operation_id="export_multi_marketplace_zip",
+    responses=error_responses(401, 404, 422),
+)
 async def export_multi_marketplace_zip(
     job_id: int,
     current_user: User = Depends(get_current_user),

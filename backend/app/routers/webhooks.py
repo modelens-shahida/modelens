@@ -9,6 +9,7 @@ from datetime import datetime
 from app.models.db import get_db, WebhookSubscription, Brand, BrandMember, User, WebhookLog, WebhookDeliveryLog
 from app.middleware.auth import get_current_user
 from app.services.audit import write_audit_log
+from app.api_docs import error_responses, limit_query, offset_query
 
 
 
@@ -94,7 +95,21 @@ async def get_accessible_brand_ids(user_id: int, db: AsyncSession) -> set:
 
 # ========================== Endpoints ============================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=WebhookCreateResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=WebhookCreateResponse,
+    summary="Register a webhook",
+    description=(
+        "Register a new webhook subscription. Requires Admin or Owner role.\n"
+        "\n"
+        "Deliveries are signed with the returned secret via the `X-Modelens-Signature-256` and "
+        "`X-Modelens-Timestamp` headers; see the `webhookDelivery` webhook for how to verify them."
+    ),
+    response_description="The created subscription. The signing secret is shown only in this response.",
+    operation_id="register_webhook",
+    responses=error_responses(400, 401, 403, 422),
+)
 async def register_webhook(
     payload: WebhookCreateRequest,
     request: Request,
@@ -136,7 +151,15 @@ async def register_webhook(
     return subscription
 
 
-@router.get("", response_model=List[WebhookResponse])
+@router.get(
+    "",
+    response_model=List[WebhookResponse],
+    summary="List webhooks",
+    description="List active webhooks for a brand. Requires Viewer role or higher.",
+    response_description="Active webhook subscriptions for the brand.",
+    operation_id="list_webhooks",
+    responses=error_responses(401, 403, 422),
+)
 async def list_webhooks(
     brand_id: int,
     current_user: User = Depends(get_current_user),
@@ -156,7 +179,15 @@ async def list_webhooks(
     return list(result.scalars().all())
 
 
-@router.delete("/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{webhook_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a webhook",
+    description="Delete a webhook subscription. Requires Admin or Owner role.",
+    response_description="Webhook subscription deleted; no content returned.",
+    operation_id="delete_webhook",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def delete_webhook(
     webhook_id: int,
     request: Request,
@@ -184,11 +215,18 @@ async def delete_webhook(
     await write_audit_log(db, action="webhook_deleted", user_id=current_user.id, brand_id=sub_brand_id, details={"webhook_id": sub_id}, request=request)
 
 
-@router.get("/{subscription_id}/logs")
+@router.get(
+    "/{subscription_id}/logs",
+    summary="Get webhook logs",
+    description="Get delivery logs for a webhook subscription. Requires Admin or Owner role.",
+    response_description="A page of delivery logs for the subscription.",
+    operation_id="get_webhook_logs",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_webhook_logs(
     subscription_id: int,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -233,7 +271,22 @@ class RotateSecretResponse(BaseModel):
     secret_token: str
 
 
-@router.post("/{subscription_id}/rotate-secret", response_model=RotateSecretResponse)
+@router.post(
+    "/{subscription_id}/rotate-secret",
+    response_model=RotateSecretResponse,
+    summary="Rotate a webhook signing secret",
+    description=(
+        "Rotate the signing secret for a webhook subscription. Requires Admin or Owner role\n"
+        "in the webhook's brand. The old secret stops working immediately; the new secret is\n"
+        "returned only in this response.\n"
+        "\n"
+        "Deliveries are signed with this secret via the `X-Modelens-Signature-256` and "
+        "`X-Modelens-Timestamp` headers; see the `webhookDelivery` webhook for how to verify them."
+    ),
+    response_description="The new signing secret. It is shown only in this response.",
+    operation_id="rotate_webhook_secret",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def rotate_webhook_secret(
     subscription_id: int,
     request: Request,
@@ -272,11 +325,18 @@ async def rotate_webhook_secret(
     }
 
 
-@router.get("/{subscription_id}/delivery-logs")
+@router.get(
+    "/{subscription_id}/delivery-logs",
+    summary="Get webhook delivery logs",
+    description="Get delivery logs for a webhook subscription. Requires Admin or Owner role.",
+    response_description="A page of detailed delivery attempts for the subscription.",
+    operation_id="get_webhook_delivery_logs",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_webhook_delivery_logs(
     subscription_id: int,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -316,7 +376,15 @@ async def get_webhook_delivery_logs(
     ]
 
 
-@router.post("/logs/{log_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/logs/{log_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Retry a webhook delivery",
+    description="Manually retry a failed or dead webhook delivery. Requires Admin or Owner role.",
+    response_description="The delivery was re-queued.",
+    operation_id="retry_webhook_delivery",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def retry_webhook_delivery(
     log_id: int,
     current_user: User = Depends(get_current_user),
@@ -349,7 +417,14 @@ async def retry_webhook_delivery(
     return {"message": "Webhook delivery queued for retry.", "log_id": log_id}
 
 
-@router.get("/admin/metrics")
+@router.get(
+    "/admin/metrics",
+    summary="Get platform webhook metrics",
+    description="Get platform-wide webhook delivery metrics. Requires Admin or Owner role.",
+    response_description="Platform-wide webhook delivery metrics.",
+    operation_id="get_admin_webhook_metrics",
+    responses=error_responses(401, 403, 422),
+)
 async def get_admin_webhook_metrics(
     time_range: str = Query("7d", pattern="^(24h|7d|30d)$"),
     start_date: Optional[datetime] = Query(None),
@@ -377,7 +452,14 @@ async def get_admin_webhook_metrics(
     return await get_admin_metrics(db, time_range, start_date, end_date)
 
 
-@router.get("/{subscription_id}/metrics")
+@router.get(
+    "/{subscription_id}/metrics",
+    summary="Get webhook metrics",
+    description="Get delivery metrics for a webhook subscription. Requires Admin or Owner role.",
+    response_description="Delivery metrics for the subscription.",
+    operation_id="get_webhook_metrics",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_webhook_metrics(
     subscription_id: int,
     time_range: str = Query("7d", pattern="^(24h|7d|30d)$"),

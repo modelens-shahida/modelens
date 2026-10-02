@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import get_db, CampaignTheme, Brand, BrandMember, User
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/themes",
@@ -55,7 +56,15 @@ async def get_user_role_in_brand(user_id: int, brand_id: int, db: AsyncSession) 
 
 # ========================== Endpoints ============================
 
-@router.get("", response_model=List[ThemeResponse])
+@router.get(
+    "",
+    response_model=List[ThemeResponse],
+    summary="List campaign themes",
+    description="List all themes — global (brand_id is null) + brand-specific if brand_id provided.",
+    response_description="Global themes plus brand-specific themes when `brand_id` is given.",
+    operation_id="list_themes",
+    responses=error_responses(401, 403, 422),
+)
 async def list_themes(
     brand_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
@@ -77,7 +86,16 @@ async def list_themes(
     return list(result.scalars().all())
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=ThemeResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ThemeResponse,
+    summary="Create a campaign theme",
+    description="Create a new campaign theme. brand_id is optional (global theme if null).",
+    response_description="The created theme.",
+    operation_id="create_theme",
+    responses=error_responses(401, 403, 422),
+)
 async def create_theme(
     payload: ThemeCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -101,7 +119,15 @@ async def create_theme(
     return theme
 
 
-@router.get("/{theme_id}", response_model=ThemeResponse)
+@router.get(
+    "/{theme_id}",
+    response_model=ThemeResponse,
+    summary="Get a campaign theme",
+    description="Retrieve a specific theme by ID.",
+    response_description="The requested theme.",
+    operation_id="get_theme",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def get_theme(
     theme_id: int,
     current_user: User = Depends(get_current_user),
@@ -119,7 +145,15 @@ async def get_theme(
     return theme
 
 
-@router.patch("/{theme_id}", response_model=ThemeResponse)
+@router.patch(
+    "/{theme_id}",
+    response_model=ThemeResponse,
+    summary="Update a campaign theme",
+    description="Update theme. Requires editor role or above on the brand.",
+    response_description="The updated theme.",
+    operation_id="update_theme",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def update_theme(
     theme_id: int,
     payload: ThemeUpdateRequest,
@@ -148,7 +182,15 @@ async def update_theme(
     return theme
 
 
-@router.delete("/{theme_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{theme_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a campaign theme",
+    description="Delete theme. Requires owner or admin role.",
+    response_description="Theme deleted; no content returned.",
+    operation_id="delete_theme",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def delete_theme(
     theme_id: int,
     current_user: User = Depends(get_current_user),
@@ -187,7 +229,16 @@ class ThemePackageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("/{theme_id}/packages", status_code=status.HTTP_201_CREATED, response_model=ThemePackageResponse)
+@router.post(
+    "/{theme_id}/packages",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ThemePackageResponse,
+    summary="Create a theme package",
+    description="Create a ThemePackage mapping a theme to character, workflow, prompt, and location.",
+    response_description="The created theme package.",
+    operation_id="create_theme_package",
+    responses=error_responses(401, 404, 422),
+)
 async def create_theme_package(
     theme_id: int,
     payload: ThemePackageCreateRequest,
@@ -232,7 +283,15 @@ async def create_theme_package(
     return package
 
 
-@router.get("/{theme_id}/packages", response_model=List[ThemePackageResponse])
+@router.get(
+    "/{theme_id}/packages",
+    response_model=List[ThemePackageResponse],
+    summary="List theme packages",
+    description="List all packages bundled with a specific theme.",
+    response_description="Packages bundled with the theme.",
+    operation_id="list_theme_packages",
+    responses=error_responses(401, 404, 422),
+)
 async def list_theme_packages(
     theme_id: int,
     current_user: User = Depends(get_current_user),

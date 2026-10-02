@@ -9,6 +9,7 @@ from app.models.db import get_db, CreditTransaction, User
 from datetime import timedelta
 from app.middleware.auth import get_current_user
 from app.worker import send_low_credit_warning_email
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/credits",
@@ -96,7 +97,14 @@ async def log_credit_transaction(
 
 # ========================== Endpoints ============================
 
-@router.get("/balance")
+@router.get(
+    "/balance",
+    summary="Get credit balance",
+    description="Returns current credit balance and low credit warning flag.",
+    response_description="Current balance and low-credit warning flag.",
+    operation_id="get_user_credit_balance",
+    responses=error_responses(401),
+)
 async def get_credit_balance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -112,10 +120,18 @@ async def get_credit_balance(
     }
 
 
-@router.get("/history", response_model=List[CreditTransactionResponse])
+@router.get(
+    "/history",
+    response_model=List[CreditTransactionResponse],
+    summary="List credit transactions",
+    description="Paginated list of the user's credit transactions.",
+    response_description="A page of the caller's credit transactions.",
+    operation_id="get_credit_history",
+    responses=error_responses(401, 422),
+)
 async def get_credit_history(
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -130,7 +146,15 @@ async def get_credit_history(
     return list(result.scalars().all())
 
 
-@router.post("/mock-purchase", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/mock-purchase",
+    status_code=status.HTTP_201_CREATED,
+    summary="Simulate a credit purchase",
+    description="Simulate a credit package purchase (Stripe mock).",
+    response_description="The resulting credit transaction and new balance.",
+    operation_id="mock_credit_purchase",
+    responses=error_responses(400, 401, 422),
+)
 async def mock_purchase(
     payload: MockPurchaseRequest,
     current_user: User = Depends(get_current_user),
@@ -173,7 +197,15 @@ async def mock_purchase(
     }
 
 
-@router.post("/admin-adjust", status_code=status.HTTP_200_OK)
+@router.post(
+    "/admin-adjust",
+    status_code=status.HTTP_200_OK,
+    summary="Adjust a user's credits (admin)",
+    description="Admin-only: Grant or deduct credits from a user.",
+    response_description="The adjustment transaction and new balance.",
+    operation_id="admin_adjust_credits",
+    responses=error_responses(401, 403, 404, 422),
+)
 async def admin_adjust(
     payload: AdminAdjustRequest,
     current_user: User = Depends(get_current_user),

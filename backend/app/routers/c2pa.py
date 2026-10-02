@@ -8,6 +8,7 @@ from app.models.db import get_db, User, Asset, QAEvaluation
 from app.middleware.auth import get_current_user
 from app.services.c2pa_service import c2pa_service
 from app.config import settings
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["C2PA Provenance"])
 
@@ -27,7 +28,15 @@ class C2PAGenerateRequest(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.post("/c2pa/generate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/c2pa/generate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Generate a C2PA manifest",
+    description="Generate and store C2PA manifest for an asset.",
+    response_description="The generated and stored C2PA manifest.",
+    operation_id="generate_c2pa_manifest",
+    responses=error_responses(401, 404, 422),
+)
 async def generate_c2pa_manifest(
     payload: C2PAGenerateRequest,
     current_user: User = Depends(get_current_user),
@@ -83,7 +92,14 @@ async def generate_c2pa_manifest(
     }
 
 
-@router.get("/assets/{asset_id}/c2pa")
+@router.get(
+    "/assets/{asset_id}/c2pa",
+    summary="Get an asset's C2PA manifest",
+    description="Get C2PA manifest for an asset.",
+    response_description="The asset's C2PA manifest.",
+    operation_id="get_asset_c2pa",
+    responses=error_responses(401, 404, 422),
+)
 async def get_asset_c2pa(
     asset_id: int,
     current_user: User = Depends(get_current_user),
@@ -109,7 +125,14 @@ async def get_asset_c2pa(
     }
 
 
-@router.post("/c2pa/verify")
+@router.post(
+    "/c2pa/verify",
+    summary="Verify a C2PA manifest",
+    description="Verify a C2PA manifest cryptographic signature.",
+    response_description="Signature verification result.",
+    operation_id="verify_c2pa_manifest",
+    responses=error_responses(401, 422),
+)
 async def verify_c2pa_manifest(
     manifest: Dict[str, Any],
     current_user: User = Depends(get_current_user),

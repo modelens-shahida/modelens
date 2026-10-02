@@ -7,6 +7,7 @@ from sqlalchemy import select, or_
 from app.models.db import get_db, User, AuditLog
 from app.middleware.auth import get_current_user
 from app.services.audit_service import audit_service, AuditEventType
+from app.api_docs import error_responses, limit_query, page_query
 
 router = APIRouter(prefix="/api/v1/audit", tags=["Audit Logs"])
 
@@ -28,14 +29,21 @@ class AuditLogResponse(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("/logs")
+@router.get(
+    "/logs",
+    summary="List audit logs",
+    description="List audit logs with filters.",
+    response_description="A page of audit log entries matching the filters.",
+    operation_id="list_audit_logs",
+    responses=error_responses(401, 422),
+)
 async def list_audit_logs(
     brand_id: Optional[int] = Query(None),
     event_type: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     user_email: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
+    page: int = page_query(),
+    limit: int = limit_query(50, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -80,7 +88,14 @@ async def list_audit_logs(
     }
 
 
-@router.get("/logs/{log_id}")
+@router.get(
+    "/logs/{log_id}",
+    summary="Get an audit log entry",
+    description="Get single audit log entry.",
+    response_description="The requested audit log entry.",
+    operation_id="get_audit_log",
+    responses=error_responses(401, 404, 422),
+)
 async def get_audit_log(
     log_id: int,
     current_user: User = Depends(get_current_user),
@@ -106,7 +121,14 @@ async def get_audit_log(
     }
 
 
-@router.get("/event-types")
+@router.get(
+    "/event-types",
+    summary="List audit event types",
+    description="List all available audit event types.",
+    response_description="All audit event types that can be used as filters.",
+    operation_id="list_event_types",
+    responses=error_responses(401),
+)
 async def list_event_types(
     current_user: User = Depends(get_current_user),
 ):

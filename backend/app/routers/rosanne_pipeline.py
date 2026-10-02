@@ -10,6 +10,7 @@ from app.models.db import get_db, User, CatalogJob
 from app.middleware.auth import get_current_user
 from app.services.credits_sync_service import credits_sync_service
 from app.services.pipeline_hardening import pipeline_hardening, JobStatus
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/rosanne", tags=["Rosanne Pipeline"])
 
@@ -123,7 +124,14 @@ def build_scene_prompt(payload: RosanneScenePrompt) -> str:
 
 # ========================== Endpoints ============================
 
-@router.get("/config")
+@router.get(
+    "/config",
+    summary="Get Rosanne configuration",
+    description="Get Rosanne workflow configuration and preset parameters.",
+    response_description="Rosanne workflow configuration and preset parameters.",
+    operation_id="get_rosanne_config",
+    responses=error_responses(401),
+)
 async def get_rosanne_config(
     current_user: User = Depends(get_current_user),
 ):
@@ -138,7 +146,14 @@ async def get_rosanne_config(
     }
 
 
-@router.get("/pose-presets")
+@router.get(
+    "/pose-presets",
+    summary="List Rosanne pose presets",
+    description="Get available pose presets for Rosanne pipeline.",
+    response_description="Pose presets for the Rosanne pipeline.",
+    operation_id="list_rosanne_pose_presets",
+    responses=error_responses(401),
+)
 async def get_pose_presets(
     current_user: User = Depends(get_current_user),
 ):
@@ -149,7 +164,14 @@ async def get_pose_presets(
     }
 
 
-@router.post("/scene-prompt/build")
+@router.post(
+    "/scene-prompt/build",
+    summary="Build a Rosanne scene prompt",
+    description="Build a structured scene prompt for Rosanne workflow.",
+    response_description="The structured scene prompt.",
+    operation_id="build_rosanne_scene_prompt",
+    responses=error_responses(401, 422),
+)
 async def build_rosanne_scene_prompt(
     payload: RosanneScenePrompt,
     current_user: User = Depends(get_current_user),
@@ -163,7 +185,14 @@ async def build_rosanne_scene_prompt(
     }
 
 
-@router.post("/estimate")
+@router.post(
+    "/estimate",
+    summary="Estimate Rosanne credits",
+    description="Estimate credits for Rosanne generation.",
+    response_description="Estimated credit cost for the generation.",
+    operation_id="estimate_rosanne_credits",
+    responses=error_responses(401, 422),
+)
 async def estimate_rosanne_credits(
     quality_mode: str = "quality",
     num_images: int = 1,
@@ -181,7 +210,14 @@ async def estimate_rosanne_credits(
     }
 
 
-@router.post("/check")
+@router.post(
+    "/check",
+    summary="Check Rosanne credits",
+    description="Pre-flight credit check for Rosanne generation.",
+    response_description="Whether the brand has enough credits, with balance and shortfall.",
+    operation_id="check_rosanne_credits",
+    responses=error_responses(401, 404, 422),
+)
 async def check_rosanne_credits(
     quality_mode: str = "quality",
     num_images: int = 1,
@@ -204,7 +240,15 @@ async def check_rosanne_credits(
     }
 
 
-@router.post("/generate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a Rosanne generation job",
+    description="Submit a Rosanne pipeline generation job.",
+    response_description="The created Rosanne job with reserved credits.",
+    operation_id="create_rosanne_job",
+    responses=error_responses(401, 402, 404, 422),
+)
 async def rosanne_generate(
     payload: RosanneGenerationRequest,
     background_tasks: BackgroundTasks,
@@ -331,7 +375,14 @@ async def rosanne_generate(
     }
 
 
-@router.get("/jobs/{job_id}")
+@router.get(
+    "/jobs/{job_id}",
+    summary="Get a Rosanne job",
+    description="Get Rosanne job status.",
+    response_description="Rosanne job status.",
+    operation_id="get_rosanne_job",
+    responses=error_responses(401, 404, 422),
+)
 async def get_rosanne_job(
     job_id: str,
     current_user: User = Depends(get_current_user),

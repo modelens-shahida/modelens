@@ -8,6 +8,7 @@ from httpx import AsyncClient, ConnectError, TimeoutException
 from app.middleware.auth import get_current_user
 from app.models.db import User
 from app.config import settings
+from app.api_docs import error_responses
 
 
 
@@ -138,11 +139,66 @@ async def _proxy_request(
 
 # ========================== Templates Proxy =======================
 
-@router.get("/api/v1/templates/{path:path}")
-@router.post("/api/v1/templates/{path:path}")
-@router.patch("/api/v1/templates/{path:path}")
-@router.put("/api/v1/templates/{path:path}")
-@router.delete("/api/v1/templates/{path:path}")
+@router.get(
+    "/api/v1/templates/{path:path}",
+    summary="Proxy GET templates request",
+    description=(
+        "Proxy all template requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_templates_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/templates/{path:path}",
+    summary="Proxy POST templates request",
+    description=(
+        "Proxy all template requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_templates_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/templates/{path:path}",
+    summary="Proxy PATCH templates request",
+    description=(
+        "Proxy all template requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_templates_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/templates/{path:path}",
+    summary="Proxy PUT templates request",
+    description=(
+        "Proxy all template requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_templates_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/templates/{path:path}",
+    summary="Proxy DELETE templates request",
+    description=(
+        "Proxy all template requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_templates_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
 async def proxy_templates(
     path: str,
     request: Request,
@@ -154,11 +210,66 @@ async def proxy_templates(
 
 # ========================== Generations Proxy ====================
 
-@router.get("/api/v1/generations/{path:path}")
-@router.post("/api/v1/generations/{path:path}")
-@router.patch("/api/v1/generations/{path:path}")
-@router.put("/api/v1/generations/{path:path}")
-@router.delete("/api/v1/generations/{path:path}")
+@router.get(
+    "/api/v1/generations/{path:path}",
+    summary="Proxy GET generations request",
+    description=(
+        "Proxy all generation requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_generations_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/generations/{path:path}",
+    summary="Proxy POST generations request",
+    description=(
+        "Proxy all generation requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_generations_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/generations/{path:path}",
+    summary="Proxy PATCH generations request",
+    description=(
+        "Proxy all generation requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_generations_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/generations/{path:path}",
+    summary="Proxy PUT generations request",
+    description=(
+        "Proxy all generation requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_generations_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/generations/{path:path}",
+    summary="Proxy DELETE generations request",
+    description=(
+        "Proxy all generation requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_generations_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
 async def proxy_generations(
     path: str,
     request: Request,
@@ -170,16 +281,126 @@ async def proxy_generations(
 
 # ========================== Angle-Shots Proxy =====================
 
-@router.get("/api/v1/angle-shots")
-@router.get("/api/v1/angle-shots/{path:path}")
-@router.post("/api/v1/angle-shots")
-@router.post("/api/v1/angle-shots/{path:path}")
-@router.patch("/api/v1/angle-shots")
-@router.patch("/api/v1/angle-shots/{path:path}")
-@router.put("/api/v1/angle-shots")
-@router.put("/api/v1/angle-shots/{path:path}")
-@router.delete("/api/v1/angle-shots")
-@router.delete("/api/v1/angle-shots/{path:path}")
+@router.get(
+    "/api/v1/angle-shots",
+    summary="Proxy GET angle-shots request (collection)",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_collection_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.get(
+    "/api/v1/angle-shots/{path:path}",
+    summary="Proxy GET angle-shots request",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/angle-shots",
+    summary="Proxy POST angle-shots request (collection)",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_collection_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/angle-shots/{path:path}",
+    summary="Proxy POST angle-shots request",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/angle-shots",
+    summary="Proxy PATCH angle-shots request (collection)",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_collection_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/angle-shots/{path:path}",
+    summary="Proxy PATCH angle-shots request",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/angle-shots",
+    summary="Proxy PUT angle-shots request (collection)",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_collection_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/angle-shots/{path:path}",
+    summary="Proxy PUT angle-shots request",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/angle-shots",
+    summary="Proxy DELETE angle-shots request (collection)",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_collection_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/angle-shots/{path:path}",
+    summary="Proxy DELETE angle-shots request",
+    description=(
+        "Proxy all angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_angle_shots_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
 async def proxy_angle_shots(
     request: Request,
     path: str = "",
@@ -190,16 +411,126 @@ async def proxy_angle_shots(
     return await _proxy_request(request, target_path, current_user)
 
 
-@router.get("/api/v1/admin/angle-shots")
-@router.get("/api/v1/admin/angle-shots/{path:path}")
-@router.post("/api/v1/admin/angle-shots")
-@router.post("/api/v1/admin/angle-shots/{path:path}")
-@router.patch("/api/v1/admin/angle-shots")
-@router.patch("/api/v1/admin/angle-shots/{path:path}")
-@router.put("/api/v1/admin/angle-shots")
-@router.put("/api/v1/admin/angle-shots/{path:path}")
-@router.delete("/api/v1/admin/angle-shots")
-@router.delete("/api/v1/admin/angle-shots/{path:path}")
+@router.get(
+    "/api/v1/admin/angle-shots",
+    summary="Proxy GET admin-angle-shots request (collection)",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_collection_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.get(
+    "/api/v1/admin/angle-shots/{path:path}",
+    summary="Proxy GET admin-angle-shots request",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/admin/angle-shots",
+    summary="Proxy POST admin-angle-shots request (collection)",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_collection_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/admin/angle-shots/{path:path}",
+    summary="Proxy POST admin-angle-shots request",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/admin/angle-shots",
+    summary="Proxy PATCH admin-angle-shots request (collection)",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_collection_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/admin/angle-shots/{path:path}",
+    summary="Proxy PATCH admin-angle-shots request",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/admin/angle-shots",
+    summary="Proxy PUT admin-angle-shots request (collection)",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_collection_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/admin/angle-shots/{path:path}",
+    summary="Proxy PUT admin-angle-shots request",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/admin/angle-shots",
+    summary="Proxy DELETE admin-angle-shots request (collection)",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_collection_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/admin/angle-shots/{path:path}",
+    summary="Proxy DELETE admin-angle-shots request",
+    description=(
+        "Proxy all admin angle-shots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_admin_angle_shots_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
 async def proxy_admin_angle_shots(
     request: Request,
     path: str = "",
@@ -212,11 +543,66 @@ async def proxy_admin_angle_shots(
 
 # ========================== Shoots Proxy =========================
 
-@router.get("/api/v1/shoots/{path:path}")
-@router.post("/api/v1/shoots/{path:path}")
-@router.patch("/api/v1/shoots/{path:path}")
-@router.put("/api/v1/shoots/{path:path}")
-@router.delete("/api/v1/shoots/{path:path}")
+@router.get(
+    "/api/v1/shoots/{path:path}",
+    summary="Proxy GET shoots request",
+    description=(
+        "Proxy all shoots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_shoots_get",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.post(
+    "/api/v1/shoots/{path:path}",
+    summary="Proxy POST shoots request",
+    description=(
+        "Proxy all shoots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_shoots_post",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.patch(
+    "/api/v1/shoots/{path:path}",
+    summary="Proxy PATCH shoots request",
+    description=(
+        "Proxy all shoots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_shoots_patch",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.put(
+    "/api/v1/shoots/{path:path}",
+    summary="Proxy PUT shoots request",
+    description=(
+        "Proxy all shoots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_shoots_put",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
+@router.delete(
+    "/api/v1/shoots/{path:path}",
+    summary="Proxy DELETE shoots request",
+    description=(
+        "Proxy all shoots requests to NestJS templates service.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded unchanged from the templates service.",
+    operation_id="proxy_shoots_delete",
+    responses=error_responses(401, 422, 500, 502, 504),
+)
 async def proxy_shoots(
     path: str,
     request: Request,
@@ -225,7 +611,18 @@ async def proxy_shoots(
     """Proxy all shoots requests to NestJS templates service."""
     return await _proxy_request(request, f"v1/shoots/{path}", current_user)
 
-@router.post("/api/v1/template-generations")
+@router.post(
+    "/api/v1/template-generations",
+    summary="Create a template generation",
+    description=(
+        "Intercept template generation POST to validate and reserve credits.\n"
+        "\n"
+        "Upstream status codes and bodies are passed through unchanged."
+    ),
+    response_description="Response forwarded from the templates service after credits were reserved.",
+    operation_id="create_template_generation",
+    responses=error_responses(400, 401, 402, 404, 500, 502, 504),
+)
 async def proxy_template_generations_with_credit_check(
     request: Request,
     current_user=Depends(get_current_user),

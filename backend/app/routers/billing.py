@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.models.db import get_db, User, CreditTransaction
 from app.middleware.auth import get_current_user
 from app.config import settings
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/billing",
@@ -51,7 +52,14 @@ def get_stripe_price_id(package: str, frequency: str) -> str:
         raise ValueError(f"Invalid package/frequency: {package}/{frequency}")
     return getattr(settings, setting_name)
 
-@router.post("/checkout-session")
+@router.post(
+    "/checkout-session",
+    summary="Create a Stripe checkout session",
+    description="Create a Stripe Checkout Session for credit package purchase.",
+    response_description="Stripe Checkout Session URL and ID.",
+    operation_id="create_checkout_session",
+    responses=error_responses(400, 401, 422, 502),
+)
 async def create_checkout_session(
     payload: CheckoutRequest,
     current_user: User = Depends(get_current_user),
@@ -102,7 +110,14 @@ async def create_checkout_session(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Stripe error: {str(e)}")
 
 
-@router.post("/portal-session")
+@router.post(
+    "/portal-session",
+    summary="Create a Stripe billing portal session",
+    description="Generate a Stripe Billing Customer Portal link.",
+    response_description="Stripe Billing Portal URL.",
+    operation_id="create_portal_session",
+    responses=error_responses(401, 502),
+)
 async def create_portal_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

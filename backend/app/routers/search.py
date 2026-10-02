@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.models.db import get_db, Brand, BrandMember, User
 from app.middleware.auth import get_current_user
 from app.services.search import full_text_search, vector_search, hybrid_search
+from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
     prefix="/api/v1/search",
@@ -49,13 +50,29 @@ async def verify_brand_access(user_id: int, brand_id: int, db: AsyncSession) -> 
 
 # ========================== Endpoint =====================================
 
-@router.get("", response_model=List[AssetSearchResult], dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))])
+@router.get(
+    "",
+    response_model=List[AssetSearchResult],
+    dependencies=[Depends(RateLimiter(requests_limit=30, window_seconds=60))],
+    summary="Search assets",
+    description=(
+        "Unified search endpoint.\n"
+        "- fts: PostgreSQL Full-Text Search\n"
+        "- vector: pgvector semantic similarity\n"
+        "- hybrid: RRF combination of both (default)\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="A page of assets matching the query.",
+    operation_id="search_assets",
+    responses=error_responses(401, 422, 429),
+)
 async def search_assets(
     brand_id: int = Query(..., description="Brand workspace ID"),
     q: str = Query(..., min_length=1, description="Search query"),
     type: str = Query("hybrid", description="Search type: fts | vector | hybrid"),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -82,7 +99,17 @@ async def search_assets(
     return results
 
 
-@router.get("/faceted")
+@router.get(
+    "/faceted",
+    summary="Faceted asset search",
+    description=(
+        "Enhanced faceted search with multi-filter support, brand isolation,\n"
+        "weighted relevance ranking, and custom sorting."
+    ),
+    response_description="Matching assets with facet counts.",
+    operation_id="faceted_search_assets",
+    responses=error_responses(401, 422),
+)
 async def faceted_search(
     q: Optional[str] = Query(None, description="Text search query"),
     brand_id: Optional[int] = Query(None, description="Filter by brand ID"),
@@ -93,8 +120,8 @@ async def faceted_search(
     created_before: Optional[str] = Query(None, description="ISO date filter end"),
     sort_by: str = Query("created_at", pattern="^(created_at|name|relevance)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

@@ -18,6 +18,7 @@ from app.services.pipeline_hardening import (
     calculate_backoff,
     is_retryable_error,
 )
+from app.api_docs import error_responses, limit_query
 
 router = APIRouter(prefix="/api/v1", tags=["Pipeline Hardening"])
 
@@ -53,7 +54,14 @@ async def get_job_by_id(job_id: str, db: AsyncSession):
 
 # ========================== Endpoints ============================
 
-@router.post("/generate/{job_id}/cancel")
+@router.post(
+    "/generate/{job_id}/cancel",
+    summary="Cancel a generation job",
+    description="Cancel a generation job with immediate credit refund.",
+    response_description="The cancelled job; reserved credits are refunded.",
+    operation_id="cancel_generation_job",
+    responses=error_responses(400, 401, 403, 404, 422),
+)
 async def cancel_generation_job(
     job_id: str,
     payload: CancelJobRequest,
@@ -88,7 +96,14 @@ async def cancel_generation_job(
     return result
 
 
-@router.get("/generate/{job_id}/status")
+@router.get(
+    "/generate/{job_id}/status",
+    summary="Get job lifecycle status",
+    description="Get detailed job lifecycle status with transition history.",
+    response_description="Detailed lifecycle status with transition history.",
+    operation_id="get_job_lifecycle_status",
+    responses=error_responses(401, 404, 422),
+)
 async def get_job_lifecycle_status(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -118,7 +133,14 @@ async def get_job_lifecycle_status(
     }
 
 
-@router.post("/generate/{job_id}/dlq")
+@router.post(
+    "/generate/{job_id}/dlq",
+    summary="Move a job to the dead-letter queue",
+    description="Route an unrecoverable job to Dead Letter Queue.",
+    response_description="The job routed to the DLQ.",
+    operation_id="route_job_to_dlq",
+    responses=error_responses(401, 404, 422),
+)
 async def route_job_to_dlq(
     job_id: str,
     payload: DLQRouteRequest,
@@ -140,7 +162,14 @@ async def route_job_to_dlq(
     return result
 
 
-@router.get("/pipeline/config")
+@router.get(
+    "/pipeline/config",
+    summary="Get pipeline configuration",
+    description="Get pipeline configuration - timeouts, retry settings.",
+    response_description="Pipeline timeouts and retry settings.",
+    operation_id="get_pipeline_config",
+    responses=error_responses(401),
+)
 async def get_pipeline_config(
     current_user: User = Depends(get_current_user),
 ):
@@ -161,9 +190,16 @@ async def get_pipeline_config(
     }
 
 
-@router.get("/pipeline/dlq")
+@router.get(
+    "/pipeline/dlq",
+    summary="List dead-letter queue jobs",
+    description="Get jobs in Dead Letter Queue.",
+    response_description="Jobs currently in the dead-letter queue.",
+    operation_id="list_dlq_jobs",
+    responses=error_responses(401, 422),
+)
 async def get_dlq_jobs(
-    limit: int = 20,
+    limit: int = limit_query(20, le=None, ge=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -191,7 +227,14 @@ async def get_dlq_jobs(
     }
 
 
-@router.post("/pipeline/timeout-config")
+@router.post(
+    "/pipeline/timeout-config",
+    summary="Get timeout for a provider/resolution",
+    description="Get timeout configuration for a provider/resolution.",
+    response_description="Timeout configuration for the provider and resolution.",
+    operation_id="get_job_timeout_config",
+    responses=error_responses(401, 422),
+)
 async def get_timeout_for_job(
     provider: str,
     resolution: str = "standard",

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.models.db import get_db, EditorialAsset, Asset, User
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/assets",
@@ -36,7 +37,15 @@ class EditorialAssetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.get("/{asset_id}/editorial", response_model=EditorialAssetResponse)
+@router.get(
+    "/{asset_id}/editorial",
+    response_model=EditorialAssetResponse,
+    summary="Get editorial metadata",
+    description="Get editorial metadata for an asset.",
+    response_description="Editorial metadata for the asset.",
+    operation_id="get_editorial_metadata",
+    responses=error_responses(401, 404, 422),
+)
 async def get_editorial_metadata(
     asset_id: int,
     current_user: User = Depends(get_current_user),
@@ -54,7 +63,15 @@ async def get_editorial_metadata(
     return editorial
 
 
-@router.patch("/{asset_id}/editorial", response_model=EditorialAssetResponse)
+@router.patch(
+    "/{asset_id}/editorial",
+    response_model=EditorialAssetResponse,
+    summary="Create or update editorial metadata",
+    description="Create or update editorial metadata for an asset.",
+    response_description="The saved editorial metadata.",
+    operation_id="upsert_editorial_metadata",
+    responses=error_responses(401, 404, 422),
+)
 async def upsert_editorial_metadata(
     asset_id: int,
     payload: EditorialAssetUpsert,

@@ -13,6 +13,7 @@ from app.models.db import (
     CharacterVersionQA, CharacterRuntimeV2,
 )
 from app.middleware.auth import get_current_user
+from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/characters-v2", tags=["Character Registry V2"])
 
@@ -135,7 +136,14 @@ class VersionQAUpdate(BaseModel):
 
 # ========================== Endpoints ============================
 
-@router.get("")
+@router.get(
+    "",
+    summary="List characters (v2)",
+    description="List all characters — Character Library API.",
+    response_description="Characters in the Character Library.",
+    operation_id="list_characters_v2",
+    responses=error_responses(401, 422),
+)
 async def list_characters(
     workspace_id: Optional[str] = None,
     status_filter: Optional[str] = None,
@@ -187,7 +195,15 @@ async def list_characters(
     return {"characters": char_list, "total": len(char_list)}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character (v2)",
+    description="Create a new character.",
+    response_description="The created character.",
+    operation_id="create_character_v2",
+    responses=error_responses(401, 409, 422),
+)
 async def create_character(
     payload: CharacterCreate,
     current_user: User = Depends(get_current_user),
@@ -206,7 +222,14 @@ async def create_character(
     return {"character_id": character.character_id, "status": "DEVELOPMENT"}
 
 
-@router.get("/{character_id}")
+@router.get(
+    "/{character_id}",
+    summary="Get a character (v2)",
+    description="Get full character profile.",
+    response_description="Full character profile.",
+    operation_id="get_character_v2",
+    responses=error_responses(401, 404, 422),
+)
 async def get_character(
     character_id: str,
     current_user: User = Depends(get_current_user),
@@ -297,7 +320,14 @@ async def get_character(
     }
 
 
-@router.get("/{character_id}/versions")
+@router.get(
+    "/{character_id}/versions",
+    summary="List character versions",
+    description="Get all versions of a character.",
+    response_description="All versions of the character.",
+    operation_id="get_character_versions",
+    responses=error_responses(401, 422),
+)
 async def get_character_versions(
     character_id: str,
     current_user: User = Depends(get_current_user),
@@ -322,7 +352,15 @@ async def get_character_versions(
     ]}
 
 
-@router.post("/{character_id}/versions", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/versions",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character version",
+    description="Create a new character version.",
+    response_description="The created character version.",
+    operation_id="create_character_version",
+    responses=error_responses(401, 422),
+)
 async def create_character_version(
     character_id: str,
     payload: CharacterVersionCreate,
@@ -336,7 +374,15 @@ async def create_character_version(
     return {"character_id": character_id, "version": payload.version, "status": "DEVELOPMENT"}
 
 
-@router.post("/{character_id}/identity-dna", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/identity-dna",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create character identity DNA",
+    description="Create Identity DNA.",
+    response_description="The created identity DNA record.",
+    operation_id="create_identity_dna",
+    responses=error_responses(401, 422),
+)
 async def create_identity_dna(
     character_id: str,
     payload: IdentityDNACreate,
@@ -350,7 +396,15 @@ async def create_identity_dna(
     return {"character_id": character_id, "version": payload.version, "status": "created"}
 
 
-@router.post("/{character_id}/body-dna", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/body-dna",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create character body DNA",
+    description="Create Body DNA.",
+    response_description="The created body DNA record.",
+    operation_id="create_body_dna",
+    responses=error_responses(401, 422),
+)
 async def create_body_dna(
     character_id: str,
     payload: BodyDNACreate,
@@ -364,7 +418,15 @@ async def create_body_dna(
     return {"character_id": character_id, "version": payload.version, "status": "created"}
 
 
-@router.post("/{character_id}/appearance", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/appearance",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a character appearance profile",
+    description="Create Appearance Profile.",
+    response_description="The created appearance profile.",
+    operation_id="create_appearance",
+    responses=error_responses(401, 422),
+)
 async def create_appearance(
     character_id: str,
     payload: AppearanceCreate,
@@ -378,7 +440,15 @@ async def create_appearance(
     return {"character_id": character_id, "version": payload.version, "status": "created"}
 
 
-@router.post("/{character_id}/canonical-assets", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{character_id}/canonical-assets",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a canonical asset",
+    description="Register a canonical asset.",
+    response_description="The registered canonical asset.",
+    operation_id="add_canonical_asset",
+    responses=error_responses(401, 422),
+)
 async def add_canonical_asset(
     character_id: str,
     payload: CanonicalAssetCreate,
@@ -392,7 +462,14 @@ async def add_canonical_asset(
     return {"asset_id": asset.asset_id, "asset_role": asset.asset_role, "status": "CANDIDATE"}
 
 
-@router.get("/{character_id}/canonical-assets")
+@router.get(
+    "/{character_id}/canonical-assets",
+    summary="List canonical assets",
+    description="Get canonical assets.",
+    response_description="Canonical assets for the character.",
+    operation_id="get_canonical_assets",
+    responses=error_responses(401, 422),
+)
 async def get_canonical_assets(
     character_id: str,
     version: Optional[str] = None,
@@ -426,7 +503,14 @@ async def get_canonical_assets(
     ]}
 
 
-@router.patch("/{character_id}/canonical-assets/{asset_id}/qa")
+@router.patch(
+    "/{character_id}/canonical-assets/{asset_id}/qa",
+    summary="Update canonical asset QA",
+    description="Update QA status for a canonical asset.",
+    response_description="The canonical asset with its updated QA status.",
+    operation_id="update_asset_qa",
+    responses=error_responses(401, 404, 422),
+)
 async def update_asset_qa(
     character_id: str,
     asset_id: str,
@@ -452,7 +536,14 @@ async def update_asset_qa(
     return {"asset_id": asset_id, "status": "updated"}
 
 
-@router.get("/{character_id}/qa")
+@router.get(
+    "/{character_id}/qa",
+    summary="Get character QA gates",
+    description="Get QA gates for a character version.",
+    response_description="QA gate status for the character version.",
+    operation_id="get_character_qa",
+    responses=error_responses(401, 404, 422),
+)
 async def get_character_qa(
     character_id: str,
     version: Optional[str] = None,
@@ -478,7 +569,14 @@ async def get_character_qa(
     return {"character_id": character_id, "version": v, "qa": qa.__dict__ if qa else None}
 
 
-@router.patch("/{character_id}/qa")
+@router.patch(
+    "/{character_id}/qa",
+    summary="Update character QA gates",
+    description="Update QA gates for a character version.",
+    response_description="The updated QA gates.",
+    operation_id="update_version_qa",
+    responses=error_responses(401, 422),
+)
 async def update_version_qa(
     character_id: str,
     version: str,
@@ -507,7 +605,14 @@ async def update_version_qa(
     return {"character_id": character_id, "version": version, "status": "updated"}
 
 
-@router.get("/{character_id}/runtime-profile")
+@router.get(
+    "/{character_id}/runtime-profile",
+    summary="Get character runtime profile",
+    description="Get Character Runtime Profile for Studios.",
+    response_description="Runtime profile consumed by the studios.",
+    operation_id="get_runtime_profile",
+    responses=error_responses(401, 404, 422),
+)
 async def get_runtime_profile(
     character_id: str,
     current_user: User = Depends(get_current_user),
@@ -538,7 +643,14 @@ async def get_runtime_profile(
     }
 
 
-@router.post("/{character_id}/lock")
+@router.post(
+    "/{character_id}/lock",
+    summary="Lock a character version",
+    description="Lock a character version.",
+    response_description="The locked character version.",
+    operation_id="lock_character_version",
+    responses=error_responses(401, 404, 409, 422),
+)
 async def lock_character_version(
     character_id: str,
     version: str,
@@ -575,7 +687,14 @@ async def lock_character_version(
     return {"character_id": character_id, "version": version, "status": "LOCKED"}
 
 
-@router.post("/{character_id}/promote")
+@router.post(
+    "/{character_id}/promote",
+    summary="Promote a character to production",
+    description="Promote locked character to PRODUCTION.",
+    response_description="The character promoted to PRODUCTION.",
+    operation_id="promote_to_production",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def promote_to_production(
     character_id: str,
     version: str,
@@ -613,7 +732,14 @@ async def promote_to_production(
     return {"character_id": character_id, "version": version, "status": "PRODUCTION"}
 
 
-@router.patch("/{character_id}/status")
+@router.patch(
+    "/{character_id}/status",
+    summary="Update character status (v2)",
+    description="Update character lifecycle status.",
+    response_description="The character with its updated lifecycle status.",
+    operation_id="update_character_status_v2",
+    responses=error_responses(400, 401, 404, 422),
+)
 async def update_character_status(
     character_id: str,
     new_status: str,

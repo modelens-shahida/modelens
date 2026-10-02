@@ -19,6 +19,7 @@ from app.middleware.auth import (
     get_current_user,
 )
 from app.middleware.rate_limit import RateLimiter
+from app.api_docs import error_responses
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -71,7 +72,23 @@ class APIKeyRequest(BaseModel):
 
 # --- Endpoints ---
 
-@router.post("/register", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RateLimiter(requests_limit=5, window_seconds=60))])
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RateLimiter(requests_limit=5, window_seconds=60))],
+    summary="Register a user",
+    description=(
+        "Register a new user.\n"
+        "Hashes password with bcrypt (cost=12), inserts User row, returns JWT.\n"
+        "\n"
+        "No authentication required.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="The created user and a JWT access token.",
+    operation_id="register",
+    responses=error_responses(400, 422, 429),
+)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """
     Register a new user.
@@ -119,7 +136,22 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     }
 
 
-@router.post("/login", dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))])
+@router.post(
+    "/login",
+    dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))],
+    summary="Log in with email and password",
+    description=(
+        "Authenticate user with email + password.\n"
+        "Returns access_token (60 min) + refresh_token (30 days).\n"
+        "\n"
+        "No authentication required.\n"
+        "\n"
+        "Rate limited; see the 429 response for the rate-limit headers."
+    ),
+    response_description="Access token (60 min) and refresh token (30 days).",
+    operation_id="login",
+    responses=error_responses(401, 422, 429),
+)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
     Authenticate user with email + password.
@@ -174,7 +206,19 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/sso-login")
+@router.post(
+    "/sso-login",
+    summary="Log in with SSO",
+    description=(
+        "SSO login/registration. Verifies the provider credential server-side, then\n"
+        "finds or creates the user for the provider-verified email and returns a JWT session.\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="A JWT session for the provider-verified user.",
+    operation_id="sso_login",
+    responses=error_responses(401, 422),
+)
 async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)):
     """
     SSO login/registration. Verifies the provider credential server-side, then
@@ -241,7 +285,18 @@ async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)
     }
 
 
-@router.post("/refresh")
+@router.post(
+    "/refresh",
+    summary="Refresh an access token",
+    description=(
+        "Validate refresh token, issue a new access token (60 min).\n"
+        "\n"
+        "No authentication required."
+    ),
+    response_description="A new access token.",
+    operation_id="refresh_access_token",
+    responses=error_responses(401, 422),
+)
 async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
     """Validate refresh token, issue a new access token (60 min)."""
     try:
@@ -293,7 +348,18 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/api-keys", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api-keys",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an API key (legacy auth path)",
+    description=(
+        "Generate a new API key for client/pipeline integration.\n"
+        "Stores only the SHA-256 hash in DB. Returns plaintext once."
+    ),
+    response_description="The new API key. The plaintext key is shown only in this response.",
+    operation_id="auth_create_api_key",
+    responses=error_responses(401, 422),
+)
 async def create_api_key(
     payload: APIKeyRequest,
     current_user: User = Depends(get_current_user),
@@ -321,7 +387,14 @@ async def create_api_key(
     }
 
 
-@router.get("/me")
+@router.get(
+    "/me",
+    summary="Get the current user",
+    description="Retrieve profile information of the authenticated user.",
+    response_description="Profile of the authenticated user.",
+    operation_id="get_current_user_profile",
+    responses=error_responses(401),
+)
 async def get_me(current_user: User = Depends(get_current_user)):
     """Retrieve profile information of the authenticated user."""
     return {
@@ -339,7 +412,14 @@ class ProfileUpdateRequest(BaseModel):
     password: Optional[str] = None
 
 
-@router.patch("/me")
+@router.patch(
+    "/me",
+    summary="Update the current user",
+    description="Update user profile information.",
+    response_description="The updated user profile.",
+    operation_id="update_current_user_profile",
+    responses=error_responses(400, 401, 422),
+)
 async def update_me(
     payload: ProfileUpdateRequest,
     current_user: User = Depends(get_current_user),
