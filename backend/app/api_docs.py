@@ -201,12 +201,11 @@ verify them.
 """
 
 API_CONTACT = {
-    # Placeholder values — to be confirmed.
-    "name": "ModeLens API Support",
-    "email": "support@example.com",
+    "name": "Modelens Support",
+    "email": "support@modelens.ai",
 }
 
-API_LICENSE = {"name": "Proprietary"}
+API_LICENSE = {"name": "Proprietary / Modelens Enterprise"}
 
 WEBHOOK_SIGNATURE_DOCS = """
 Every delivery is a `POST` with a JSON body and these headers:
