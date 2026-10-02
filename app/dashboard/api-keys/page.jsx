@@ -248,6 +248,93 @@ export default function ApiKeysPage() {
         </div>
 
       </div>
+
+      {/* Developer Quickstart & API Reference Section */}
+      <div className="bg-zinc-900/20 border border-zinc-900 rounded-2xl p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+              <Code size={16} className="text-purple-400" />
+              Developer Quickstart & OpenAPI Reference
+            </h3>
+            <p className="text-xs text-zinc-400">
+              Integrate ModeLens AI workflows into your external pipelines using standard REST APIs with <code className="text-purple-300 font-mono">X-API-Key</code> authentication.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href="/api/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:border-purple-500/50 text-purple-300 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              OpenAPI Swagger UI
+            </a>
+            <a
+              href="/openapi.json"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 text-zinc-400 transition-all cursor-pointer"
+            >
+              Raw Schema
+            </a>
+          </div>
+        </div>
+
+        {/* Code Snippets Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-2.5">
+            <span className="text-[11px] font-bold text-zinc-300 flex items-center justify-between">
+              <span>cURL</span>
+              <span className="text-[10px] text-zinc-500 font-mono">POST /api/v1/generation/dispatch</span>
+            </span>
+            <pre className="text-[11px] font-mono text-zinc-400 bg-zinc-900/50 p-3 rounded-lg overflow-x-auto border border-zinc-850/50">
+{`curl -X POST "https://api.modelens.ai/api/v1/generation/dispatch" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "quality_tier": "high_fidelity",
+    "prompt": "Editorial haute couture look",
+    "arcface_identity_lock": 0.85
+  }'`}
+            </pre>
+          </div>
+
+          <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-2.5">
+            <span className="text-[11px] font-bold text-zinc-300 flex items-center justify-between">
+              <span>JavaScript / Node</span>
+              <span className="text-[10px] text-zinc-500 font-mono">fetch()</span>
+            </span>
+            <pre className="text-[11px] font-mono text-zinc-400 bg-zinc-900/50 p-3 rounded-lg overflow-x-auto border border-zinc-850/50">
+{`const res = await fetch("https://api.modelens.ai/api/v1/assets", {
+  headers: {
+    "X-API-Key": process.env.MODELENS_API_KEY,
+    "Content-Type": "application/json"
+  }
+});
+const assets = await res.json();`}
+            </pre>
+          </div>
+
+          <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-2.5">
+            <span className="text-[11px] font-bold text-zinc-300 flex items-center justify-between">
+              <span>Python</span>
+              <span className="text-[10px] text-zinc-500 font-mono">requests / httpx</span>
+            </span>
+            <pre className="text-[11px] font-mono text-zinc-400 bg-zinc-900/50 p-3 rounded-lg overflow-x-auto border border-zinc-850/50">
+{`import requests
+
+headers = {"X-API-Key": "YOUR_API_KEY"}
+res = requests.get(
+    "https://api.modelens.ai/api/v1/characters",
+    headers=headers,
+    params={"limit": 20, "offset": 0}
+)
+characters = res.json()`}
+            </pre>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
