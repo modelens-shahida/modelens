@@ -79,7 +79,7 @@ export default function CharactersPage() {
         // Fallback to local locked model
       }
 
-      const data = await api.get(`/api/v1/characters?brand_id=${selectedBrandId}`);
+      const data = await api.get(`/api/v1/brand-characters?brand_id=${selectedBrandId}`);
       if (data && data.length > 0) {
         // Merge API characters with flagship Eliska template
         setCharacters([eliskaCharacter, ...data]);
@@ -112,10 +112,9 @@ export default function CharactersPage() {
         name: charName,
         description: charDescription,
         brand_id: parseInt(selectedBrandId),
-        version: "0.1",
-        status: "DEVELOPMENT",
+        image_path: "/placeholder-character.png",
       };
-      const created = await api.post("/api/v1/characters", payload);
+      const created = await api.post("/api/v1/brand-characters", payload);
       toast.success("Character record created successfully!");
       setIsModalOpen(false);
       setCharName("");

@@ -348,14 +348,14 @@ export default function CampaignsPage() {
 
   const fetchCharacters = async (brandId) => {
     try {
-      const data = await api.get(`/api/v1/characters?brand_id=${brandId}`);
+      const data = await api.get(`/api/v1/brand-characters?brand_id=${brandId}`);
       setCharacters(data || []);
     } catch {}
   };
 
   const fetchCharacterVersions = async (characterId) => {
     try {
-      const data = await api.get(`/api/v1/characters/${characterId}/versions`);
+      const data = await api.get(`/api/v1/brand-characters/${characterId}/versions`);
       setCharacterVersions(data || []);
       if (data?.length > 0) setSelectedVersionId(data[0].id);
     } catch {}

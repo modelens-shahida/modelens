@@ -169,7 +169,7 @@ function JobsPageContent() {
         }
 
         // Fetch Characters
-        const charData = await api.get(`/api/v1/characters?brand_id=${selectedBrandId}`);
+        const charData = await api.get(`/api/v1/brand-characters?brand_id=${selectedBrandId}`);
         setCharacters(charData);
         if (charData.length > 0) {
           setSelectedCharacterId(charData[0].id.toString());
@@ -266,7 +266,7 @@ function JobsPageContent() {
         return;
       }
       try {
-        const versions = await api.get(`/api/v1/characters/${selectedCharacterId}/versions`);
+        const versions = await api.get(`/api/v1/brand-characters/${selectedCharacterId}/versions`);
         setCharacterVersions(versions);
         if (versions.length > 0) {
           // Default to latest version
