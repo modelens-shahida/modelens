@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, ShoppingBag, User, Camera, Image as ImageIcon, ChevronRight, X, Check, Sliders, Layers, Compass, Zap } from "lucide-react";
+import { Sparkles, ShoppingBag, User, Camera, Image as ImageIcon, ChevronRight, X, Check, Sliders, Layers, Compass, Zap, Scissors, Palette, Smile } from "lucide-react";
 import { MOCK_ELISKA_CHARACTER } from "@/lib/characterSchema";
 
 const SAMPLE_PRODUCTS = [
@@ -33,17 +33,48 @@ const SAMPLE_DIRECTIONS = [
   { id: "dir_4", name: "Soft Daylight Natural", desc: "Organic sunbeams, natural skin textures and airy mood" },
 ];
 
+const SAMPLE_HAIRSTYLES = [
+  { id: "canonical", name: "Canonical Straight", desc: "Sleek natural center-part editorial straight" },
+  { id: "sleek_bun", name: "Sleek Low Bun", desc: "Clean polished quiet luxury low chignon" },
+  { id: "soft_waves", name: "Soft Waves", desc: "Voluminous editorial haute couture waves" },
+  { id: "low_chignon", name: "Classic Chignon", desc: "Sophisticated red-carpet chignon" },
+  { id: "ponytail", name: "High Ponytail", desc: "Sharp runway high-fashion ponytail" },
+  { id: "wet_look", name: "Wet Slick Back", desc: "Avant-garde editorial wet sheen" },
+  { id: "hair_down", name: "Loose Hair Flow", desc: "Relaxed natural movement and texture" },
+];
+
+const SAMPLE_MAKEUP = [
+  { id: "natural", name: "Natural Minimal", desc: "Clean bare-skin finish with subtle hydration" },
+  { id: "quiet_luxury", name: "Quiet Luxury", desc: "Subtle radiant warmth and velvet contour" },
+  { id: "bronzed", name: "Bronzed Haute", desc: "Sun-kissed golden dimension and glow" },
+  { id: "soft_glam", name: "Soft Glamour", desc: "Velveteen eye shading and satin lip" },
+  { id: "editorial", name: "Runway Editorial", desc: "High-contrast architectural eye focus" },
+  { id: "runway", name: "Avant-Garde", desc: "Statement runway beauty and structure" },
+];
+
+const SAMPLE_EXPRESSIONS = [
+  { id: "neutral_editorial", name: "Neutral Editorial", desc: "High-fashion poised and confident" },
+  { id: "soft_confidence", name: "Soft Confidence", desc: "Direct assertive gaze with calm poise" },
+  { id: "soft_smile", name: "Soft Smile", desc: "Warm subtle micro-expression" },
+  { id: "serious", name: "Serious Focus", desc: "Intense runway presence" },
+  { id: "mysterious", name: "Mysterious Depth", desc: "Intriguing chiaroscuro emotion" },
+];
+
 export default function ProductionComposer({ onGenerate, isSubmitting = false }) {
   // Step selections
   const [selectedProduct, setSelectedProduct] = useState(SAMPLE_PRODUCTS[0]);
   const [selectedCharacter, setSelectedCharacter] = useState(SAMPLE_CHARACTERS[0]);
+  const [selectedHair, setSelectedHair] = useState(SAMPLE_HAIRSTYLES[0]);
+  const [selectedMakeup, setSelectedMakeup] = useState(SAMPLE_MAKEUP[1]);
+  const [selectedExpression, setSelectedExpression] = useState(SAMPLE_EXPRESSIONS[0]);
+  const [styleSubTab, setStyleSubTab] = useState("hair"); // "hair" | "makeup" | "expression"
   const [selectedAngles, setSelectedAngles] = useState(["Front", "L30", "R30", "L45"]);
   const [selectedBackground, setSelectedBackground] = useState(SAMPLE_BACKGROUNDS[0]);
   const [selectedDirection, setSelectedDirection] = useState(SAMPLE_DIRECTIONS[0]);
   const [qualityMode, setQualityMode] = useState("studio_quality"); // "fast_draft" | "studio_quality"
   const [parallelExecution, setParallelExecution] = useState(true);
 
-  // Active drawer toggle: "product" | "character" | "angle" | "background" | "direction"
+  // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
 
   const toggleAngle = (angle) => {
@@ -61,6 +92,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
       onGenerate({
         product: selectedProduct,
         character: selectedCharacter,
+        appearance: {
+          hair: selectedHair,
+          makeup: selectedMakeup,
+          expression: selectedExpression,
+        },
         angles: selectedAngles,
         background: selectedBackground,
         direction: selectedDirection,
@@ -125,7 +161,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           </button>
         </div>
 
-        {/* Step 2: CHARACTER */}
+        {/* Step 2: MODEL (CHARACTER) */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between backdrop-blur-md hover:border-zinc-700/80 transition-all">
           <div className="flex items-center gap-4">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-bold text-xs flex items-center justify-center font-mono">
@@ -133,7 +169,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
             </div>
             <div>
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
-                CHARACTER
+                MODEL
               </span>
               <h3 className="text-base font-extrabold text-white mt-0.5 flex items-center gap-2">
                 <span>[ {selectedCharacter.display_name} ]</span>
@@ -142,25 +178,66 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                 </span>
               </h3>
               <span className="text-[11px] text-indigo-400 font-mono">
-                {selectedCharacter.code || "EE-F-002"} • High-Fashion Runway Slim
+                {selectedCharacter.code || "EE-F-002"} • High-Fashion Editorial Model
               </span>
             </div>
           </div>
           <button
             onClick={() => setActiveDrawer("character")}
-            className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-xs font-bold text-zinc-200 hover:text-indigo-400 px-4 py-2.5 rounded-xl transition-all shadow-sm"
+            className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-xs font-bold text-zinc-200 hover:text-indigo-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             <User className="w-4 h-4 text-indigo-400" />
             <span>Change &gt;</span>
           </button>
         </div>
 
-        {/* Step 3: POSE / ANGLE */}
+        {/* Step 3: STYLE MODEL (Hair, Makeup, Expression) */}
+        <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 backdrop-blur-md hover:border-zinc-700/80 transition-all">
+          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400 font-bold text-xs flex items-center justify-center font-mono">
+                3
+              </div>
+              <div>
+                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
+                  STYLE MODEL
+                </span>
+                <span className="text-xs text-zinc-400">Hair, Makeup & Expression Configuration</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveDrawer("style")}
+              className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-fuchsia-500/50 hover:bg-fuchsia-500/10 text-xs font-bold text-zinc-200 hover:text-fuchsia-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <Palette className="w-4 h-4 text-fuchsia-400" />
+              <span>Customize Styling &gt;</span>
+            </button>
+          </div>
+
+          {/* Active Styling Chips */}
+          <div className="flex flex-wrap items-center gap-3 pl-12">
+            <div className="px-3.5 py-1.5 bg-zinc-950 border border-fuchsia-500/30 text-fuchsia-300 text-xs font-medium rounded-xl flex items-center gap-2">
+              <Scissors className="w-3.5 h-3.5 text-fuchsia-400" />
+              <span>Hair: <strong className="text-white font-bold">{selectedHair.name}</strong></span>
+            </div>
+            <div className="px-3.5 py-1.5 bg-zinc-950 border border-fuchsia-500/30 text-fuchsia-300 text-xs font-medium rounded-xl flex items-center gap-2">
+              <Palette className="w-3.5 h-3.5 text-fuchsia-400" />
+              <span>Makeup: <strong className="text-white font-bold">{selectedMakeup.name}</strong></span>
+            </div>
+            <div className="px-3.5 py-1.5 bg-zinc-950 border border-fuchsia-500/30 text-fuchsia-300 text-xs font-medium rounded-xl flex items-center gap-2">
+              <Smile className="w-3.5 h-3.5 text-fuchsia-400" />
+              <span>Expression: <strong className="text-white font-bold">{selectedExpression.name}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 4: POSE / ANGLE */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 backdrop-blur-md hover:border-zinc-700/80 transition-all">
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-4">
             <div className="flex items-center gap-4">
               <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 font-bold text-xs flex items-center justify-center font-mono">
-                3
+                4
               </div>
               <div>
                 <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
@@ -172,7 +249,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
             <button
               onClick={() => setActiveDrawer("angle")}
-              className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-xs font-bold text-zinc-200 hover:text-purple-400 px-4 py-2.5 rounded-xl transition-all shadow-sm"
+              className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-xs font-bold text-zinc-200 hover:text-purple-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
             >
               <Camera className="w-4 h-4 text-purple-400" />
               <span>Add Angle &gt;</span>
@@ -198,11 +275,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           </div>
         </div>
 
-        {/* Step 4: BACKGROUND */}
+        {/* Step 5: BACKGROUND */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between backdrop-blur-md hover:border-zinc-700/80 transition-all">
           <div className="flex items-center gap-4">
             <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
-              4
+              5
             </div>
             <div>
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
@@ -216,18 +293,18 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           </div>
           <button
             onClick={() => setActiveDrawer("background")}
-            className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-xs font-bold text-zinc-200 hover:text-emerald-400 px-4 py-2.5 rounded-xl transition-all shadow-sm"
+            className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-xs font-bold text-zinc-200 hover:text-emerald-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             <ImageIcon className="w-4 h-4 text-emerald-400" />
             <span>Change &gt;</span>
           </button>
         </div>
 
-        {/* Step 5: CREATIVE DIRECTION */}
+        {/* Step 6: CREATIVE DIRECTION */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between backdrop-blur-md hover:border-zinc-700/80 transition-all">
           <div className="flex items-center gap-4">
             <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold text-xs flex items-center justify-center font-mono">
-              5
+              6
             </div>
             <div>
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
@@ -241,7 +318,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           </div>
           <button
             onClick={() => setActiveDrawer("direction")}
-            className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 text-xs font-bold text-zinc-200 hover:text-amber-400 px-4 py-2.5 rounded-xl transition-all shadow-sm"
+            className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 text-xs font-bold text-zinc-200 hover:text-amber-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             <Compass className="w-4 h-4 text-amber-400" />
             <span>Optional &gt;</span>
@@ -439,9 +516,163 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
             <button
               onClick={() => setActiveDrawer(null)}
-              className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs py-3 rounded-xl transition-all"
+              className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs py-3 rounded-xl transition-all cursor-pointer"
             >
               Close Drawer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Style Model Drawer (Hair, Makeup, Expression) */}
+      {activeDrawer === "style" && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-end">
+          <div className="w-full max-w-lg bg-zinc-900 border-l border-zinc-800 h-full p-6 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20">
+                    <Palette className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Style Model — {selectedCharacter.display_name}</h3>
+                    <p className="text-[11px] text-zinc-400">Photoshoot appearance & styling production layer</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveDrawer(null)}
+                  className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Subtabs: Hair | Makeup | Expression */}
+              <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                <button
+                  onClick={() => setStyleSubTab("hair")}
+                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    styleSubTab === "hair"
+                      ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>Hair</span>
+                </button>
+                <button
+                  onClick={() => setStyleSubTab("makeup")}
+                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    styleSubTab === "makeup"
+                      ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>Makeup</span>
+                </button>
+                <button
+                  onClick={() => setStyleSubTab("expression")}
+                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    styleSubTab === "expression"
+                      ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Smile className="w-3.5 h-3.5" />
+                  <span>Expression</span>
+                </button>
+              </div>
+
+              {/* Tab Contents */}
+              <div className="space-y-3 overflow-y-auto max-h-[60vh] pr-1">
+                {styleSubTab === "hair" && (
+                  <div className="space-y-2.5">
+                    {SAMPLE_HAIRSTYLES.map((h) => {
+                      const isSelected = selectedHair.id === h.id;
+                      return (
+                        <div
+                          key={h.id}
+                          onClick={() => setSelectedHair(h)}
+                          className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                            isSelected
+                              ? "bg-fuchsia-500/15 border-fuchsia-500/60 text-white shadow-md"
+                              : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                          }`}
+                        >
+                          <div>
+                            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                              <span>{h.name}</span>
+                              {h.id === "canonical" && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">Default</span>
+                              )}
+                            </h4>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{h.desc}</p>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {styleSubTab === "makeup" && (
+                  <div className="space-y-2.5">
+                    {SAMPLE_MAKEUP.map((m) => {
+                      const isSelected = selectedMakeup.id === m.id;
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() => setSelectedMakeup(m)}
+                          className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                            isSelected
+                              ? "bg-fuchsia-500/15 border-fuchsia-500/60 text-white shadow-md"
+                              : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                          }`}
+                        >
+                          <div>
+                            <h4 className="text-xs font-bold text-white">{m.name}</h4>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{m.desc}</p>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {styleSubTab === "expression" && (
+                  <div className="space-y-2.5">
+                    {SAMPLE_EXPRESSIONS.map((exp) => {
+                      const isSelected = selectedExpression.id === exp.id;
+                      return (
+                        <div
+                          key={exp.id}
+                          onClick={() => setSelectedExpression(exp)}
+                          className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                            isSelected
+                              ? "bg-fuchsia-500/15 border-fuchsia-500/60 text-white shadow-md"
+                              : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                          }`}
+                        >
+                          <div>
+                            <h4 className="text-xs font-bold text-white">{exp.name}</h4>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{exp.desc}</p>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveDrawer(null)}
+              className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-bold text-xs py-3 rounded-xl transition-all shadow-md cursor-pointer"
+            >
+              Done Styling
             </button>
           </div>
         </div>
