@@ -1392,6 +1392,10 @@ class Dataset(Base):
     manifest = Column(JSONB, nullable=True)
     rights_snapshot = Column(JSONB, nullable=True)
     meta = Column(JSONB, nullable=True)
+    # Training Registry: which version of the dataset this is, and which
+    # Character Version (character_registry_versions) it was built for.
+    dataset_version = Column(String(20), nullable=True)
+    character_version = Column(String(10), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -1448,6 +1452,24 @@ class ExperimentRun(Base):
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
+    # Training Registry. A run with a character_version is a TrainingRun;
+    # ``hyperparameters`` holds its trainer configuration. Artifacts are
+    # stored as references (paths and hashes), never as files.
+    character_version = Column(String(10), nullable=True)
+    dataset_version = Column(String(20), nullable=True)
+    export_id = Column(String(50), nullable=True)
+    trainer = Column(String(50), nullable=True)
+    trainer_version = Column(String(30), nullable=True)
+    seed = Column(BigInteger, nullable=True)
+    image_manifest = Column(JSONB, nullable=True)
+    caption_manifest = Column(JSONB, nullable=True)
+    bucket_configuration = Column(JSONB, nullable=True)
+    training_metrics = Column(JSONB, nullable=True)
+    evaluation_result = Column(JSONB, nullable=True)
+    artifact_hash = Column(String(64), nullable=True)
+    created_by = Column(String(100), nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
 
 class ExperimentMetric(Base):
     __tablename__ = "experiment_metrics"
@@ -1486,6 +1508,90 @@ class ModelArtifact(Base):
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Training Registry: a row with a ``layer`` is an Adapter. Its ``kind``
+    # says what it resolves to: a trained model (storage_path/checksum or a
+    # checkpoint), or a WORKFLOW / REFERENCE_SET / CONFIGURATION in ``reference``.
+    layer = Column(String(20), nullable=True)
+    kind = Column(String(20), nullable=True)
+    character_version = Column(String(10), nullable=True)
+    checkpoint_id = Column(String(50), nullable=True)
+    reference = Column(JSONB, nullable=True)
+    created_by = Column(String(100), nullable=True)
+
+
+# ========================== Training Registry ====================
+# Extends the P3 registry: TrainingDataset = Dataset, TrainingRun =
+# ExperimentRun, Adapter = ModelArtifact. The tables below have no P3
+# equivalent. None of them ever write to character_registry_versions.
+
+class TrainingExport(Base):
+    """A frozen, trainer-ready snapshot of one dataset version."""
+    __tablename__ = "training_exports"
+
+    id = Column(Integer, primary_key=True)
+    export_id = Column(String(50), unique=True, nullable=False)
+    dataset_id = Column(String(50), nullable=False, index=True)
+    dataset_version = Column(String(20), nullable=True)
+    export_format = Column(String(30), nullable=False)
+    storage_path = Column(String(500), nullable=False)
+    image_manifest = Column(JSONB, nullable=True)
+    caption_manifest = Column(JSONB, nullable=True)
+    bucket_configuration = Column(JSONB, nullable=True)
+    item_count = Column(Integer, default=0)
+    artifact_hash = Column(String(64), nullable=False)
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class TrainingCheckpoint(Base):
+    __tablename__ = "training_checkpoints"
+
+    id = Column(Integer, primary_key=True)
+    checkpoint_id = Column(String(50), unique=True, nullable=False)
+    run_id = Column(String(50), nullable=False, index=True)
+    step = Column(Integer, nullable=True)
+    epoch = Column(Integer, nullable=True)
+    storage_path = Column(String(500), nullable=False)
+    checksum_sha256 = Column(String(64), nullable=False)
+    file_size_bytes = Column(BigInteger, nullable=True)
+    metrics = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class EvaluationRun(Base):
+    __tablename__ = "evaluation_runs"
+
+    id = Column(Integer, primary_key=True)
+    evaluation_id = Column(String(50), unique=True, nullable=False)
+    run_id = Column(String(50), nullable=False, index=True)
+    checkpoint_id = Column(String(50), nullable=True)
+    evaluator = Column(String(100), nullable=False)
+    evaluator_version = Column(String(30), nullable=True)
+    qa_profile_id = Column(String(100), nullable=True)
+    score = Column(Float, nullable=True)
+    decision = Column(String(10), nullable=False)
+    metrics = Column(JSONB, nullable=True)
+    report_path = Column(String(500), nullable=True)
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class RuntimePromotion(Base):
+    """Who promoted which run's adapter/checkpoint to runtime, and when."""
+    __tablename__ = "runtime_promotions"
+
+    id = Column(Integer, primary_key=True)
+    promotion_id = Column(String(50), unique=True, nullable=False)
+    run_id = Column(String(50), nullable=False, index=True)
+    adapter_id = Column(String(50), nullable=False)
+    checkpoint_id = Column(String(50), nullable=True)
+    character_id = Column(String(50), nullable=False)
+    character_version = Column(String(10), nullable=False)
+    production_alias = Column(String(100), nullable=True)
+    promoted_by = Column(String(100), nullable=False)
+    promoted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    notes = Column(Text, nullable=True)
 
 
 # ========================== P3 Rights Registry ===================
