@@ -267,6 +267,7 @@ TAGS_METADATA = [
     {"name": "Quality Tiers", "description": "Quality tier catalogue, legacy mode normalization and dispatch configuration."},
     {"name": "QA Scoring", "description": "Automated QA evaluations, human review, defect heatmaps and brand thresholds."},
     {"name": "Characters", "description": "Character reference sets, viewpoint coverage and LoRA training jobs."},
+    {"name": "Brand Characters", "description": "Per-brand character templates, their training versions, embeddings and MLflow metrics."},
     {"name": "Character Registry", "description": "Character identity, body, skin, hair and runtime profiles (v1)."},
     {"name": "Character Registry V2", "description": "Character Library: versions (LOCKED versions are immutable), identity/body DNA, canonical assets, QA gates and promotion."},
     {"name": "Preservation & Credit Ledger", "description": "Garment, brand and identity preservation constraints, plus the immutable credit ledger."},

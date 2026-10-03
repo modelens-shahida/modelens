@@ -44,6 +44,7 @@ from app.routers.brands import router as brands_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.jobs import router as jobs_router
 from app.routers.characters import router as characters_router
+from app.routers.brand_characters import router as brand_characters_router
 from app.routers.video_projects import router as video_projects_router
 from app.routers.fluid import router as fluid_router
 from app.routers.sketch_studio import router as sketch_studio_router
@@ -233,6 +234,7 @@ app.include_router(campaign_generation_router)
 app.include_router(campaigns_router)
 app.include_router(jobs_router)
 app.include_router(characters_router)
+app.include_router(brand_characters_router)
 app.include_router(video_projects_router)
 app.include_router(fluid_router)
 app.include_router(sketch_studio_router)

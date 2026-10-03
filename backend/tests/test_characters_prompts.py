@@ -9,11 +9,11 @@ from app.models.db import Character, PromptTemplate
 @pytest.mark.asyncio
 async def test_characters_endpoints_auth_required(client: AsyncClient):
     # GET characters without auth should fail
-    res = await client.get("/api/v1/characters")
+    res = await client.get("/api/v1/brand-characters")
     assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
     # POST characters without auth should fail
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": 1,
         "name": "Luxury Editorial",
         "description": "Premium luxury portrait theme",
@@ -29,7 +29,7 @@ async def test_characters_crud_access_control(client: AsyncClient, db_session: A
 
     # 1. Create a character for our brand (should succeed)
     res = await client.post(
-        "/api/v1/characters",
+        "/api/v1/brand-characters",
         json={
             "brand_id": brand.id,
             "name": "Mediterranean Escape Model",
@@ -52,7 +52,7 @@ async def test_characters_crud_access_control(client: AsyncClient, db_session: A
 
     # 2. Try to create a character for an unauthorized brand ID (e.g. 9999) (should fail with 403)
     res = await client.post(
-        "/api/v1/characters",
+        "/api/v1/brand-characters",
         json={
             "brand_id": 9999,
             "name": "Unauthorized Model",
@@ -64,14 +64,14 @@ async def test_characters_crud_access_control(client: AsyncClient, db_session: A
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
     # 3. List characters for our brand
-    res = await client.get(f"/api/v1/characters?brand_id={brand.id}", headers=editor_headers)
+    res = await client.get(f"/api/v1/brand-characters?brand_id={brand.id}", headers=editor_headers)
     assert res.status_code == status.HTTP_200_OK
     list_data = res.json()
     assert len(list_data) == 1
     assert list_data[0]["name"] == "Mediterranean Escape Model"
 
     # 4. Try to list characters for an unauthorized brand (should fail with 403)
-    res = await client.get("/api/v1/characters?brand_id=9999", headers=editor_headers)
+    res = await client.get("/api/v1/brand-characters?brand_id=9999", headers=editor_headers)
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -121,18 +121,18 @@ async def test_get_character_by_id(client: AsyncClient, test_data: dict):
     editor_headers = test_data["get_headers"]("editor")
 
     res = await client.post(
-        "/api/v1/characters",
+        "/api/v1/brand-characters",
         json={"brand_id": brand.id, "name": "Test Character", "description": "Test desc", "image_path": "/uploads/test.png"},
         headers=editor_headers
     )
     assert res.status_code == status.HTTP_201_CREATED
     character_id = res.json()["id"]
 
-    res = await client.get(f"/api/v1/characters/{character_id}", headers=editor_headers)
+    res = await client.get(f"/api/v1/brand-characters/{character_id}", headers=editor_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["id"] == character_id
 
-    res = await client.get("/api/v1/characters/99999", headers=editor_headers)
+    res = await client.get("/api/v1/brand-characters/99999", headers=editor_headers)
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -143,21 +143,21 @@ async def test_update_character_access_control_extended(client: AsyncClient, tes
     viewer_headers = test_data["get_headers"]("viewer")
 
     res = await client.post(
-        "/api/v1/characters",
+        "/api/v1/brand-characters",
         json={"brand_id": brand.id, "name": "Original Name", "description": "Original desc", "image_path": "/uploads/orig.png"},
         headers=editor_headers
     )
     assert res.status_code == status.HTTP_201_CREATED
     character_id = res.json()["id"]
 
-    res = await client.patch(f"/api/v1/characters/{character_id}", json={"name": "Updated Name"}, headers=editor_headers)
+    res = await client.patch(f"/api/v1/brand-characters/{character_id}", json={"name": "Updated Name"}, headers=editor_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["name"] == "Updated Name"
 
-    res = await client.patch(f"/api/v1/characters/{character_id}", json={"name": "Hacked"}, headers=viewer_headers)
+    res = await client.patch(f"/api/v1/brand-characters/{character_id}", json={"name": "Hacked"}, headers=viewer_headers)
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
-    res = await client.patch("/api/v1/characters/99999", json={"name": "Ghost"}, headers=editor_headers)
+    res = await client.patch("/api/v1/brand-characters/99999", json={"name": "Ghost"}, headers=editor_headers)
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -168,20 +168,20 @@ async def test_delete_character_access_control_extended(client: AsyncClient, tes
     editor_headers = test_data["get_headers"]("editor")
 
     res = await client.post(
-        "/api/v1/characters",
+        "/api/v1/brand-characters",
         json={"brand_id": brand.id, "name": "To Delete", "description": "Delete me", "image_path": "/uploads/del.png"},
         headers=editor_headers
     )
     assert res.status_code == status.HTTP_201_CREATED
     character_id = res.json()["id"]
 
-    res = await client.delete(f"/api/v1/characters/{character_id}", headers=editor_headers)
+    res = await client.delete(f"/api/v1/brand-characters/{character_id}", headers=editor_headers)
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
-    res = await client.delete(f"/api/v1/characters/{character_id}", headers=owner_headers)
+    res = await client.delete(f"/api/v1/brand-characters/{character_id}", headers=owner_headers)
     assert res.status_code == status.HTTP_204_NO_CONTENT
 
-    res = await client.delete(f"/api/v1/characters/{character_id}", headers=owner_headers)
+    res = await client.delete(f"/api/v1/brand-characters/{character_id}", headers=owner_headers)
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
 

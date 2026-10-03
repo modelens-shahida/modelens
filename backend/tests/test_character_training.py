@@ -132,7 +132,7 @@ async def test_training_mlflow_failure_is_non_fatal(db_session: AsyncSession, te
 @pytest.mark.asyncio
 async def test_get_metrics_auth_required(client: AsyncClient, test_data: dict):
     """Metrics endpoint should require authentication."""
-    res = await client.get("/api/v1/characters/versions/1/metrics")
+    res = await client.get("/api/v1/brand-characters/versions/1/metrics")
     assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -162,7 +162,7 @@ async def test_get_metrics_viewer_forbidden(client: AsyncClient, db_session: Asy
     await db_session.commit()
     await db_session.refresh(version)
 
-    res = await client.get(f"/api/v1/characters/versions/{version.id}/metrics", headers=viewer_headers)
+    res = await client.get(f"/api/v1/brand-characters/versions/{version.id}/metrics", headers=viewer_headers)
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -192,7 +192,7 @@ async def test_get_metrics_no_mlflow_run(client: AsyncClient, db_session: AsyncS
     await db_session.commit()
     await db_session.refresh(version)
 
-    res = await client.get(f"/api/v1/characters/versions/{version.id}/metrics", headers=owner_headers)
+    res = await client.get(f"/api/v1/brand-characters/versions/{version.id}/metrics", headers=owner_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["mlflow_run_id"] is None
     assert "No MLflow run" in res.json()["message"]
@@ -237,7 +237,7 @@ async def test_get_metrics_owner_success(client: AsyncClient, db_session: AsyncS
     mock_mlflow.tracking.MlflowClient.return_value = mock_client
 
     with patch.dict("sys.modules", {"mlflow": mock_mlflow, "mlflow.tracking": mock_mlflow.tracking}):
-        res = await client.get(f"/api/v1/characters/versions/{version.id}/metrics", headers=owner_headers)
+        res = await client.get(f"/api/v1/brand-characters/versions/{version.id}/metrics", headers=owner_headers)
 
     assert res.status_code == status.HTTP_200_OK
     data = res.json()

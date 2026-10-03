@@ -15,14 +15,14 @@ async def test_characters_pagination_default(client: AsyncClient, test_data: dic
 
     # Create 3 characters
     for i in range(3):
-        await client.post("/api/v1/characters", json={
+        await client.post("/api/v1/brand-characters", json={
             "brand_id": brand.id,
             "name": f"Character {i}",
             "description": "Test",
             "image_path": f"/uploads/char{i}.png"
         }, headers=editor_headers)
 
-    res = await client.get(f"/api/v1/characters?brand_id={brand.id}", headers=editor_headers)
+    res = await client.get(f"/api/v1/brand-characters?brand_id={brand.id}", headers=editor_headers)
     assert res.status_code == status.HTTP_200_OK
     assert len(res.json()) <= 20
 
@@ -34,7 +34,7 @@ async def test_characters_pagination_limit(client: AsyncClient, test_data: dict)
     editor_headers = test_data["get_headers"]("editor")
 
     for i in range(5):
-        await client.post("/api/v1/characters", json={
+        await client.post("/api/v1/brand-characters", json={
             "brand_id": brand.id,
             "name": f"Paginated Char {i}",
             "description": "Test",
@@ -42,7 +42,7 @@ async def test_characters_pagination_limit(client: AsyncClient, test_data: dict)
         }, headers=editor_headers)
 
     res = await client.get(
-        f"/api/v1/characters?brand_id={brand.id}&limit=2&offset=0",
+        f"/api/v1/brand-characters?brand_id={brand.id}&limit=2&offset=0",
         headers=editor_headers
     )
     assert res.status_code == status.HTTP_200_OK
@@ -56,7 +56,7 @@ async def test_characters_pagination_offset(client: AsyncClient, test_data: dict
     editor_headers = test_data["get_headers"]("editor")
 
     res = await client.get(
-        f"/api/v1/characters?brand_id={brand.id}&limit=20&offset=1000",
+        f"/api/v1/brand-characters?brand_id={brand.id}&limit=20&offset=1000",
         headers=editor_headers
     )
     assert res.status_code == status.HTTP_200_OK
@@ -70,7 +70,7 @@ async def test_characters_pagination_max_limit(client: AsyncClient, test_data: d
     editor_headers = test_data["get_headers"]("editor")
 
     res = await client.get(
-        f"/api/v1/characters?brand_id={brand.id}&limit=200",
+        f"/api/v1/brand-characters?brand_id={brand.id}&limit=200",
         headers=editor_headers
     )
     assert res.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

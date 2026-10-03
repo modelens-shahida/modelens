@@ -11,12 +11,12 @@ async def test_create_character_version_success(client: AsyncClient, test_data: 
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "Version Test", "description": "Test", "image_path": "/uploads/v.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
-    res = await client.post(f"/api/v1/characters/{character_id}/versions", json={
+    res = await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={
         "prompt_trigger": "luxury_v1",
         "config_overrides": {"lighting": "soft-studio"}
     }, headers=editor_headers)
@@ -30,13 +30,13 @@ async def test_create_character_version_auto_increment(client: AsyncClient, test
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "Auto Inc", "description": "Test", "image_path": "/uploads/ai.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
-    r1 = await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "v1"}, headers=editor_headers)
-    r2 = await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "v2"}, headers=editor_headers)
+    r1 = await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "v1"}, headers=editor_headers)
+    r2 = await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "v2"}, headers=editor_headers)
     assert r1.json()["version_number"] == 1
     assert r2.json()["version_number"] == 2
 
@@ -47,19 +47,19 @@ async def test_create_character_version_viewer_forbidden(client: AsyncClient, te
     editor_headers = test_data["get_headers"]("editor")
     viewer_headers = test_data["get_headers"]("viewer")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "Viewer Test", "description": "Test", "image_path": "/uploads/vt.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
-    res = await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "fail"}, headers=viewer_headers)
+    res = await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "fail"}, headers=viewer_headers)
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.asyncio
 async def test_create_character_version_not_found(client: AsyncClient, test_data: dict):
     editor_headers = test_data["get_headers"]("editor")
-    res = await client.post("/api/v1/characters/99999/versions", json={"prompt_trigger": "ghost"}, headers=editor_headers)
+    res = await client.post("/api/v1/brand-characters/99999/versions", json={"prompt_trigger": "ghost"}, headers=editor_headers)
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -68,15 +68,15 @@ async def test_list_character_versions(client: AsyncClient, test_data: dict):
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "List Versions", "description": "Test", "image_path": "/uploads/lv.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
-    await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "v1"}, headers=editor_headers)
-    await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "v2"}, headers=editor_headers)
+    await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "v1"}, headers=editor_headers)
+    await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "v2"}, headers=editor_headers)
 
-    res = await client.get(f"/api/v1/characters/{character_id}/versions", headers=editor_headers)
+    res = await client.get(f"/api/v1/brand-characters/{character_id}/versions", headers=editor_headers)
     assert res.status_code == status.HTTP_200_OK
     assert len(res.json()) == 2
 
@@ -88,16 +88,16 @@ async def test_create_character_embedding_success(client: AsyncClient, test_data
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "Embed Char", "description": "Test", "image_path": "/uploads/ec.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
-    res = await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "embed_v1"}, headers=editor_headers)
+    res = await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "embed_v1"}, headers=editor_headers)
     version_id = res.json()["id"]
 
     res = await client.post(
-        f"/api/v1/characters/{character_id}/versions/{version_id}/embeddings",
+        f"/api/v1/brand-characters/{character_id}/versions/{version_id}/embeddings",
         json={"embedding": [0.1] * 1536, "tag": "luxury-editorial"},
         headers=editor_headers
     )
@@ -110,16 +110,16 @@ async def test_create_character_embedding_wrong_dimensions(client: AsyncClient, 
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "Wrong Dim", "description": "Test", "image_path": "/uploads/wd.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
-    res = await client.post(f"/api/v1/characters/{character_id}/versions", json={"prompt_trigger": "wd_v1"}, headers=editor_headers)
+    res = await client.post(f"/api/v1/brand-characters/{character_id}/versions", json={"prompt_trigger": "wd_v1"}, headers=editor_headers)
     version_id = res.json()["id"]
 
     res = await client.post(
-        f"/api/v1/characters/{character_id}/versions/{version_id}/embeddings",
+        f"/api/v1/brand-characters/{character_id}/versions/{version_id}/embeddings",
         json={"embedding": [0.1] * 512, "tag": "wrong"},
         headers=editor_headers
     )
@@ -131,13 +131,13 @@ async def test_create_character_embedding_version_not_found(client: AsyncClient,
     brand = test_data["brand"]
     editor_headers = test_data["get_headers"]("editor")
 
-    res = await client.post("/api/v1/characters", json={
+    res = await client.post("/api/v1/brand-characters", json={
         "brand_id": brand.id, "name": "No Version", "description": "Test", "image_path": "/uploads/nv.png"
     }, headers=editor_headers)
     character_id = res.json()["id"]
 
     res = await client.post(
-        f"/api/v1/characters/{character_id}/versions/99999/embeddings",
+        f"/api/v1/brand-characters/{character_id}/versions/99999/embeddings",
         json={"embedding": [0.1] * 1536, "tag": "ghost"},
         headers=editor_headers
     )

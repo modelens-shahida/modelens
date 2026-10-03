@@ -43,7 +43,7 @@ async def test_create_version_logs_to_mlflow(client: AsyncClient, db_session: As
 
     with patch.dict("sys.modules", {"mlflow": mock_mlflow}):
         res = await client.post(
-            f"/api/v1/characters/{char.id}/versions",
+            f"/api/v1/brand-characters/{char.id}/versions",
             json={
                 "version_number": 1,
                 "prompt_trigger": "test_char_v1",
@@ -75,7 +75,7 @@ async def test_create_version_stores_mlflow_run_id(client: AsyncClient, db_sessi
 
     with patch.dict("sys.modules", {"mlflow": mock_mlflow}):
         res = await client.post(
-            f"/api/v1/characters/{char.id}/versions",
+            f"/api/v1/brand-characters/{char.id}/versions",
             json={"version_number": 1, "prompt_trigger": "test_v1"},
             headers=editor_headers,
         )
@@ -104,7 +104,7 @@ async def test_create_version_mlflow_offline_fallback(client: AsyncClient, db_se
 
     with patch.dict("sys.modules", {"mlflow": mock_mlflow}):
         res = await client.post(
-            f"/api/v1/characters/{char.id}/versions",
+            f"/api/v1/brand-characters/{char.id}/versions",
             json={"version_number": 1, "prompt_trigger": "offline_test"},
             headers=editor_headers,
         )
@@ -142,7 +142,7 @@ async def test_create_version_logs_config_params(client: AsyncClient, db_session
 
     with patch.dict("sys.modules", {"mlflow": mock_mlflow}):
         res = await client.post(
-            f"/api/v1/characters/{char.id}/versions",
+            f"/api/v1/brand-characters/{char.id}/versions",
             json={"version_number": 1, "prompt_trigger": "test", "config_overrides": config},
             headers=editor_headers,
         )
@@ -156,7 +156,7 @@ async def test_create_version_logs_config_params(client: AsyncClient, db_session
 @pytest.mark.asyncio
 async def test_create_version_auth_required(client: AsyncClient, test_data: dict):
     """Creating character version should require authentication."""
-    res = await client.post("/api/v1/characters/1/versions", json={"version_number": 1})
+    res = await client.post("/api/v1/brand-characters/1/versions", json={"version_number": 1})
     assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -169,7 +169,7 @@ async def test_create_version_viewer_forbidden(client: AsyncClient, db_session: 
     char = await create_test_character(db_session, brand.id, test_data["users"]["owner"].id)
 
     res = await client.post(
-        f"/api/v1/characters/{char.id}/versions",
+        f"/api/v1/brand-characters/{char.id}/versions",
         json={"version_number": 1, "prompt_trigger": "test"},
         headers=viewer_headers,
     )

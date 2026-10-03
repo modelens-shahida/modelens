@@ -1,0 +1,504 @@
+"""
+Brand characters: per-brand character templates, their versions, embeddings
+and MLflow training metrics.
+
+Restored from before commit 188b626 (which removed them from
+``app.routers.characters``) under their own prefix, so that
+``/api/v1/characters`` stays with the Character Registry.
+"""
+from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from app.models.db import get_db, Character, Brand, BrandMember, User, CharacterVersion, CharacterEmbedding
+from app.middleware.auth import get_current_user
+from app.api_docs import error_responses, limit_query, offset_query
+
+router = APIRouter(
+    prefix="/api/v1/brand-characters",
+    tags=["Brand Characters"],
+)
+
+# ========================== Request / Response Schemas =====================
+
+class CharacterCreateRequest(BaseModel):
+    brand_id: int
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(...)
+    image_path: str = Field(..., min_length=1, max_length=1000)
+
+class CharacterResponse(BaseModel):
+    id: int
+    brand_id: int
+    name: str
+    description: str
+    image_path: str
+
+    model_config = {"from_attributes": True}
+
+# ========================== Helper Functions ===============================
+
+async def get_accessible_brand_ids(user_id: int, db: AsyncSession) -> set[int]:
+    owned_query = select(Brand.id).where(Brand.owner_id == user_id)
+    owned_result = await db.execute(owned_query)
+    accessible_brand_ids = set(owned_result.scalars().all())
+
+    member_query = select(BrandMember.brand_id).where(BrandMember.user_id == user_id)
+    member_result = await db.execute(member_query)
+    accessible_brand_ids.update(member_result.scalars().all())
+    
+    return accessible_brand_ids
+
+# ========================== Characters CRUD ================================
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CharacterResponse,
+    summary="Create a brand character",
+    description="Create a new character template under a brand the caller owns or is a member of.",
+    response_description="The created brand character.",
+    operation_id="create_brand_character",
+    responses=error_responses(401, 403, 422),
+)
+async def create_character(
+    payload: CharacterCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create a new character template under an accessible brand workspace.
+    """
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if payload.brand_id not in accessible_brands:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this brand workspace."
+        )
+
+    character = Character(
+        brand_id=payload.brand_id,
+        name=payload.name,
+        description=payload.description,
+        image_path=payload.image_path
+    )
+    db.add(character)
+    await db.commit()
+    await db.refresh(character)
+    return character
+
+@router.get(
+    "",
+    response_model=List[CharacterResponse],
+    summary="List brand characters",
+    description="List characters in every brand the caller can access, or only in `brand_id` if given.",
+    response_description="Brand characters visible to the caller.",
+    operation_id="list_brand_characters",
+    responses=error_responses(401, 403, 422),
+)
+async def list_characters(
+    brand_id: Optional[int] = None,
+    limit: int = limit_query(20, le=100),
+    offset: int = offset_query(),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all characters accessible to the caller.
+    If brand_id is provided, filters to that brand (if accessible).
+    """
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if not accessible_brands:
+        return []
+
+    query = select(Character)
+    if brand_id is not None:
+        if brand_id not in accessible_brands:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this brand workspace."
+            )
+        query = query.where(Character.brand_id == brand_id)
+    else:
+        query = query.where(Character.brand_id.in_(list(accessible_brands)))
+
+    result = await db.execute(query.limit(limit).offset(offset))
+    return list(result.scalars().all())
+
+
+# ========================== Extended CRUD ==================================
+
+class CharacterUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    image_path: Optional[str] = Field(None, min_length=1, max_length=1000)
+
+
+async def get_user_role_in_brand(user_id: int, brand_id: int, db: AsyncSession) -> str:
+    """Returns 'owner', 'member', or 'none'"""
+    owner_query = select(Brand).where(Brand.id == brand_id, Brand.owner_id == user_id)
+    owner_result = await db.execute(owner_query)
+    if owner_result.scalars().first():
+        return "owner"
+    member_query = select(BrandMember).where(
+        BrandMember.brand_id == brand_id,
+        BrandMember.user_id == user_id
+    )
+    member_result = await db.execute(member_query)
+    member = member_result.scalars().first()
+    if member:
+        return member.role
+    return "none"
+
+
+@router.get(
+    "/{character_id}",
+    response_model=CharacterResponse,
+    summary="Get a brand character",
+    description="Retrieve one brand character by its numeric ID.",
+    response_description="The brand character.",
+    operation_id="get_brand_character",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def get_character(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve a specific character by ID."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if character.brand_id not in accessible_brands:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this character.")
+    return character
+
+
+@router.patch(
+    "/{character_id}",
+    response_model=CharacterResponse,
+    summary="Update a brand character",
+    description="Update name, description or image path. Requires editor role or above in the brand.",
+    response_description="The updated brand character.",
+    operation_id="update_brand_character",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def update_character(
+    character_id: int,
+    payload: CharacterUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update character fields. Requires at least editor role."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role == "none":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand workspace.")
+    if role == "viewer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot update characters.")
+    if payload.name is not None:
+        character.name = payload.name
+    if payload.description is not None:
+        character.description = payload.description
+    if payload.image_path is not None:
+        character.image_path = payload.image_path
+    await db.commit()
+    await db.refresh(character)
+    return character
+
+
+@router.delete(
+    "/{character_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a brand character",
+    description="Delete a brand character. Requires owner or admin role in the brand.",
+    response_description="The character was deleted (no body).",
+    operation_id="delete_brand_character",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def delete_character(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a character. Requires owner or admin role."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners or admins can delete characters.")
+    await db.delete(character)
+    await db.commit()
+
+
+# ========================== Character Versions & Embeddings ========
+
+
+class CharacterVersionCreateRequest(BaseModel):
+    version_number: Optional[int] = None
+    prompt_trigger: Optional[str] = None
+    reference_image_path: Optional[str] = Field(None, max_length=1000)
+    validation_image_path: Optional[str] = Field(None, max_length=1000)
+    config_overrides: Optional[dict] = Field(default_factory=dict)
+
+class CharacterVersionResponse(BaseModel):
+    id: int
+    character_id: int
+    version_number: int
+    prompt_trigger: Optional[str]
+    reference_image_path: Optional[str]
+    validation_image_path: Optional[str]
+    config_overrides: dict
+    mlflow_run_id: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+class CharacterEmbeddingCreateRequest(BaseModel):
+    embedding: list[float] = Field(..., description="1536-dimensional vector")
+    tag: str = Field(..., min_length=1, max_length=255)
+
+class CharacterEmbeddingResponse(BaseModel):
+    id: int
+    character_id: int
+    version_id: int
+    tag: str
+    model_config = {"from_attributes": True}
+
+
+@router.post(
+    "/{character_id}/versions",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CharacterVersionResponse,
+    summary="Create a brand character version",
+    description="Register a new training version for a brand character and record an MLflow run (non-fatal if MLflow is offline). `version_number` auto-increments when omitted. Requires editor role or above.",
+    response_description="The created character version.",
+    operation_id="create_brand_character_version",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def create_character_version(
+    character_id: int,
+    payload: CharacterVersionCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register a new version for a character. Requires editor role or above."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role == "none":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this brand workspace.")
+    if role == "viewer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot create character versions.")
+
+    # Auto-increment version_number if not specified
+    if payload.version_number is None:
+        count_result = await db.execute(
+            select(CharacterVersion).where(CharacterVersion.character_id == character_id)
+        )
+        existing = count_result.scalars().all()
+        version_number = len(existing) + 1
+    else:
+        version_number = payload.version_number
+
+    # MLflow experiment & run registration
+    mlflow_run_id = None
+    try:
+        import mlflow
+        from app.config import settings
+        mlflow.set_tracking_uri(settings.MLFLOW_URI)
+        experiment_name = f"character_{character_id}"
+        mlflow.set_experiment(experiment_name)
+
+        with mlflow.start_run(run_name=f"version-{version_number}") as run:
+            mlflow_run_id = run.info.run_id
+            # Log metadata as parameters
+            mlflow.log_param("character_id", character_id)
+            mlflow.log_param("version_number", version_number)
+            mlflow.log_param("prompt_trigger", payload.prompt_trigger or "")
+            # Flatten config_overrides
+            for k, v in (payload.config_overrides or {}).items():
+                mlflow.log_param(f"config_{k}", str(v))
+
+        print(f"[MLflow] Registered run {mlflow_run_id} for character {character_id} v{version_number}")
+    except Exception as mlflow_err:
+        print(f"[MLflow] Warning: MLflow registration failed (non-fatal): {mlflow_err}")
+        mlflow_run_id = None
+
+    version = CharacterVersion(
+        character_id=character_id,
+        version_number=version_number,
+        prompt_trigger=payload.prompt_trigger,
+        reference_image_path=payload.reference_image_path,
+        validation_image_path=payload.validation_image_path,
+        config_overrides=payload.config_overrides or {},
+        mlflow_run_id=mlflow_run_id,
+    )
+    db.add(version)
+    await db.commit()
+    await db.refresh(version)
+    return version
+
+
+@router.get(
+    "/{character_id}/versions",
+    response_model=List[CharacterVersionResponse],
+    summary="List brand character versions",
+    description="List all training versions of a brand character.",
+    response_description="Versions of the brand character.",
+    operation_id="list_brand_character_versions",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def list_character_versions(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all versions for a given character."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if character.brand_id not in accessible_brands:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this character.")
+
+    versions_result = await db.execute(
+        select(CharacterVersion).where(CharacterVersion.character_id == character_id)
+    )
+    return list(versions_result.scalars().all())
+
+
+@router.post(
+    "/{character_id}/versions/{version_id}/embeddings",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CharacterEmbeddingResponse,
+    summary="Add a character version embedding",
+    description="Associate a 1536-dimension embedding with a brand character version.",
+    response_description="The stored embedding (vector omitted).",
+    operation_id="create_brand_character_embedding",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def create_character_embedding(
+    character_id: int,
+    version_id: int,
+    payload: CharacterEmbeddingCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Associate a 1536-dim embedding with a character version."""
+    # Validate character exists and accessible
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalars().first()
+    if not character:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found.")
+
+    accessible_brands = await get_accessible_brand_ids(current_user.id, db)
+    if character.brand_id not in accessible_brands:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this character.")
+
+    # Validate version exists
+    version_result = await db.execute(
+        select(CharacterVersion).where(
+            CharacterVersion.id == version_id,
+            CharacterVersion.character_id == character_id
+        )
+    )
+    version = version_result.scalars().first()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character version not found.")
+
+    # Validate embedding dimensions
+    if len(payload.embedding) != 1536:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Embedding must be exactly 1536 dimensions. Got {len(payload.embedding)}."
+        )
+
+    embedding = CharacterEmbedding(
+        character_id=character_id,
+        version_id=version_id,
+        embedding=payload.embedding,
+        tag=payload.tag,
+    )
+    db.add(embedding)
+    await db.commit()
+    await db.refresh(embedding)
+    return embedding
+
+
+# ========================== Training Metrics =====================
+
+@router.get(
+    "/versions/{version_id}/metrics",
+    summary="Get character version training metrics",
+    description="Get MLflow params and metrics for a brand character version. Requires owner or admin role in the brand.",
+    response_description="MLflow run params, metrics and artifact URI.",
+    operation_id="get_brand_character_version_metrics",
+    responses=error_responses(401, 403, 404, 422, 502),
+)
+async def get_character_version_metrics(
+    version_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get MLflow metrics for a character version.
+    Requires Admin or Owner role.
+    """
+    result = await db.execute(
+        select(CharacterVersion).where(CharacterVersion.id == version_id)
+    )
+    version = result.scalars().first()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character version not found.")
+
+    # Get character to check brand access
+    char_result = await db.execute(select(Character).where(Character.id == version.character_id))
+    character = char_result.scalars().first()
+
+    role = await get_user_role_in_brand(current_user.id, character.brand_id, db)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Admin or Owner role to view training metrics.")
+
+    if not version.mlflow_run_id:
+        return {
+            "version_id": version_id,
+            "mlflow_run_id": None,
+            "message": "No MLflow run associated with this version.",
+            "params": {},
+            "metrics": {},
+            "artifact_uri": None,
+        }
+
+    try:
+        import mlflow
+        from app.config import settings
+        mlflow.set_tracking_uri(settings.MLFLOW_URI)
+        client = mlflow.tracking.MlflowClient()
+        run = client.get_run(version.mlflow_run_id)
+
+        return {
+            "version_id": version_id,
+            "mlflow_run_id": version.mlflow_run_id,
+            "params": run.data.params,
+            "metrics": run.data.metrics,
+            "artifact_uri": run.info.artifact_uri,
+            "status": run.info.status,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to retrieve MLflow metrics: {str(e)}"
+        )
