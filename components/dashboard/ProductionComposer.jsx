@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Sparkles, ShoppingBag, User, Camera, Image as ImageIcon, ChevronRight, X, Check, Sliders, Layers, Compass, Zap, Scissors, Palette, Smile } from "lucide-react";
 import { MOCK_ELISKA_CHARACTER } from "@/lib/characterSchema";
+import { api } from "@/lib/api";
 
 const SAMPLE_PRODUCTS = [
   { id: "prod_1", name: "Silk Bias Dress", code: "SKU-SLK-402", category: "Dresses", thumbLabel: "Silk Slip Dress" },
@@ -64,6 +65,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   // Step selections
   const [selectedProduct, setSelectedProduct] = useState(SAMPLE_PRODUCTS[0]);
   const [selectedCharacter, setSelectedCharacter] = useState(SAMPLE_CHARACTERS[0]);
+  const [hairOptions, setHairOptions] = useState(SAMPLE_HAIRSTYLES);
+  const [makeupOptions, setMakeupOptions] = useState(SAMPLE_MAKEUP);
+  const [expressionOptions, setExpressionOptions] = useState(SAMPLE_EXPRESSIONS);
   const [selectedHair, setSelectedHair] = useState(SAMPLE_HAIRSTYLES[0]);
   const [selectedMakeup, setSelectedMakeup] = useState(SAMPLE_MAKEUP[1]);
   const [selectedExpression, setSelectedExpression] = useState(SAMPLE_EXPRESSIONS[0]);
@@ -76,6 +80,28 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
   // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
+
+  // Dynamically load validated styling options from backend
+  useEffect(() => {
+    const charId = selectedCharacter.code || selectedCharacter.id || "EE-F-002";
+    api.get(`/api/v1/characters/${charId}/styling-options`)
+      .then((data) => {
+        if (data && data.categories) {
+          if (Array.isArray(data.categories.hair) && data.categories.hair.length > 0) {
+            setHairOptions(data.categories.hair.map((h) => ({ id: h.id, name: h.label || h.name, desc: h.description || h.desc })));
+          }
+          if (Array.isArray(data.categories.makeup) && data.categories.makeup.length > 0) {
+            setMakeupOptions(data.categories.makeup.map((m) => ({ id: m.id, name: m.label || m.name, desc: m.description || m.desc })));
+          }
+          if (Array.isArray(data.categories.expression) && data.categories.expression.length > 0) {
+            setExpressionOptions(data.categories.expression.map((e) => ({ id: e.id, name: e.label || e.name, desc: e.description || e.desc })));
+          }
+        }
+      })
+      .catch(() => {
+        // Graceful fallback to rich studio presets
+      });
+  }, [selectedCharacter]);
 
   const toggleAngle = (angle) => {
     if (selectedAngles.includes(angle)) {
