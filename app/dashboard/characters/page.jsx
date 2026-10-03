@@ -56,13 +56,37 @@ export default function CharactersPage() {
     if (!selectedBrandId) return;
     try {
       setLoadingCharacters(true);
+      
+      // Fetch live locked version for EE-F-002 from v2 registry
+      let eliskaCharacter = { ...MOCK_ELISKA_CHARACTER };
+      try {
+        const liveVersion = await api.get("/api/v1/characters-v2/EE-F-002/current-version");
+        if (liveVersion && liveVersion.character_version) {
+          eliskaCharacter = {
+            ...eliskaCharacter,
+            version: liveVersion.character_version,
+            status: liveVersion.status || "LOCKED",
+            is_locked_production: true,
+            body_metrics: {
+              ...eliskaCharacter.body_metrics,
+              canonical_height_cm: liveVersion.canonical_height_cm || 178,
+              stature_class: liveVersion.stature || "Tall",
+              body_archetype: liveVersion.body_archetype || "High-Fashion Runway Slim",
+            },
+          };
+        }
+      } catch (err) {
+        // Fallback to local locked model
+      }
+
       const data = await api.get(`/api/v1/characters?brand_id=${selectedBrandId}`);
       if (data && data.length > 0) {
         // Merge API characters with flagship Eliska template
-        setCharacters([MOCK_ELISKA_CHARACTER, ...data]);
+        setCharacters([eliskaCharacter, ...data]);
       } else {
-        setCharacters([MOCK_ELISKA_CHARACTER]);
+        setCharacters([eliskaCharacter]);
       }
+      setSelectedCharacter(eliskaCharacter);
     } catch (error) {
       console.warn("Using mock Eliska dataset fallback", error);
       setCharacters([MOCK_ELISKA_CHARACTER]);
