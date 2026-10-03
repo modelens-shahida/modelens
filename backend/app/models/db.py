@@ -1594,6 +1594,47 @@ class RuntimePromotion(Base):
     notes = Column(Text, nullable=True)
 
 
+# ========================== Appearance / Styling Options =========
+# How a character is styled (hair, makeup, expression, ...), layered on top
+# of the Character Core. An option belongs to a Character Version but never
+# writes to character_registry_versions. Customers only see PRODUCTION options.
+
+class AppearanceOption(Base):
+    __tablename__ = "appearance_options"
+    __table_args__ = (
+        UniqueConstraint("character_id", "character_version", "category", "option_id", "version",
+                         name="uq_appearance_option_version"),
+        # At most one default per character version + category.
+        Index("uq_appearance_option_default", "character_id", "character_version", "category",
+              unique=True, postgresql_where=sa.text("is_default"), sqlite_where=sa.text("is_default")),
+    )
+
+    id = Column(Integer, primary_key=True)
+    internal_key = Column(String(120), unique=True, nullable=False)  # EE-F-002_HAIR_SOFT-WAVES_V1
+    character_id = Column(String(50), nullable=False, index=True)
+    character_version = Column(String(10), nullable=False)
+    category = Column(String(30), nullable=False)
+    option_id = Column(String(50), nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    label = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    thumbnail_url = Column(String(1000), nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="IN_DEVELOPMENT")
+
+    # Admin-only technical fields; never returned to customers.
+    adapter_id = Column(String(50), nullable=True)  # model_artifacts.model_id, layer APPEARANCE
+    validation = Column(JSONB, nullable=True)  # {identity, face, body, capability: PASS/FAIL}
+    compatibility_notes = Column(Text, nullable=True)
+    qa_rules = Column(JSONB, nullable=True)  # QA and fallback rules
+    created_by = Column(String(100), nullable=True)
+    status_changed_by = Column(String(100), nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 # ========================== P3 Rights Registry ===================
 
 class RightsRegistry(Base):
