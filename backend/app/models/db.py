@@ -1635,6 +1635,75 @@ class AppearanceOption(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+# ========================== Capability Packs ======================
+# What a character can wear, carry or do (footwear, bags, motion, ...),
+# layered on top of the Character Core. There is one EE-F-002; a pack adds a
+# capability to her and never writes to character_registry_versions.
+# Customers only see PRODUCTION packs, by customer product type.
+
+class CapabilityPack(Base):
+    __tablename__ = "capability_packs"
+    __table_args__ = (
+        UniqueConstraint("character_id", "pack_type", "version", name="uq_capability_pack_version"),
+        # At most one PRODUCTION version per character + pack type.
+        Index("uq_capability_pack_production", "character_id", "pack_type", unique=True,
+              postgresql_where=sa.text("status = 'PRODUCTION'"), sqlite_where=sa.text("status = 'PRODUCTION'")),
+    )
+
+    id = Column(Integer, primary_key=True)
+    internal_key = Column(String(120), unique=True, nullable=False)  # EE-F-002_FOOTWEAR_V1
+    character_id = Column(String(50), nullable=False, index=True)
+    character_version = Column(String(10), nullable=False)
+    pack_type = Column(String(30), nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    label = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    thumbnail_url = Column(String(1000), nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="IN_DEVELOPMENT")
+
+    # Admin/runtime-only technical fields; never returned to customers.
+    workflow_route = Column(String(100), nullable=True)
+    workflow_version = Column(String(20), nullable=True)
+    required_reference_assets = Column(JSONB, nullable=True)  # [{asset_type, description, min_count}]
+    validation = Column(JSONB, nullable=True)  # {identity, face, body, product: PASS/FAIL}
+    supported_product_types = Column(JSONB, nullable=True)  # customer product types, e.g. ["shoes"]
+    compatible_appearance_options = Column(JSONB, nullable=True)  # appearance option internal keys
+    qa_rules = Column(JSONB, nullable=True)  # QA and fallback rules
+    created_by = Column(String(100), nullable=True)
+    status_changed_by = Column(String(100), nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)
+    validated_by = Column(String(100), nullable=True)
+    validated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CapabilityPackAdapter(Base):
+    """Links a pack to Training Registry adapters (model_artifacts with a layer)."""
+    __tablename__ = "capability_pack_adapters"
+    __table_args__ = (UniqueConstraint("pack_id", "adapter_id", name="uq_capability_pack_adapter"),)
+
+    id = Column(Integer, primary_key=True)
+    pack_id = Column(Integer, ForeignKey("capability_packs.id", ondelete="CASCADE"), nullable=False, index=True)
+    adapter_id = Column(String(50), nullable=False)  # model_artifacts.model_id
+    linked_by = Column(String(100), nullable=True)
+    linked_at = Column(DateTime, server_default=func.now())
+
+
+class CapabilityProductType(Base):
+    """Customer product type -> pack type, kept as data for the Pose Resolver
+    and Runtime Dispatch."""
+    __tablename__ = "capability_product_types"
+
+    id = Column(Integer, primary_key=True)
+    product_type = Column(String(30), unique=True, nullable=False)  # shoes
+    pack_type = Column(String(30), nullable=False)  # FOOTWEAR
+    label = Column(String(100), nullable=False)  # Footwear
+    is_default = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+
 # ========================== P3 Rights Registry ===================
 
 class RightsRegistry(Base):

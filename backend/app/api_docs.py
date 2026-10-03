@@ -275,6 +275,8 @@ TAGS_METADATA = [
     {"name": "Training Registry", "description": "Admin only. Training datasets, exports, runs, checkpoints, evaluations, layer adapters and runtime promotions for a Character Version (built on the P3 registry)."},
     {"name": "Styling Options", "description": "Customer-facing styling options (hair, makeup, expression, nails, jewelry, beauty direction) in PRODUCTION for a character's current locked version."},
     {"name": "Appearance Options", "description": "Admin only. Appearance option records, validation results, adapters and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
+    {"name": "Capabilities", "description": "Customer-facing capabilities: the product types (garment, shoes, bags, ...) a character can be used with, from capability packs in PRODUCTION for her current locked version."},
+    {"name": "Capability Packs", "description": "Admin only. Capability pack records (footwear, bags, motion, ...) layered on a Character Version: adapters, workflow routes, validation results, compatibility and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
     {"name": "Fluid Studio", "description": "Fluid Studio lighting presets and editorial generation jobs."},
     {"name": "ModeLens Fluid Studio", "description": "Interactive editorial sessions with non-destructive layers, and private brand models."},
     {"name": "Sketch Studio", "description": "Sketch-to-image and sketch-to-product generation jobs."},
