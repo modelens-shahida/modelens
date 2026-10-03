@@ -273,6 +273,8 @@ TAGS_METADATA = [
     {"name": "Preservation & Credit Ledger", "description": "Garment, brand and identity preservation constraints, plus the immutable credit ledger."},
     {"name": "P3 Registry", "description": "Datasets, training experiments, model artifacts and rights records."},
     {"name": "Training Registry", "description": "Admin only. Training datasets, exports, runs, checkpoints, evaluations, layer adapters and runtime promotions for a Character Version (built on the P3 registry)."},
+    {"name": "Styling Options", "description": "Customer-facing styling options (hair, makeup, expression, nails, jewelry, beauty direction) in PRODUCTION for a character's current locked version."},
+    {"name": "Appearance Options", "description": "Admin only. Appearance option records, validation results, adapters and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
     {"name": "Fluid Studio", "description": "Fluid Studio lighting presets and editorial generation jobs."},
     {"name": "ModeLens Fluid Studio", "description": "Interactive editorial sessions with non-destructive layers, and private brand models."},
     {"name": "Sketch Studio", "description": "Sketch-to-image and sketch-to-product generation jobs."},

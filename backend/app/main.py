@@ -53,6 +53,7 @@ from app.routers.preservation import router as preservation_router
 from app.routers.p3_registry import router as p3_registry_router
 from app.routers.character_registry_v2 import router as character_registry_v2_router
 from app.routers.training_registry import router as training_registry_router
+from app.routers.styling_options import router as styling_options_router, admin_router as appearance_admin_router
 from app.routers.generation_api import router as generation_api_router
 from app.routers.phase2_batch import router as phase2_batch_router
 from app.routers.campaign_generation import router as campaign_generation_router
@@ -244,6 +245,8 @@ app.include_router(preservation_router)
 app.include_router(p3_registry_router)
 app.include_router(character_registry_v2_router)
 app.include_router(training_registry_router)
+app.include_router(styling_options_router)
+app.include_router(appearance_admin_router)
 app.include_router(generation_api_router)
 app.include_router(phase2_batch_router)
 app.include_router(prompts_router)
