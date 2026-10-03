@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, and_
@@ -7,12 +7,13 @@ from datetime import datetime
 
 from app.models.db import (
     get_db, User,
-    CharacterV2, CharacterVersion,
+    CharacterV2, CharacterRegistryVersion,
     CharacterIdentityDNA, CharacterBodyDNA,
     CharacterAppearanceProfile, CanonicalAsset,
     CharacterVersionQA, CharacterRuntimeV2,
 )
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
+from app.services import character_versions as version_service
 from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/characters-v2", tags=["Character Registry V2"])
@@ -29,9 +30,93 @@ class CharacterCreate(BaseModel):
 
 
 class CharacterVersionCreate(BaseModel):
-    version: str = Field(..., description="e.g. 0.9, 1.0")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{
+            "character_version": "1.1",
+            "based_on_version": "1.0",
+            "canonical_height_cm": 179,
+            "release_notes": "Height re-measured from new canonical full-body set.",
+        }]},
+    )
+
+    character_version: str = Field(
+        ...,
+        validation_alias=AliasChoices("character_version", "version"),
+        pattern=r"^\d+\.\d+$",
+        description="New version in MAJOR.MINOR form (e.g. 1.1, 2.0). Must be greater than every existing version. `version` is accepted as an alias.",
+        examples=["1.1"],
+    )
+    based_on_version: Optional[str] = Field(
+        None, description="Version to copy the Character Core from. Defaults to the latest existing version.", examples=["1.0"]
+    )
+    canonical_height_cm: Optional[float] = Field(None, gt=0, lt=300, description="Overrides the copied height.", examples=[179])
+    stature: Optional[str] = Field(None, max_length=30, description="Overrides the copied stature class.", examples=["TALL"])
+    body_archetype: Optional[str] = Field(None, max_length=50, description="Overrides the copied body archetype.", examples=["HIGH_FASHION_RUNWAY_SLIM"])
+    taxonomy_version: Optional[str] = Field(None, max_length=20, description="Taxonomy version the core was coded against.", examples=["TAXREG-V1.0"])
+    release_notes: Optional[str] = Field(None, description="What changed in this version.")
+
+
+class CharacterVersionUpdate(BaseModel):
+    """Editable Character Core fields of a DRAFT version. LOCKED versions reject every change."""
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{"canonical_height_cm": 179}]})
+
+    canonical_height_cm: Optional[float] = Field(None, gt=0, lt=300, examples=[179])
+    stature: Optional[str] = Field(None, max_length=30, examples=["TALL"])
+    body_archetype: Optional[str] = Field(None, max_length=50, examples=["HIGH_FASHION_RUNWAY_SLIM"])
+    taxonomy_version: Optional[str] = Field(None, max_length=20, examples=["TAXREG-V1.0"])
     release_notes: Optional[str] = None
-    taxonomy_version: Optional[str] = "TAXREG-V1.0"
+
+
+class CharacterVersionAdmin(BaseModel):
+    """Full character version record (admin only)."""
+    character_id: str = Field(..., examples=["EE-F-002"])
+    character_version: str = Field(..., examples=["1.0"])
+    status: Optional[str] = Field(None, description="DRAFT or LOCKED.", examples=["LOCKED"])
+    locked: bool = Field(..., examples=[True])
+    locked_at: Optional[datetime] = None
+    locked_by: Optional[str] = Field(None, examples=["SYSTEM_SEED"])
+    canonical_height_cm: Optional[float] = Field(None, examples=[178.0])
+    stature: Optional[str] = Field(None, examples=["TALL"])
+    body_archetype: Optional[str] = Field(None, examples=["HIGH_FASHION_RUNWAY_SLIM"])
+    parent_version: Optional[str] = Field(None, description="Version this one was created from.", examples=[None])
+    taxonomy_version: Optional[str] = None
+    promoted_to_production: Optional[bool] = None
+    promoted_at: Optional[datetime] = None
+    release_notes: Optional[str] = None
+    dna_snapshot: Optional[Dict[str, Any]] = None
+    qa_snapshot: Optional[Dict[str, Any]] = None
+    meta: Optional[Dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class CharacterVersionList(BaseModel):
+    character_id: str = Field(..., examples=["EE-F-002"])
+    versions: List[CharacterVersionAdmin] = Field(..., description="Newest version first.")
+    total: int = Field(..., examples=[1])
+
+
+class CharacterVersionDeleted(BaseModel):
+    character_id: str = Field(..., examples=["EE-F-002"])
+    character_version: str = Field(..., examples=["1.1"])
+    deleted: bool = Field(True, examples=[True])
+
+
+class CustomerCharacterVersion(BaseModel):
+    """Customer-safe view of a character's current locked version.
+
+    Only Character Core fields; never adapters, checkpoints, seeds, workflows,
+    providers, LoRA strengths, training runs or evaluation scores.
+    """
+    character_id: str = Field(..., examples=["EE-F-002"])
+    display_name: Optional[str] = Field(None, examples=["Eliska Novak"])
+    character_version: str = Field(..., examples=["1.0"])
+    status: str = Field(..., examples=["LOCKED"])
+    canonical_height_cm: Optional[float] = Field(None, examples=[178.0])
+    stature: Optional[str] = Field(None, examples=["TALL"])
+    body_archetype: Optional[str] = Field(None, examples=["HIGH_FASHION_RUNWAY_SLIM"])
+    locked_at: Optional[datetime] = None
 
 
 class IdentityDNACreate(BaseModel):
@@ -320,58 +405,258 @@ async def get_character(
     }
 
 
+# ========================== Character Versions ===================
+# Versions freeze the Character Core. LOCKED versions are immutable (enforced
+# in app.services.character_versions and by ORM guards); changes go into a new
+# DRAFT version. All writes and the full record are platform-admin only.
+
+_ADMIN_NOTE = "\n\nRequires a platform admin (`User.role` admin/owner)."
+
+
+def _version_out(v: CharacterRegistryVersion) -> CharacterVersionAdmin:
+    return CharacterVersionAdmin(
+        character_id=v.character_id,
+        character_version=v.version,
+        status=v.status,
+        locked=bool(v.locked),
+        locked_at=v.locked_at,
+        locked_by=v.locked_by,
+        canonical_height_cm=v.canonical_height_cm,
+        stature=v.stature,
+        body_archetype=v.body_archetype,
+        parent_version=v.parent_version,
+        taxonomy_version=v.taxonomy_version,
+        promoted_to_production=v.promoted_to_production,
+        promoted_at=v.promoted_at,
+        release_notes=v.release_notes,
+        dna_snapshot=v.dna_snapshot,
+        qa_snapshot=v.qa_snapshot,
+        meta=v.meta,
+        created_at=v.created_at,
+        updated_at=v.updated_at,
+    )
+
+
+def _http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, version_service.CharacterVersionNotFound):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, version_service.CharacterVersionConflict):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+_SERVICE_ERRORS = (
+    version_service.CharacterVersionNotFound,
+    version_service.CharacterVersionConflict,
+    version_service.CharacterVersionInvalid,
+)
+
+
 @router.get(
     "/{character_id}/versions",
+    response_model=CharacterVersionList,
     summary="List character versions",
-    description="Get all versions of a character.",
+    description="List every version of a character, newest first, with full details." + _ADMIN_NOTE,
     response_description="All versions of the character.",
     operation_id="get_character_versions",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def get_character_versions(
     character_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all versions of a character."""
-    result = await db.execute(
-        select(CharacterVersion).where(
-            CharacterVersion.character_id == character_id
-        ).order_by(desc(CharacterVersion.id))
+    versions = await version_service.list_versions(db, character_id)
+    return CharacterVersionList(
+        character_id=character_id,
+        versions=[_version_out(v) for v in versions],
+        total=len(versions),
     )
-    versions = result.scalars().all()
-    return {"character_id": character_id, "versions": [
-        {
-            "version": v.version,
-            "status": v.status,
-            "locked": v.locked,
-            "locked_at": str(v.locked_at) if v.locked_at else None,
-            "promoted_to_production": v.promoted_to_production,
-        }
-        for v in versions
-    ]}
 
 
 @router.post(
     "/{character_id}/versions",
     status_code=status.HTTP_201_CREATED,
-    summary="Create a character version",
-    description="Create a new character version.",
-    response_description="The created character version.",
+    response_model=CharacterVersionAdmin,
+    summary="Create a draft character version",
+    description=(
+        "Create a new version of a character in `DRAFT` status. The Character Core "
+        "(height, stature, body archetype, taxonomy version) is copied from "
+        "`based_on_version` (default: the latest version) and any fields in the body "
+        "are applied on top. Existing versions, including LOCKED ones, are left untouched.\n"
+        "\n"
+        "Errors: `400` invalid version number or not greater than the latest version; "
+        "`404` `based_on_version` not found; `409` version already exists." + _ADMIN_NOTE
+    ),
+    response_description="The created DRAFT version.",
     operation_id="create_character_version",
-    responses=error_responses(401, 422),
+    responses=error_responses(400, 401, 403, 404, 409, 422),
 )
 async def create_character_version(
     character_id: str,
     payload: CharacterVersionCreate,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        draft = await version_service.create_draft_version(
+            db,
+            character_id,
+            payload.character_version,
+            based_on=payload.based_on_version,
+            canonical_height_cm=payload.canonical_height_cm,
+            stature=payload.stature,
+            body_archetype=payload.body_archetype,
+            taxonomy_version=payload.taxonomy_version,
+            release_notes=payload.release_notes,
+        )
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    return _version_out(draft)
+
+
+@router.get(
+    "/{character_id}/current-version",
+    response_model=CustomerCharacterVersion,
+    summary="Get the current locked character version",
+    description=(
+        "Customer-safe view of the character's current (highest) LOCKED version: "
+        "identity and Character Core fields only. Technical fields (adapters, "
+        "checkpoints, seeds, workflows, providers, LoRA strengths, training runs, "
+        "evaluation scores) are never returned.\n"
+        "\n"
+        "Available to any authenticated user. `404` if the character has no locked version."
+    ),
+    response_description="The current locked version, customer-facing fields only.",
+    operation_id="get_current_character_version",
+    responses=error_responses(401, 404, 422),
+)
+async def get_current_character_version(
+    character_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new character version."""
-    version = CharacterVersion(character_id=character_id, **payload.dict())
-    db.add(version)
-    await db.commit()
-    return {"character_id": character_id, "version": payload.version, "status": "DEVELOPMENT"}
+    try:
+        current = await version_service.get_current_locked_version(db, character_id)
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    char = (await db.execute(
+        select(CharacterV2).where(CharacterV2.character_id == character_id)
+    )).scalars().first()
+    return CustomerCharacterVersion(
+        character_id=current.character_id,
+        display_name=char.display_name if char else None,
+        character_version=current.version,
+        status=version_service.STATUS_LOCKED,
+        canonical_height_cm=current.canonical_height_cm,
+        stature=current.stature,
+        body_archetype=current.body_archetype,
+        locked_at=current.locked_at,
+    )
+
+
+@router.get(
+    "/{character_id}/versions/{version}",
+    response_model=CharacterVersionAdmin,
+    summary="Get a character version",
+    description="Get one version of a character with full details." + _ADMIN_NOTE,
+    response_description="The character version.",
+    operation_id="get_character_version",
+    responses=error_responses(401, 403, 404, 422),
+)
+async def get_character_version(
+    character_id: str,
+    version: str,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        found = await version_service.get_version(db, character_id, version)
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    return _version_out(found)
+
+
+@router.patch(
+    "/{character_id}/versions/{version}",
+    response_model=CharacterVersionAdmin,
+    summary="Update a draft character version",
+    description=(
+        "Edit the Character Core of a `DRAFT` version. A LOCKED version can never be "
+        "changed: the request is rejected with `409` and the version is left untouched; "
+        "create a new version instead. Unknown fields (e.g. `status`, `locked`) are rejected with `422`."
+        + _ADMIN_NOTE
+    ),
+    response_description="The updated DRAFT version.",
+    operation_id="update_character_version",
+    responses=error_responses(401, 403, 404, 409, 422),
+)
+async def update_character_version(
+    character_id: str,
+    version: str,
+    payload: CharacterVersionUpdate,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        updated = await version_service.update_draft_version(
+            db, character_id, version, **payload.model_dump(exclude_none=True)
+        )
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    return _version_out(updated)
+
+
+@router.delete(
+    "/{character_id}/versions/{version}",
+    response_model=CharacterVersionDeleted,
+    summary="Delete a draft character version",
+    description=(
+        "Delete a `DRAFT` version. LOCKED versions can never be deleted (`409`)." + _ADMIN_NOTE
+    ),
+    response_description="Confirmation that the draft was deleted.",
+    operation_id="delete_character_version",
+    responses=error_responses(401, 403, 404, 409, 422),
+)
+async def delete_character_version(
+    character_id: str,
+    version: str,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await version_service.delete_draft_version(db, character_id, version)
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    return CharacterVersionDeleted(character_id=character_id, character_version=version)
+
+
+@router.post(
+    "/{character_id}/versions/{version}/lock",
+    response_model=CharacterVersionAdmin,
+    summary="Lock a character version",
+    description=(
+        "Lock a `DRAFT` version (one-way). After locking, the Character Core can never be "
+        "changed or deleted. `locked_by` is set to the calling admin's user ID.\n"
+        "\n"
+        "Errors: `400` canonical_height_cm, stature or body_archetype missing; "
+        "`409` already locked." + _ADMIN_NOTE
+    ),
+    response_description="The LOCKED version.",
+    operation_id="lock_character_version_by_path",
+    responses=error_responses(400, 401, 403, 404, 409, 422),
+)
+async def lock_character_version_by_path(
+    character_id: str,
+    version: str,
+    current_user: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        locked = await version_service.lock_version(db, character_id, version, locked_by=str(current_user.id))
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    return _version_out(locked)
 
 
 @router.post(
@@ -645,79 +930,60 @@ async def get_runtime_profile(
 
 @router.post(
     "/{character_id}/lock",
-    summary="Lock a character version",
-    description="Lock a character version.",
-    response_description="The locked character version.",
+    response_model=CharacterVersionAdmin,
+    summary="Lock a character version (query form)",
+    description=(
+        "Deprecated alias of `POST /api/v1/characters-v2/{character_id}/versions/{version}/lock` "
+        "taking the version as a `version` query parameter. Same rules: one-way, "
+        "`400` if Character Core fields are missing, `409` if already locked." + _ADMIN_NOTE
+    ),
+    response_description="The LOCKED version.",
     operation_id="lock_character_version",
-    responses=error_responses(401, 404, 409, 422),
+    responses=error_responses(400, 401, 403, 404, 409, 422),
+    deprecated=True,
 )
 async def lock_character_version(
     character_id: str,
     version: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lock a character version."""
-    result = await db.execute(
-        select(CharacterVersion).where(
-            and_(CharacterVersion.character_id == character_id,
-                 CharacterVersion.version == version)
-        )
-    )
-    char_version = result.scalars().first()
-    if not char_version:
-        raise HTTPException(status_code=404, detail="Character version not found.")
-
-    if char_version.locked:
-        raise HTTPException(status_code=409, detail=f"Version {version} is already locked.")
-
-    char_version.locked = True
-    char_version.locked_at = datetime.utcnow()
-    char_version.locked_by = str(current_user.id)
-    char_version.status = "LOCKED"
-
-    char = await db.execute(
-        select(CharacterV2).where(CharacterV2.character_id == character_id)
-    )
-    char = char.scalars().first()
-    if char:
-        char.status = "LOCKED"
-
-    await db.commit()
-    return {"character_id": character_id, "version": version, "status": "LOCKED"}
+    try:
+        locked = await version_service.lock_version(db, character_id, version, locked_by=str(current_user.id))
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
+    return _version_out(locked)
 
 
 @router.post(
     "/{character_id}/promote",
     summary="Promote a character to production",
-    description="Promote locked character to PRODUCTION.",
+    description=(
+        "Promote a LOCKED character version to PRODUCTION: flags the version as promoted "
+        "(its Character Core and LOCKED status are unchanged) and marks the character "
+        "production-enabled and customer-visible." + _ADMIN_NOTE
+    ),
     response_description="The character promoted to PRODUCTION.",
     operation_id="promote_to_production",
-    responses=error_responses(400, 401, 404, 422),
+    responses=error_responses(400, 401, 403, 404, 422),
 )
 async def promote_to_production(
     character_id: str,
     version: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Promote locked character to PRODUCTION."""
-    result = await db.execute(
-        select(CharacterVersion).where(
-            and_(CharacterVersion.character_id == character_id,
-                 CharacterVersion.version == version)
-        )
-    )
-    char_version = result.scalars().first()
-    if not char_version:
-        raise HTTPException(status_code=404, detail="Character version not found.")
+    try:
+        char_version = await version_service.get_version(db, character_id, version)
+    except _SERVICE_ERRORS as exc:
+        raise _http_error(exc)
 
-    if not char_version.locked:
+    if not version_service.is_locked(char_version):
         raise HTTPException(status_code=400, detail="Must be LOCKED before PRODUCTION.")
 
     char_version.promoted_to_production = True
     char_version.promoted_at = datetime.utcnow()
-    char_version.status = "PRODUCTION"
 
     char = await db.execute(
         select(CharacterV2).where(CharacterV2.character_id == character_id)

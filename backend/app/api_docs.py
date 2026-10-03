@@ -268,7 +268,7 @@ TAGS_METADATA = [
     {"name": "QA Scoring", "description": "Automated QA evaluations, human review, defect heatmaps and brand thresholds."},
     {"name": "Characters", "description": "Character reference sets, viewpoint coverage and LoRA training jobs."},
     {"name": "Character Registry", "description": "Character identity, body, skin, hair and runtime profiles (v1)."},
-    {"name": "Character Registry V2", "description": "Character Library: versions, identity/body DNA, canonical assets, QA gates and promotion."},
+    {"name": "Character Registry V2", "description": "Character Library: versions (LOCKED versions are immutable), identity/body DNA, canonical assets, QA gates and promotion."},
     {"name": "Preservation & Credit Ledger", "description": "Garment, brand and identity preservation constraints, plus the immutable credit ledger."},
     {"name": "P3 Registry", "description": "Datasets, training experiments, model artifacts and rights records."},
     {"name": "Fluid Studio", "description": "Fluid Studio lighting presets and editorial generation jobs."},

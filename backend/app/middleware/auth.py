@@ -218,3 +218,22 @@ def require_brand_role(minimum_role: str):
         return current_user
 
     return _check_brand_role
+
+
+# ========================== Platform Admin Dependency ======================
+
+PLATFORM_ADMIN_ROLES = ("admin", "owner")
+
+
+async def require_platform_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Allow only platform-level admins (``User.role`` admin/owner).
+
+    Brand admins do not qualify: platform resources such as the Character
+    Version Registry are shared across every brand.
+    """
+    if current_user.role not in PLATFORM_ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform admin role required.",
+        )
+    return current_user

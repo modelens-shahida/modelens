@@ -1536,7 +1536,10 @@ class CharacterV2(Base):
 
 class CharacterRegistryVersion(Base):
     __tablename__ = "character_registry_versions"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        UniqueConstraint("character_id", "version", name="uq_character_registry_version"),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True)
     character_id = Column(String(50), nullable=False)
@@ -1545,6 +1548,13 @@ class CharacterRegistryVersion(Base):
     locked = Column(Boolean, default=False)
     locked_at = Column(DateTime, nullable=True)
     locked_by = Column(String(100), nullable=True)
+
+    # Character Core (who the character is). Frozen once the version is LOCKED.
+    canonical_height_cm = Column(Float, nullable=True)
+    stature = Column(String(30), nullable=True)
+    body_archetype = Column(String(50), nullable=True)
+    parent_version = Column(String(10), nullable=True)
+
     promoted_to_production = Column(Boolean, default=False)
     promoted_at = Column(DateTime, nullable=True)
     taxonomy_version = Column(String(20), nullable=True)
@@ -1554,6 +1564,75 @@ class CharacterRegistryVersion(Base):
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# Fields that may never change once a CharacterRegistryVersion is LOCKED.
+# Promotion flags, QA snapshot, release notes and meta stay editable.
+CHARACTER_VERSION_CORE_FIELDS = (
+    "character_id",
+    "version",
+    "status",
+    "locked",
+    "locked_at",
+    "locked_by",
+    "canonical_height_cm",
+    "stature",
+    "body_archetype",
+    "parent_version",
+    "taxonomy_version",
+    "dna_snapshot",
+)
+
+
+class CharacterVersionLockedError(Exception):
+    """A write tried to change or delete a LOCKED character version."""
+
+    def __init__(self, character_id: Optional[str], version: Optional[str], action: str = "modified", message: Optional[str] = None):
+        self.character_id = character_id
+        self.version = version
+        super().__init__(message or (
+            f"Character {character_id} version {version} is LOCKED and cannot be {action}. "
+            "Create a new version instead."
+        ))
+
+
+def _was_locked(target: CharacterRegistryVersion) -> bool:
+    """Locked state as last loaded from the database (ignores pending changes)."""
+    attrs = sa.inspect(target).attrs
+
+    def previous(name):
+        history = attrs[name].history
+        return history.deleted[0] if history.deleted else getattr(target, name)
+
+    return bool(previous("locked")) or previous("status") == "LOCKED"
+
+
+@sa.event.listens_for(CharacterRegistryVersion, "before_update")
+def _reject_locked_version_update(mapper, connection, target):
+    if not _was_locked(target):
+        return
+    state = sa.inspect(target)
+    if any(state.attrs[field].history.has_changes() for field in CHARACTER_VERSION_CORE_FIELDS):
+        raise CharacterVersionLockedError(target.character_id, target.version, "modified")
+
+
+@sa.event.listens_for(CharacterRegistryVersion, "before_delete")
+def _reject_locked_version_delete(mapper, connection, target):
+    if _was_locked(target):
+        raise CharacterVersionLockedError(target.character_id, target.version, "deleted")
+
+
+@sa.event.listens_for(sa.orm.Session, "do_orm_execute")
+def _reject_bulk_character_version_writes(orm_execute_state):
+    # Bulk UPDATE/DELETE bypasses the per-row guards above, so it is not allowed.
+    if not (orm_execute_state.is_update or orm_execute_state.is_delete):
+        return
+    mapper = orm_execute_state.bind_mapper
+    if mapper is not None and mapper.class_ is CharacterRegistryVersion:
+        raise CharacterVersionLockedError(
+            None, None,
+            message="Bulk UPDATE/DELETE of character versions is not allowed; update versions one at a time.",
+        )
 
 
 class CharacterIdentityDNA(Base):

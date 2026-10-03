@@ -35,6 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from app.models.db import CharacterVersionLockedError
 
 from app.config import settings
 from app.routers.auth import router as auth_router
@@ -308,6 +309,19 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error", "error": error_detail[:200]}
     )
+@app.exception_handler(CharacterVersionLockedError)
+async def character_version_locked_handler(request: Request, exc: CharacterVersionLockedError):
+    """A write tried to change or delete a LOCKED character version (from any code path)."""
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "error": "CharacterVersionLocked",
+            "detail": str(exc),
+            "request_id": request_id_var.get(),
+        },
+    )
+
+
 @app.exception_handler(IntegrityError)
 async def db_integrity_exception_handler(request: Request, exc: IntegrityError):
     """Graceful handler for database unique constraints or foreign key violations."""
