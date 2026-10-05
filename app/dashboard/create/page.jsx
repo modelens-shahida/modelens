@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductionComposer from "@/components/dashboard/ProductionComposer";
 import { submitBatchGenerationJob, checkSufficientCredits } from "@/lib/generationService";
+import { characterRegistryApi } from "@/lib/characterRegistryApi";
 import { toast } from "react-hot-toast";
 import { AlertCircle, CreditCard, ArrowRight, X } from "lucide-react";
 import Link from "next/link";
@@ -36,21 +37,56 @@ export default function CreateProductionPage() {
         return;
       }
 
-      // 2. Dispatch batch generation job
-      const payload = {
-        product_id: data.product?.id || "prod_1",
+      // 2. Dispatch batch generation job via Task 6 Runtime Dispatch
+      const dispatchPayload = {
         character_id: data.character?.code || data.character?.id || "EE-F-002",
-        character_version: data.character?.version || "v2.1",
-        angle_slots: angles,
-        environment_id: data.background?.id || "bg_1",
-        quality_mode: data.quality || "studio_quality",
-        parallel: data.parallel ?? true,
+        product_asset_url: data.product?.image_url || data.product?.url || "https://assets.modelens.ai/demo-sku.png",
+        product_type: data.product?.category?.toLowerCase() || "garment",
+        appearance: {
+          hair: data.appearance?.hair?.id || "canonical",
+          makeup: data.appearance?.makeup?.id || "natural",
+          expression: data.appearance?.expression?.id || "neutral_editorial",
+        },
+        pose_id: data.pose || "standing_editorial",
+        location_id: data.background?.id || "bg_1",
+        campaign_preset: data.direction?.id || "dir_1",
+        aspect_ratio: "3:4",
+        count: angles.length,
       };
 
-      const res = await submitBatchGenerationJob(payload);
-      const targetJobId = res.job_id || "JOB-SPRING-2027-001";
-      toast.success(`Batch generation initiated: ${targetJobId}`);
-      router.push(`/dashboard/generation/${targetJobId}`);
+      try {
+        const dispatchRes = await characterRegistryApi.dispatchProduction(dispatchPayload);
+        const targetJobId = dispatchRes.production_id || `PROD-${Date.now()}`;
+        toast.success(`Production dispatched: ${targetJobId}`);
+        router.push(`/dashboard/generation/${targetJobId}`);
+      } catch (dispatchErr) {
+        if (dispatchErr.status === 402 || dispatchErr.response?.status === 402) {
+          setShortfallModal({
+            required: angles.length * 5,
+            balance: 0,
+            shortfall: angles.length * 5,
+          });
+          return;
+        } else if (dispatchErr.status === 409 || dispatchErr.response?.status === 409) {
+          toast.error("Capability pack for this product type is pending production validation.");
+        }
+        
+        // Fallback to legacy batch generator if production route pending
+        const payload = {
+          product_id: data.product?.id || "prod_1",
+          character_id: data.character?.code || data.character?.id || "EE-F-002",
+          character_version: data.character?.version || "1.0",
+          angle_slots: angles,
+          environment_id: data.background?.id || "bg_1",
+          quality_mode: data.quality || "studio_quality",
+          parallel: data.parallel ?? true,
+        };
+
+        const res = await submitBatchGenerationJob(payload);
+        const targetJobId = res.job_id || "JOB-SPRING-2027-001";
+        toast.success(`Batch generation initiated: ${targetJobId}`);
+        router.push(`/dashboard/generation/${targetJobId}`);
+      }
     } catch (error) {
       toast.error(error.message || "Failed to initiate generation");
     } finally {
