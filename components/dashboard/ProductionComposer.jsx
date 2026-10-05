@@ -61,6 +61,24 @@ const SAMPLE_EXPRESSIONS = [
   { id: "mysterious", name: "Mysterious Depth", desc: "Intriguing chiaroscuro emotion" },
 ];
 
+const SAMPLE_POSES = [
+  { id: "standing_editorial", label: "Standing Editorial", description: "Full-length poised stance", category: "classic", recommended_framing: "full_body", is_default: true },
+  { id: "walking_editorial", label: "Walking Editorial", description: "Dynamic runway stride", category: "motion", recommended_framing: "full_body", is_default: false },
+  { id: "seated_look", label: "Seated Editorial", description: "Relaxed high-fashion seated posture", category: "editorial", recommended_framing: "three_quarter", is_default: false },
+  { id: "garment_interaction", label: "Garment Interaction", description: "Hand touching fabric / lapel", category: "detail", recommended_framing: "three_quarter", is_default: false },
+];
+
+function getProductTypeFromCategory(category = "") {
+  const cat = (category || "").toLowerCase();
+  if (cat.includes("dress") || cat.includes("outerwear") || cat.includes("knit") || cat.includes("coat") || cat.includes("garment") || cat.includes("shirt") || cat.includes("pant") || cat.includes("top") || cat.includes("jacket")) return "garment";
+  if (cat.includes("shoe") || cat.includes("footwear") || cat.includes("boot") || cat.includes("heel") || cat.includes("sneaker")) return "shoes";
+  if (cat.includes("bag") || cat.includes("tote") || cat.includes("clutch") || cat.includes("purse")) return "bags";
+  if (cat.includes("eye") || cat.includes("glass") || cat.includes("shade") || cat.includes("spectacle")) return "eyewear";
+  if (cat.includes("jewel") || cat.includes("ring") || cat.includes("neck") || cat.includes("earring") || cat.includes("bracelet")) return "jewelry";
+  if (cat.includes("hat") || cat.includes("cap") || cat.includes("headwear") || cat.includes("beanie")) return "headwear";
+  return "garment";
+}
+
 export default function ProductionComposer({ onGenerate, isSubmitting = false }) {
   // Step selections
   const [selectedProduct, setSelectedProduct] = useState(SAMPLE_PRODUCTS[0]);
@@ -73,6 +91,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   const [selectedMakeup, setSelectedMakeup] = useState(SAMPLE_MAKEUP[1]);
   const [selectedExpression, setSelectedExpression] = useState(SAMPLE_EXPRESSIONS[0]);
   const [styleSubTab, setStyleSubTab] = useState("hair"); // "hair" | "makeup" | "expression"
+  const [availablePoses, setAvailablePoses] = useState(SAMPLE_POSES);
+  const [selectedPose, setSelectedPose] = useState(SAMPLE_POSES[0]);
+  const [poseDrawerTab, setPoseDrawerTab] = useState("pose"); // "pose" | "angles"
   const [selectedAngles, setSelectedAngles] = useState(["Front", "L30", "R30", "L45"]);
   const [selectedBackground, setSelectedBackground] = useState(SAMPLE_BACKGROUNDS[0]);
   const [selectedDirection, setSelectedDirection] = useState(SAMPLE_DIRECTIONS[0]);
@@ -82,10 +103,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
 
-  // Dynamically load validated styling options and capability packs from backend
+  // Dynamically load validated styling options, capability packs, and product-aware poses from backend
   useEffect(() => {
     const charId = selectedCharacter.code || selectedCharacter.id || "EE-F-002";
-    
+    const productType = getProductTypeFromCategory(selectedProduct?.category || "");
+
     // 1. Styling Options
     api.get(`/api/v1/characters/${charId}/styling-options`)
       .then((data) => {
@@ -115,7 +137,23 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
       .catch(() => {
         // Graceful fallback
       });
-  }, [selectedCharacter]);
+
+    // 3. Product-Aware Poses
+    api.get(`/api/v1/characters/${charId}/poses?product_type=${productType}`)
+      .then((data) => {
+        if (data && Array.isArray(data.poses) && data.poses.length > 0) {
+          setAvailablePoses(data.poses);
+          const defaultPose = data.poses.find((p) => p.is_default) || data.poses[0];
+          setSelectedPose((prev) => {
+            const match = data.poses.find((p) => p.id === prev?.id);
+            return match || defaultPose;
+          });
+        }
+      })
+      .catch(() => {
+        // Graceful fallback
+      });
+  }, [selectedCharacter, selectedProduct]);
 
   const toggleAngle = (angle) => {
     if (selectedAngles.includes(angle)) {
@@ -137,6 +175,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           makeup: selectedMakeup,
           expression: selectedExpression,
         },
+        pose: selectedPose?.id || "standing_editorial",
         angles: selectedAngles,
         background: selectedBackground,
         direction: selectedDirection,
@@ -272,7 +311,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           </div>
         </div>
 
-        {/* Step 4: POSE / ANGLE */}
+        {/* Step 4: POSE & CAMERA ANGLES (Product-Aware) */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 backdrop-blur-md hover:border-zinc-700/80 transition-all">
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-4">
             <div className="flex items-center gap-4">
@@ -281,9 +320,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               </div>
               <div>
                 <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
-                  POSE / ANGLE
+                  POSE & CAMERA ANGLES
                 </span>
-                <span className="text-xs text-zinc-400">Selected {selectedAngles.length} Angle Slots</span>
+                <span className="text-xs text-zinc-400">
+                  Product-Aware Pose Resolver • {selectedAngles.length} Angle Slots
+                </span>
               </div>
             </div>
 
@@ -292,26 +333,43 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-xs font-bold text-zinc-200 hover:text-purple-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
             >
               <Camera className="w-4 h-4 text-purple-400" />
-              <span>Add Angle &gt;</span>
+              <span>Configure Pose & Angles &gt;</span>
             </button>
           </div>
 
           {/* Active Visual Chips */}
-          <div className="flex flex-wrap items-center gap-2.5 pl-12">
-            {selectedAngles.map((ang) => (
-              <div
-                key={ang}
-                className="px-4 py-2 bg-zinc-950 border border-purple-500/40 text-purple-300 font-mono text-xs font-bold rounded-xl flex items-center gap-2 shadow-sm"
-              >
-                <span>[ {ang} ]</span>
-                <button
-                  onClick={() => toggleAngle(ang)}
-                  className="hover:text-red-400 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+          <div className="space-y-3 pl-12">
+            {/* Active Pose Chip */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="px-3.5 py-1.5 bg-zinc-950 border border-purple-500/40 text-purple-300 text-xs font-medium rounded-xl flex items-center gap-2 shadow-sm">
+                <Compass className="w-3.5 h-3.5 text-purple-400" />
+                <span>Pose: <strong className="text-white font-bold">{selectedPose?.label || selectedPose?.name || "Standing Editorial"}</strong></span>
+                {selectedPose?.recommended_framing && (
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded border border-purple-500/30">
+                    {selectedPose.recommended_framing}
+                  </span>
+                )}
               </div>
-            ))}
+            </div>
+
+            {/* Active Angle Slots */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-mono text-zinc-500 mr-1">Angles:</span>
+              {selectedAngles.map((ang) => (
+                <div
+                  key={ang}
+                  className="px-3 py-1 bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono text-xs font-bold rounded-lg flex items-center gap-2 shadow-sm"
+                >
+                  <span>[ {ang} ]</span>
+                  <button
+                    onClick={() => toggleAngle(ang)}
+                    className="hover:text-red-400 transition-colors"
+                  >
+                    <X className="w-3 h-3 text-zinc-500 hover:text-red-400" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -718,54 +776,127 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
         </div>
       )}
 
-      {/* Angle Selector Drawer */}
+      {/* Pose & Angle Selector Drawer */}
       {activeDrawer === "angle" && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-end">
-          <div className="w-full max-w-md bg-zinc-900 border-l border-zinc-800 h-full p-6 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right">
-            <div className="space-y-6">
+          <div className="w-full max-w-lg bg-zinc-900 border-l border-zinc-800 h-full p-6 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right">
+            <div className="space-y-5">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Camera className="w-5 h-5 text-purple-400" />
-                  <span>Select Camera Angles</span>
-                </h3>
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                    <Compass className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Pose & Camera Angles</h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Product: <strong className="text-purple-300 font-bold">{selectedProduct?.name}</strong> ({getProductTypeFromCategory(selectedProduct?.category)})
+                    </p>
+                  </div>
+                </div>
                 <button
                   onClick={() => setActiveDrawer(null)}
-                  className="text-zinc-400 hover:text-white p-1"
+                  className="text-zinc-400 hover:text-white p-1 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <p className="text-xs text-zinc-400">
-                Click to toggle angle slots for this production run.
-              </p>
-
-              <div className="grid grid-cols-2 gap-3">
-                {["Front", "L30", "R30", "L45", "R45", "L90", "R90", "Back"].map((ang) => {
-                  const active = selectedAngles.includes(ang);
-                  return (
-                    <button
-                      key={ang}
-                      onClick={() => toggleAngle(ang)}
-                      className={`p-3.5 text-xs font-mono font-bold rounded-xl border transition-all flex items-center justify-between ${
-                        active
-                          ? "bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-md"
-                          : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700"
-                      }`}
-                    >
-                      <span>[ {ang} ]</span>
-                      {active && <Check className="w-4 h-4 text-purple-400" />}
-                    </button>
-                  );
-                })}
+              {/* Subtabs: Poses | Camera Angles */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                <button
+                  onClick={() => setPoseDrawerTab("pose")}
+                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    poseDrawerTab === "pose"
+                      ? "bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Product Poses ({availablePoses.length})</span>
+                </button>
+                <button
+                  onClick={() => setPoseDrawerTab("angles")}
+                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    poseDrawerTab === "angles"
+                      ? "bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>Camera Angles ({selectedAngles.length})</span>
+                </button>
               </div>
+
+              {/* Tab 1: Product-Aware Poses */}
+              {poseDrawerTab === "pose" && (
+                <div className="space-y-2.5 overflow-y-auto max-h-[55vh] pr-1">
+                  <p className="text-[11px] text-zinc-400">
+                    Poses compatible with {selectedCharacter.display_name}&apos;s active capability pack for this product:
+                  </p>
+                  {availablePoses.map((p) => {
+                    const isSelected = selectedPose?.id === p.id;
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => setSelectedPose(p)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                          isSelected
+                            ? "bg-purple-500/15 border-purple-500/60 text-white shadow-md"
+                            : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-white">{p.label || p.name}</h4>
+                            {p.recommended_framing && (
+                              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-zinc-800 text-zinc-300 rounded border border-zinc-700">
+                                {p.recommended_framing}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-zinc-400 mt-0.5">{p.description || p.desc}</p>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-purple-400 shrink-0" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Tab 2: Camera Angles */}
+              {poseDrawerTab === "angles" && (
+                <div className="space-y-4">
+                  <p className="text-xs text-zinc-400">
+                    Toggle multi-angle camera views for parallel generation:
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {["Front", "L30", "R30", "L45", "R45", "L90", "R90", "Back"].map((ang) => {
+                      const active = selectedAngles.includes(ang);
+                      return (
+                        <button
+                          key={ang}
+                          onClick={() => toggleAngle(ang)}
+                          className={`p-3.5 text-xs font-mono font-bold rounded-xl border transition-all flex items-center justify-between ${
+                            active
+                              ? "bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-md"
+                              : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700"
+                          }`}
+                        >
+                          <span>[ {ang} ]</span>
+                          {active && <Check className="w-4 h-4 text-purple-400" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
               onClick={() => setActiveDrawer(null)}
-              className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-3 rounded-xl transition-all shadow-lg"
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs py-3 rounded-xl transition-all shadow-md cursor-pointer mt-4"
             >
-              Done Selecting Angles
+              Done Configuring
             </button>
           </div>
         </div>
