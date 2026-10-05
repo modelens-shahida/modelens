@@ -15,6 +15,7 @@ from app.models.db import (
 )
 from app.middleware.auth import get_current_user
 from app.api_docs import error_responses
+from app.services.production_presets import ENVIRONMENT_PRESETS
 
 router = APIRouter(prefix="/api/v1", tags=["Generation API & WebSockets"])
 
@@ -293,17 +294,7 @@ async def get_environments(
     db: AsyncSession = Depends(get_db),
 ):
     """Get environment presets for Create Production background picker."""
-    # Return structured environment presets
-    environments = [
-        {"env_id": "ENV-STU-0001", "display_name": "White Seamless", "family": "STUDIO", "preview_url": None},
-        {"env_id": "ENV-STU-0002", "display_name": "Warm Gray Studio", "family": "STUDIO", "preview_url": None},
-        {"env_id": "ENV-STU-0003", "display_name": "Cream Studio", "family": "STUDIO", "preview_url": None},
-        {"env_id": "ENV-STU-0004", "display_name": "Black Studio", "family": "STUDIO", "preview_url": None},
-        {"env_id": "ENV-INT-0001", "display_name": "Minimal Interior", "family": "INTERIOR", "preview_url": None},
-        {"env_id": "ENV-INT-0002", "display_name": "Luxury Hotel", "family": "INTERIOR", "preview_url": None},
-        {"env_id": "ENV-BCH-0001", "display_name": "Beach Golden Hour", "family": "BEACH", "preview_url": None},
-        {"env_id": "ENV-URB-0001", "display_name": "City Street", "family": "URBAN", "preview_url": None},
-    ]
+    environments = [dict(env) for env in ENVIRONMENT_PRESETS]
 
     if family:
         environments = [e for e in environments if e["family"] == family]

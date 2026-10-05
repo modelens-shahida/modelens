@@ -103,6 +103,11 @@ ERROR_RESPONSES: dict[int, dict[str, Any]] = {
         "content": _example("Too many requests. Please try again later."),
         "headers": _RATE_LIMIT_HEADERS,
     },
+    503: {
+        "model": ErrorResponse,
+        "description": "The request could not be queued right now; nothing was charged (or the charge was refunded).",
+        "content": _example("We couldn't start this production. Your credits have been refunded; please try again."),
+    },
     500: {
         "model": ErrorResponse,
         "description": "The endpoint failed while calling a dependency (raised explicitly by this endpoint).",
@@ -279,6 +284,8 @@ TAGS_METADATA = [
     {"name": "Capability Packs", "description": "Admin only. Capability pack records (footwear, bags, motion, ...) layered on a Character Version: adapters, workflow routes, validation results, compatibility and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
     {"name": "Poses", "description": "Customer-facing poses per character and product type (garment, shoes, bags, ...), offered only when the character's capability pack for that product type is in PRODUCTION."},
     {"name": "Pose Library", "description": "Admin only. Pose catalog with technical refs (pose adapters, geometry presets, control references, workflow params), the product type → pose mapping, defaults and archiving."},
+    {"name": "Productions", "description": "Customer production dispatch: a request resolved server-side into a Runtime Character Profile, charged once in the brand credit ledger and queued; status and outputs of your own productions."},
+    {"name": "Production Admin", "description": "Admin only. Resolved Runtime Character Profile snapshots (adapters by layer, workflow and provider route, seed), job status and ledger entries of productions."},
     {"name": "Fluid Studio", "description": "Fluid Studio lighting presets and editorial generation jobs."},
     {"name": "ModeLens Fluid Studio", "description": "Interactive editorial sessions with non-destructive layers, and private brand models."},
     {"name": "Sketch Studio", "description": "Sketch-to-image and sketch-to-product generation jobs."},

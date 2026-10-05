@@ -228,7 +228,8 @@ class GenerationJobManager:
         """Save output image and register as Asset linked to job."""
         from app.models.db import Asset
 
-        filename = f"generation_{job.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+        # Unique per image: several outputs of one job can finish in the same second.
+        filename = f"generation_{job.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.png"
         storage_path = storage_service.save_file_bytes(filename, image_bytes)
 
         asset = Asset(

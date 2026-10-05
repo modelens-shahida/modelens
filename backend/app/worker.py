@@ -896,6 +896,24 @@ def process_workflow_job(self, job_id: int):
     loop.run_until_complete(_process_workflow_job_async(job_id, self.request.retries, self.max_retries))
 
 
+@celery_app.task(name="app.worker.process_production_job", bind=True, max_retries=0)
+def process_production_job(self, job_id: int):
+    """Production Dispatch: generate from the stored Runtime Character Profile.
+    No automatic retry: credits are finalized or refunded exactly once."""
+    from app.services.production_dispatch import run_production
+
+    async def _run():
+        async with async_session_maker() as db:
+            await run_production(db, job_id)
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run())
+
+
 def is_safe_url(url: str) -> bool:
     try:
         parsed = urlparse(url)

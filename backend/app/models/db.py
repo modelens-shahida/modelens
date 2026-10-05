@@ -1758,6 +1758,35 @@ class PoseProductType(Base):
     sort_order = Column(Integer, nullable=False, default=0)
 
 
+# ========================== Production Dispatch ==================
+# A customer production: the request, resolved server-side into a Runtime
+# Character Profile and queued as an ``ai_jobs`` row (job_type production).
+# ``runtime_profile`` is the admin-only snapshot that makes every generation
+# reproducible; it is never stored in ai_jobs.inputs (visible to brand members).
+
+class Production(Base):
+    __tablename__ = "productions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_production_idempotency_key"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    production_id = Column(String(40), unique=True, nullable=False)  # prd_<hex>
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id", ondelete="CASCADE"), nullable=False, index=True)
+    ai_job_id = Column(Integer, ForeignKey("ai_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    idempotency_key = Column(String(255), nullable=True)
+    request_hash = Column(String(64), nullable=False)
+    character_id = Column(String(50), nullable=False)
+    character_version = Column(String(10), nullable=False)
+    product_type = Column(String(30), nullable=False)
+    request = Column(JSONB, nullable=False)  # normalized customer request
+    runtime_profile = Column(JSONB, nullable=False)  # admin/runtime only
+    estimated_credits = Column(Integer, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 # ========================== P3 Rights Registry ===================
 
 class RightsRegistry(Base):
