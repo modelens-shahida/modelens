@@ -125,6 +125,9 @@ class _Editable(BaseModel):
     compatible_appearance_options: Optional[list[str]] = Field(
         None, description="Internal keys of appearance options this pack works with.",
         examples=[["EE-F-002_HAIR_CANONICAL_V1"]])
+    compatible_poses: Optional[list[str]] = Field(
+        None, description="Pose ids (see /api/v1/admin/poses) this pack allows. Empty or unset allows every pose "
+                          "mapped to the pack's product type.", examples=[["foot_forward", "shoe_detail"]])
     qa_rules: Optional[dict[str, Any]] = Field(
         None, description="QA and fallback rules, e.g. {min_identity_score, fallback_pack_type}.")
 
@@ -178,6 +181,7 @@ class AdminPack(BaseModel):
     validation: Optional[dict[str, Any]]
     supported_product_types: Optional[list[str]]
     compatible_appearance_options: Optional[list[str]]
+    compatible_poses: Optional[list[str]] = None
     qa_rules: Optional[dict[str, Any]]
     adapters: list[LinkedAdapter] = Field(default_factory=list)
     created_by: Optional[str]
@@ -201,6 +205,10 @@ class ProductTypeMapping(BaseModel):
     label: str = Field(..., examples=["Footwear"])
     is_default: bool
     sort_order: int
+    required_framings: Optional[list[str]] = Field(
+        None, description="Framings shots and poses must use for this product type; null means no restriction.",
+        examples=[["FULL_BODY", "DETAIL"]])
+    framing_rule_code: Optional[str] = Field(None, examples=["FOOTWEAR_REQUIRES_VISIBLE_FEET"])
 
 
 class ProductTypeMappingList(BaseModel):

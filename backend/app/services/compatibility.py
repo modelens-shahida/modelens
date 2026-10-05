@@ -1,6 +1,11 @@
 from typing import Optional
 from dataclasses import dataclass, field
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.db import CapabilityProductType
+
 
 @dataclass
 class CompatibilityResult:
@@ -10,21 +15,20 @@ class CompatibilityResult:
     blocking_reasons: list = field(default_factory=list)
 
 
-# Product type rules
-INCOMPATIBLE_RULES = {
-    "FOOTWEAR": {
-        "required_framings": ["FULL_BODY", "DETAIL"],
-        "message": "FOOTWEAR_REQUIRES_VISIBLE_FEET",
-    },
-    "EYEWEAR": {
-        "required_framings": ["CLOSE_UP", "BUST", "UPPER_BODY", "PORTRAIT"],
-        "message": "EYEWEAR_REQUIRES_FACE_VISIBILITY",
-    },
-    "JEWELRY": {
-        "required_framings": ["CLOSE_UP", "BUST", "DETAIL", "UPPER_BODY"],
-        "message": "JEWELRY_REQUIRES_CLOSE_FRAMING",
-    },
-}
+async def load_framing_rules(db: AsyncSession) -> dict:
+    """Product type framing rules, by pack type (e.g. FOOTWEAR), from
+    ``capability_product_types.required_framings``. The rules are data: the
+    same rows drive angle-shot checks and the Pose Resolver."""
+    rows = (await db.execute(select(CapabilityProductType).where(
+        CapabilityProductType.required_framings.is_not(None)))).scalars().all()
+    return {
+        row.pack_type.upper(): {
+            "required_framings": [f.upper() for f in row.required_framings],
+            "message": row.framing_rule_code or f"{row.pack_type.upper()}_FRAMING_NOT_SUPPORTED",
+        }
+        for row in rows if row.required_framings
+    }
+
 
 STIFF_FABRIC_INCOMPATIBLE_POSES = [
     "SEATED", "LEANING", "CROUCHED"
@@ -47,10 +51,13 @@ def validate_compatibility(
     shot_age_groups: Optional[list] = None,
     shot_gender_rules: Optional[list] = None,
     model_gender: Optional[str] = None,
+    framing_rules: Optional[dict] = None,
 ) -> CompatibilityResult:
     """
     Validates compatibility between an angle shot preset and product/model details.
     Returns a CompatibilityResult with score, warnings, and blocking reasons.
+    ``framing_rules`` comes from ``load_framing_rules``; without it no
+    product type framing rule is applied.
     """
     warnings = []
     blocking_reasons = []
@@ -75,8 +82,8 @@ def validate_compatibility(
             blocking_reasons.append("ANGLE_NOT_SUPPORTED_FOR_GENDER")
 
     # Product type framing rules
-    if product_type.upper() in INCOMPATIBLE_RULES:
-        rule = INCOMPATIBLE_RULES[product_type.upper()]
+    rule = (framing_rules or {}).get(product_type.upper())
+    if rule:
         if angle_shot_framing.upper() not in rule["required_framings"]:
             blocking_reasons.append(rule["message"])
 

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, User, TaxonomyItem, WorkflowNodeMap
 from app.middleware.auth import get_current_user
-from app.services.compatibility import validate_compatibility
+from app.services.compatibility import load_framing_rules, validate_compatibility
 from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["Taxonomy Resolver"])
@@ -120,6 +120,7 @@ async def resolve_taxonomy(
             angle_shot_category=pose.get("family", ""),
             product_type=payload.product_type,
             model_age_group=payload.model_age_group,
+            framing_rules=await load_framing_rules(db),
         )
         warnings.extend(compat_result.warnings)
         blocking_reasons.extend(compat_result.blocking_reasons)

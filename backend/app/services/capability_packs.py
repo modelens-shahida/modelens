@@ -28,6 +28,7 @@ from app.models.db import (
     CapabilityPackAdapter,
     CapabilityProductType,
     ModelArtifact,
+    PoseDefinition,
 )
 from app.services import character_versions as version_service
 from app.services.appearance_options import (
@@ -54,10 +55,19 @@ DEFAULT_PRODUCT_TYPES = (
     {"product_type": "jewelry", "pack_type": "JEWELRY", "label": "Jewelry", "sort_order": 60},
 )
 
+# Seed for the framing rules on capability_product_types (moved out of
+# services/compatibility.py), by pack type.
+DEFAULT_FRAMING_RULES = {
+    "FOOTWEAR": (["FULL_BODY", "DETAIL"], "FOOTWEAR_REQUIRES_VISIBLE_FEET"),
+    "EYEWEAR": (["CLOSE_UP", "BUST", "UPPER_BODY", "PORTRAIT"], "EYEWEAR_REQUIRES_FACE_VISIBILITY"),
+    "JEWELRY": (["CLOSE_UP", "BUST", "DETAIL", "UPPER_BODY"], "JEWELRY_REQUIRES_CLOSE_FRAMING"),
+}
+
 VALIDATION_CHECKS = ("identity", "face", "body", "product")
 EDITABLE_FIELDS = (
     "label", "description", "thumbnail_url", "sort_order", "workflow_route", "workflow_version",
-    "required_reference_assets", "supported_product_types", "compatible_appearance_options", "qa_rules",
+    "required_reference_assets", "supported_product_types", "compatible_appearance_options", "compatible_poses",
+    "qa_rules",
 )
 FROZEN = (PRODUCTION, ARCHIVED)
 
@@ -98,6 +108,7 @@ class ResolvedCapabilityPack:
     required_reference_assets: list = field(default_factory=list)
     supported_product_types: list = field(default_factory=list)
     compatible_appearance_options: list = field(default_factory=list)
+    compatible_poses: list = field(default_factory=list)
     qa_rules: dict = field(default_factory=dict)
     validation: dict = field(default_factory=dict)
     adapters: tuple[ResolvedAdapter, ...] = ()
@@ -145,6 +156,13 @@ async def _check_compatibility(db: AsyncSession, character_id: str, fields: dict
         missing = sorted(set(option_keys) - set(found))
         if missing:
             raise CapabilityInvalid(f"Appearance options {missing} not found for {character_id}.")
+    pose_ids = fields.get("compatible_poses")
+    if pose_ids:
+        found = (await db.execute(select(PoseDefinition.pose_id).where(
+            PoseDefinition.pose_id.in_(pose_ids)))).scalars().all()
+        missing = sorted(set(pose_ids) - set(found))
+        if missing:
+            raise CapabilityInvalid(f"Poses {missing} not found.")
 
 
 def _validation_passed(pack: CapabilityPack) -> bool:
@@ -248,6 +266,7 @@ async def resolve_production_pack(db: AsyncSession, character_id: str,
         required_reference_assets=list(pack.required_reference_assets or []),
         supported_product_types=list(pack.supported_product_types or []),
         compatible_appearance_options=list(pack.compatible_appearance_options or []),
+        compatible_poses=list(pack.compatible_poses or []),
         qa_rules=dict(pack.qa_rules or {}), validation=dict(pack.validation or {}),
         adapters=tuple(
             ResolvedAdapter(adapter_id=a.model_id, layer=a.layer, kind=a.kind, storage_path=a.storage_path,
@@ -397,11 +416,17 @@ async def change_status(db: AsyncSession, key: str, new_status: str, changed_by:
 
 
 async def seed_product_types(db: AsyncSession) -> list[CapabilityProductType]:
-    """Idempotently ensure the default product type mapping exists. Existing
-    rows are never changed. No pack is seeded: none has been validated."""
+    """Idempotently ensure the default product type mapping and its framing
+    rules exist. Existing rows are never changed, except that a missing
+    framing rule is filled in. No pack is seeded: none has been validated."""
     for item in DEFAULT_PRODUCT_TYPES:
-        if not await _first(db, select(CapabilityProductType).where(
-                CapabilityProductType.product_type == item["product_type"])):
-            db.add(CapabilityProductType(is_default=False, **item))
+        row = await _first(db, select(CapabilityProductType).where(
+            CapabilityProductType.product_type == item["product_type"]))
+        if not row:
+            row = CapabilityProductType(is_default=False, **item)
+            db.add(row)
+        rule = DEFAULT_FRAMING_RULES.get(row.pack_type)
+        if rule and row.required_framings is None:
+            row.required_framings, row.framing_rule_code = list(rule[0]), rule[1]
     await db.commit()
     return await list_product_types(db)

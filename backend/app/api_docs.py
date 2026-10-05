@@ -277,6 +277,8 @@ TAGS_METADATA = [
     {"name": "Appearance Options", "description": "Admin only. Appearance option records, validation results, adapters and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
     {"name": "Capabilities", "description": "Customer-facing capabilities: the product types (garment, shoes, bags, ...) a character can be used with, from capability packs in PRODUCTION for her current locked version."},
     {"name": "Capability Packs", "description": "Admin only. Capability pack records (footwear, bags, motion, ...) layered on a Character Version: adapters, workflow routes, validation results, compatibility and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
+    {"name": "Poses", "description": "Customer-facing poses per character and product type (garment, shoes, bags, ...), offered only when the character's capability pack for that product type is in PRODUCTION."},
+    {"name": "Pose Library", "description": "Admin only. Pose catalog with technical refs (pose adapters, geometry presets, control references, workflow params), the product type → pose mapping, defaults and archiving."},
     {"name": "Fluid Studio", "description": "Fluid Studio lighting presets and editorial generation jobs."},
     {"name": "ModeLens Fluid Studio", "description": "Interactive editorial sessions with non-destructive layers, and private brand models."},
     {"name": "Sketch Studio", "description": "Sketch-to-image and sketch-to-product generation jobs."},

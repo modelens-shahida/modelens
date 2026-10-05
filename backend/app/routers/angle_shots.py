@@ -11,7 +11,7 @@ from jsonschema import validate, ValidationError
 
 from app.models.db import get_db, User, AngleShot, AngleShotCompatibility, AngleShotVersion
 from app.middleware.auth import get_current_user
-from app.services.compatibility import validate_compatibility
+from app.services.compatibility import load_framing_rules, validate_compatibility
 from app.api_docs import error_responses, limit_query, page_query
 
 router = APIRouter(prefix="/api/v1/angle-shots", tags=["Angle Shots"])
@@ -730,6 +730,7 @@ async def check_compatibility(
         fabric_type=payload.fabric_type,
         model_age_group=payload.model_age_group,
         has_back_reference=payload.has_back_reference,
+        framing_rules=await load_framing_rules(db),
     )
 
     return {

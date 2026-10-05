@@ -1669,6 +1669,7 @@ class CapabilityPack(Base):
     validation = Column(JSONB, nullable=True)  # {identity, face, body, product: PASS/FAIL}
     supported_product_types = Column(JSONB, nullable=True)  # customer product types, e.g. ["shoes"]
     compatible_appearance_options = Column(JSONB, nullable=True)  # appearance option internal keys
+    compatible_poses = Column(JSONB, nullable=True)  # pose ids; empty/null = every pose mapped to the product type
     qa_rules = Column(JSONB, nullable=True)  # QA and fallback rules
     created_by = Column(String(100), nullable=True)
     status_changed_by = Column(String(100), nullable=True)
@@ -1700,6 +1701,59 @@ class CapabilityProductType(Base):
     product_type = Column(String(30), unique=True, nullable=False)  # shoes
     pack_type = Column(String(30), nullable=False)  # FOOTWEAR
     label = Column(String(100), nullable=False)  # Footwear
+    is_default = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    # Framing rule (formerly hard-coded in services/compatibility.py): the
+    # framings a shot or pose must use for this product type, e.g. FOOTWEAR
+    # needs FULL_BODY or DETAIL. Null = no restriction.
+    required_framings = Column(JSONB, nullable=True)
+    framing_rule_code = Column(String(60), nullable=True)  # FOOTWEAR_REQUIRES_VISIBLE_FEET
+
+
+# ========================== Pose Resolver ========================
+# Poses offered per product type, layered on top of the character. A pose
+# never modifies the Character Version. Technical refs are admin/runtime only.
+
+class PoseDefinition(Base):
+    __tablename__ = "pose_definitions"
+
+    id = Column(Integer, primary_key=True)
+    pose_id = Column(String(60), unique=True, nullable=False)  # walking
+    label = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(20), nullable=False)  # static / motion / detail / portrait
+    thumbnail_url = Column(String(1000), nullable=True)
+    recommended_framing = Column(String(20), nullable=False)  # full_body / three_quarter / half_body / close_up / detail
+    sort_order = Column(Integer, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="ACTIVE")  # ACTIVE / ARCHIVED
+
+    # Admin/runtime-only technical refs; never returned to customers.
+    pose_adapter_id = Column(String(50), nullable=True)  # model_artifacts.model_id with layer POSE
+    geometry_preset_id = Column(String(50), nullable=True)  # pose_geometry_presets.preset_id
+    control_reference = Column(JSONB, nullable=True)  # {type: openpose/depth, asset_url}
+    workflow_params = Column(JSONB, nullable=True)  # e.g. {controlnet_strength, denoise}
+    created_by = Column(String(100), nullable=True)
+    updated_by = Column(String(100), nullable=True)
+    archived_by = Column(String(100), nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PoseProductType(Base):
+    """Which poses a customer product type offers, in what order, and its default."""
+    __tablename__ = "pose_product_types"
+    __table_args__ = (
+        UniqueConstraint("pose_definition_id", "product_type", name="uq_pose_product_type"),
+        # At most one default pose per product type.
+        Index("uq_pose_product_type_default", "product_type", unique=True,
+              postgresql_where=sa.text("is_default"), sqlite_where=sa.text("is_default = 1")),
+    )
+
+    id = Column(Integer, primary_key=True)
+    pose_definition_id = Column(Integer, ForeignKey("pose_definitions.id", ondelete="CASCADE"), nullable=False,
+                                index=True)
+    product_type = Column(String(30), nullable=False, index=True)  # capability_product_types.product_type
     is_default = Column(Boolean, nullable=False, default=False)
     sort_order = Column(Integer, nullable=False, default=0)
 
