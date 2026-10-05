@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Loader2, CheckCircle2, Clock, Sparkles, Layers, Image as ImageIcon, AlertCircle, ArrowRight, Zap, RefreshCw } from "lucide-react";
 import { getBatchJobStatus } from "@/lib/generationService";
+import { characterRegistryApi } from "@/lib/characterRegistryApi";
 
 export default function GenerationProgressMonitor({
   jobId = "JOB-SPRING-2027-001",
@@ -81,6 +82,36 @@ export default function GenerationProgressMonitor({
     pollInterval = setInterval(async () => {
       if (!isSubscribed) return;
       try {
+        // If it's a production dispatch ID, poll the productions endpoint
+        if (jobId && (jobId.startsWith("PROD-") || jobId.startsWith("prod_") || jobId.length > 20)) {
+          try {
+            const prodRes = await characterRegistryApi.getProduction(jobId);
+            if (prodRes && isSubscribed) {
+              if (prodRes.status) {
+                setJobStatus(prodRes.status === "QUEUED" || prodRes.status === "queued" ? "queued" : prodRes.status === "COMPLETED" || prodRes.status === "completed" ? "completed" : "generating");
+              }
+              if (prodRes.outputs && Array.isArray(prodRes.outputs)) {
+                setCompletedCount(prodRes.outputs.length);
+                if (prodRes.outputs.length > 0) {
+                  setTiles(prodRes.outputs.map((out, idx) => ({
+                    angle: out.angle || `ANGLE_${idx + 1}`,
+                    status: "completed",
+                    progress: 100,
+                    duration: "3.2s",
+                    preview_url: out.url || out.asset_url,
+                  })));
+                }
+              }
+              if (prodRes.status === "COMPLETED" || prodRes.status === "completed") {
+                if (onComplete) onComplete(prodRes);
+                return;
+              }
+            }
+          } catch (_) {
+            // fallback to getBatchJobStatus
+          }
+        }
+
         const res = await getBatchJobStatus(jobId);
         if (res && isSubscribed) {
           if (res.status) setJobStatus(res.status);
