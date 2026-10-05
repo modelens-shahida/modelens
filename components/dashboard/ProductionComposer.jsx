@@ -65,6 +65,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   // Step selections
   const [selectedProduct, setSelectedProduct] = useState(SAMPLE_PRODUCTS[0]);
   const [selectedCharacter, setSelectedCharacter] = useState(SAMPLE_CHARACTERS[0]);
+  const [supportedProductTypes, setSupportedProductTypes] = useState([]);
   const [hairOptions, setHairOptions] = useState(SAMPLE_HAIRSTYLES);
   const [makeupOptions, setMakeupOptions] = useState(SAMPLE_MAKEUP);
   const [expressionOptions, setExpressionOptions] = useState(SAMPLE_EXPRESSIONS);
@@ -81,9 +82,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
 
-  // Dynamically load validated styling options from backend
+  // Dynamically load validated styling options and capability packs from backend
   useEffect(() => {
     const charId = selectedCharacter.code || selectedCharacter.id || "EE-F-002";
+    
+    // 1. Styling Options
     api.get(`/api/v1/characters/${charId}/styling-options`)
       .then((data) => {
         if (data && data.categories) {
@@ -100,6 +103,17 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
       })
       .catch(() => {
         // Graceful fallback to rich studio presets
+      });
+
+    // 2. Capability Packs / Supported Product Types
+    api.get(`/api/v1/characters/${charId}/capabilities`)
+      .then((data) => {
+        if (data && Array.isArray(data.product_types)) {
+          setSupportedProductTypes(data.product_types);
+        }
+      })
+      .catch(() => {
+        // Graceful fallback
       });
   }, [selectedCharacter]);
 
