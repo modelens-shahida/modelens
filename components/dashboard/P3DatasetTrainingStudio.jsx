@@ -135,10 +135,11 @@ export default function P3DatasetTrainingStudio({ characterId = "EE-F-002" }) {
   const handlePromoteModel = async (modelId, newStatus) => {
     try {
       await p3RegistryApi.promoteModel(modelId, newStatus);
-      toast.success(`Model ${modelId} promoted to ${newStatus}`);
+      toast.success(`Model ${modelId} updated to ${newStatus}`);
       fetchModels();
     } catch (err) {
-      toast.error("Failed to promote model stage");
+      const msg = err.response?.data?.detail || err.detail || err.message || "Failed to update model stage (Admin permissions required)";
+      toast.error(msg);
     }
   };
 
@@ -372,9 +373,15 @@ export default function P3DatasetTrainingStudio({ characterId = "EE-F-002" }) {
                       onChange={(e) => handlePromoteModel(m.model_id, e.target.value)}
                       className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-purple-300 font-mono outline-none"
                     >
-                      {MODEL_STAGES.map((s) => (
-                        <option key={s.code} value={s.code}>{s.label} ({s.code})</option>
-                      ))}
+                      {MODEL_STAGES.map((s) => {
+                        const isAdapter = Boolean(m.adapter_type || m.layer_type);
+                        const disabled = isAdapter && s.code === "PRODUCTION";
+                        return (
+                          <option key={s.code} value={s.code} disabled={disabled}>
+                            {s.label} ({s.code}){disabled ? " - Requires PASS run promotion" : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
