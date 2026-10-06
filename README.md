@@ -26,6 +26,8 @@ ModelLens is an enterprise-grade, AI-powered visual catalog and model generation
 * [7. Production VM Deployment](#7-production-vm-deployment)
 * [8. Testing Suite](#8-testing-suite)
 * [9. Monitoring & Observability](#9-monitoring--observability)
+* [10. Email Provider Setup](#10-email-provider-setup)
+* [11. SSO Login Rate Limiting](#11-sso-login-rate-limiting)
 
 ---
 
@@ -286,3 +288,30 @@ Run the email integration tests to verify your setup (no real emails are sent du
 python -m pytest tests/test_low_credit_email.py -v
 ```
 
+---
+
+## 11. SSO Login Rate Limiting
+
+`POST /api/v1/auth/sso-login` is limited **per client IP** (checked before the Google/GitHub credential is verified) and **per account** (the provider-verified email, checked before the user is looked up or a session is issued). Either limit answers `429` with a `Retry-After` header and the same body, `{"detail": "Too many sign-in attempts. Please wait and try again."}`, so the response never reveals whether an account exists.
+
+Counters are kept in Redis (`REDIS_URL`) so the limits hold across API workers. If Redis is unreachable, each process falls back to an in-memory window; local runs and tests need no setup.
+
+### Environment Variables
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `SSO_RATE_LIMIT_REQUESTS` | SSO login requests allowed per client IP per window | `10` |
+| `SSO_RATE_LIMIT_WINDOW_SECONDS` | Per-IP window, in seconds | `60` |
+| `SSO_RATE_LIMIT_ACCOUNT_REQUESTS` | SSO login requests allowed per account per window | `5` |
+| `SSO_RATE_LIMIT_ACCOUNT_WINDOW_SECONDS` | Per-account window, in seconds | `300` |
+| `SSO_RATE_LIMIT_TRUSTED_PROXIES` | Comma-separated IPs/CIDRs of reverse proxies allowed to set `X-Forwarded-For` | empty |
+
+### Behind a proxy
+
+With `SSO_RATE_LIMIT_TRUSTED_PROXIES` empty, `X-Forwarded-For` is ignored and the client IP is the TCP peer, so clients cannot spoof their IP. When the API sits behind a proxy (the Next.js `/api/v1` rewrite, a load balancer or ingress), list that proxy's address(es) here, otherwise every user shares the proxy's IP and its per-IP limit:
+
+```bash
+SSO_RATE_LIMIT_TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
+```
+
+`X-Forwarded-For` is then read right to left, skipping trusted proxies; the first untrusted address is the client.

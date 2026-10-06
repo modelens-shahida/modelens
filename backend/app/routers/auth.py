@@ -19,7 +19,8 @@ from app.middleware.auth import (
     get_current_user,
 )
 from app.middleware.rate_limit import RateLimiter
-from app.api_docs import error_responses
+from app.middleware.sso_rate_limit import LIMITED_DETAIL, limit_sso_account, limit_sso_ip
+from app.api_docs import ERROR_RESPONSES, error_responses
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -208,16 +209,26 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post(
     "/sso-login",
+    dependencies=[Depends(limit_sso_ip)],
     summary="Log in with SSO",
     description=(
         "SSO login/registration. Verifies the provider credential server-side, then\n"
         "finds or creates the user for the provider-verified email and returns a JWT session.\n"
         "\n"
-        "No authentication required."
+        "No authentication required.\n"
+        "\n"
+        "Rate limited per client IP (`SSO_RATE_LIMIT_REQUESTS` per `SSO_RATE_LIMIT_WINDOW_SECONDS`,\n"
+        "default 10 per 60 s) and per provider-verified account (`SSO_RATE_LIMIT_ACCOUNT_REQUESTS` per\n"
+        "`SSO_RATE_LIMIT_ACCOUNT_WINDOW_SECONDS`, default 5 per 300 s). Both answer 429 with the same\n"
+        "body and a `Retry-After` header."
     ),
     response_description="A JWT session for the provider-verified user.",
     operation_id="sso_login",
-    responses=error_responses(401, 422),
+    responses={**error_responses(401, 422), 429: {
+        **ERROR_RESPONSES[429],
+        "description": "Too many SSO sign-in attempts from this IP or for this account. Wait `Retry-After` seconds.",
+        "content": {"application/json": {"example": {"detail": LIMITED_DETAIL}}},
+    }},
 )
 async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)):
     """
@@ -236,6 +247,9 @@ async def sso_login(payload: SSOLoginRequest, db: AsyncSession = Depends(get_db)
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="SSO verification failed",
         )
+
+    # Before the user lookup, so a 429 never tells whether the account exists.
+    await limit_sso_account(identity.email)
 
     query = select(User).where(User.email == identity.email)
     result = await db.execute(query)

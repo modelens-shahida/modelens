@@ -104,6 +104,17 @@ class Settings(BaseSettings):
     # APP_ENV=development/local; always refused when APP_ENV is production.
     SSO_MOCK_MODE: bool = Field(default=False)
 
+    # SSO login rate limits (POST /api/v1/auth/sso-login)
+    # Per client IP, checked before the provider credential is verified.
+    SSO_RATE_LIMIT_REQUESTS: int = Field(default=10, ge=1)
+    SSO_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60, ge=1)
+    # Per account (provider-verified email), checked before a session is issued.
+    SSO_RATE_LIMIT_ACCOUNT_REQUESTS: int = Field(default=5, ge=1)
+    SSO_RATE_LIMIT_ACCOUNT_WINDOW_SECONDS: int = Field(default=300, ge=1)
+    # Comma-separated proxy IPs/CIDRs whose X-Forwarded-For is trusted. Empty:
+    # X-Forwarded-For is ignored and the socket peer is the client IP.
+    SSO_RATE_LIMIT_TRUSTED_PROXIES: str = Field(default="")
+
     # Load configuration settings from the resolved .env file path
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,
