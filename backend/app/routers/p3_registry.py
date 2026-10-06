@@ -11,7 +11,7 @@ from app.models.db import (
     ExperimentRun, ExperimentMetric,
     ModelArtifact, RightsRegistry,
 )
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["P3 Registry"])
@@ -92,11 +92,11 @@ class RightsRegistryCreate(BaseModel):
     description="Create a new dataset.",
     response_description="The created dataset.",
     operation_id="create_dataset",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_dataset(
     payload: DatasetCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new dataset."""
@@ -148,12 +148,12 @@ async def list_datasets(
     description="Add item to dataset.",
     response_description="The created dataset item.",
     operation_id="add_dataset_item",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def add_dataset_item(
     dataset_id: str,
     payload: DatasetItemCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Add item to dataset."""
@@ -178,11 +178,11 @@ async def add_dataset_item(
     description="Freeze dataset for training.",
     response_description="The frozen dataset.",
     operation_id="freeze_dataset",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def freeze_dataset(
     dataset_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Freeze dataset for training."""
@@ -209,11 +209,11 @@ async def freeze_dataset(
     description="Create a training experiment run.",
     response_description="The created experiment run.",
     operation_id="create_experiment_run",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_experiment_run(
     payload: ExperimentRunCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a training experiment run."""
@@ -262,12 +262,12 @@ async def list_experiments(
     description="Log metric for experiment run.",
     response_description="The recorded metric.",
     operation_id="log_experiment_metric",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def log_experiment_metric(
     run_id: str,
     payload: ExperimentMetricCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Log metric for experiment run."""
@@ -286,11 +286,11 @@ async def log_experiment_metric(
     description="Register a model artifact.",
     response_description="The registered model artifact.",
     operation_id="create_model_artifact",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_model_artifact(
     payload: ModelArtifactCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Register a model artifact."""
@@ -336,27 +336,42 @@ async def list_models(
     ]}
 
 
+# Model lifecycle: EXPERIMENTAL -> VALIDATION -> APPROVED -> PRODUCTION ->
+# DEPRECATED -> RETIRED. No step can be skipped; VALIDATION may go back to
+# EXPERIMENTAL, and any artifact that is not yet RETIRED may be RETIRED.
+MODEL_STATUSES = ["EXPERIMENTAL", "VALIDATION", "APPROVED", "PRODUCTION", "DEPRECATED", "RETIRED"]
+MODEL_TRANSITIONS: Dict[str, set] = {
+    "EXPERIMENTAL": {"VALIDATION", "RETIRED"},
+    "VALIDATION": {"APPROVED", "EXPERIMENTAL", "RETIRED"},
+    "APPROVED": {"PRODUCTION", "RETIRED"},
+    "PRODUCTION": {"DEPRECATED", "RETIRED"},
+    "DEPRECATED": {"RETIRED"},
+    "RETIRED": set(),
+}
+
+
 @router.patch(
     "/models/{model_id}/promote",
     summary="Promote a model artifact",
-    description="Promote model through lifecycle stages.",
+    description="Move a model artifact one step along EXPERIMENTAL → VALIDATION → APPROVED → PRODUCTION → "
+                "DEPRECATED → RETIRED. No step can be skipped; VALIDATION may go back to EXPERIMENTAL, and any "
+                "artifact that is not yet RETIRED may be RETIRED. Other transitions return 409. Training-registry "
+                "adapters cannot be set to PRODUCTION here (409): they go live only through "
+                "POST /api/v1/admin/training/runs/{run_id}/promote, which requires a PASSED run. "
+                "Platform admins only.",
     response_description="The model artifact at its new lifecycle stage.",
     operation_id="promote_model_artifact",
-    responses=error_responses(400, 401, 404, 422),
+    responses=error_responses(400, 401, 403, 404, 409, 422),
 )
 async def promote_model(
     model_id: str,
     new_status: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Promote model through lifecycle stages."""
-    valid_statuses = [
-        "EXPERIMENTAL", "VALIDATION", "APPROVED",
-        "PRODUCTION", "DEPRECATED", "RETIRED"
-    ]
-    if new_status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Invalid status. Options: {valid_statuses}")
+    if new_status not in MODEL_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Options: {MODEL_STATUSES}")
 
     result = await db.execute(
         select(ModelArtifact).where(ModelArtifact.model_id == model_id)
@@ -364,6 +379,26 @@ async def promote_model(
     model = result.scalars().first()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found.")
+
+    current = model.status or "EXPERIMENTAL"
+    if new_status not in MODEL_TRANSITIONS.get(current, set()):
+        allowed = sorted(MODEL_TRANSITIONS.get(current, set()))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot move model {model_id} from {current} to {new_status}. Allowed: {allowed or 'none'}.",
+        )
+    # Training-registry adapters (they have a layer) go live only through a
+    # training run promotion, which needs a PASSED run and records who
+    # promoted it, and deprecates the adapter it replaces.
+    if new_status == "PRODUCTION" and model.layer is not None:
+        if model.run_id:
+            route = f"POST /api/v1/admin/training/runs/{model.run_id}/promote"
+        else:
+            route = "POST /api/v1/admin/training/runs/{run_id}/promote (this adapter has no training run)"
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Model {model_id} is a training adapter and cannot be set to PRODUCTION here. Use {route}.",
+        )
 
     model.status = new_status
     if new_status == "PRODUCTION":
@@ -382,11 +417,11 @@ async def promote_model(
     description="Create a rights registry record.",
     response_description="The created rights record.",
     operation_id="create_rights_record",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_rights_record(
     payload: RightsRegistryCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a rights registry record."""
