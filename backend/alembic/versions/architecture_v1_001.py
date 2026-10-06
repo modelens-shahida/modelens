@@ -9,6 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from app.migration_guard import create_table_if_absent
+
 revision = 'architecture_v1_001'
 down_revision = 'brand_sso_001'
 branch_labels = None
@@ -16,7 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    create_table_if_absent(
         'campaign_templates',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('name', sa.String(255), nullable=False, unique=True, index=True),
@@ -25,7 +27,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'editorial_assets',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('asset_id', sa.Integer(), sa.ForeignKey('assets.id', ondelete='CASCADE'), nullable=False, unique=True, index=True),

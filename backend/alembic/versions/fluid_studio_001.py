@@ -9,6 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from app.migration_guard import create_table_if_absent
+
 revision = 'fluid_studio_001'
 down_revision = 'angle_shots_001'
 branch_labels = None
@@ -17,7 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     # 1. brand_models
-    op.create_table(
+    create_table_if_absent(
         'brand_models',
         sa.Column('id', sa.String(50), primary_key=True),
         sa.Column('workspace_id', sa.String(100), nullable=False, index=True),
@@ -33,7 +35,7 @@ def upgrade() -> None:
     )
 
     # 2. fluid_sessions
-    op.create_table(
+    create_table_if_absent(
         'fluid_sessions',
         sa.Column('id', sa.String(50), primary_key=True),
         sa.Column('user_id', sa.Integer(), nullable=False, index=True),
@@ -54,7 +56,7 @@ def upgrade() -> None:
     )
 
     # 3. fluid_layers
-    op.create_table(
+    create_table_if_absent(
         'fluid_layers',
         sa.Column('id', sa.String(50), primary_key=True),
         sa.Column('session_id', sa.String(50), sa.ForeignKey('fluid_sessions.id', ondelete='CASCADE'), nullable=False, index=True),

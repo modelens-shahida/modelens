@@ -8,6 +8,8 @@ Create Date: 2026-07-28
 from alembic import op
 import sqlalchemy as sa
 
+from app.migration_guard import create_table_if_absent
+
 revision = 'sketch_studio_001'
 down_revision = 'move_studio_001'
 branch_labels = None
@@ -15,7 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    create_table_if_absent(
         'sketch_jobs',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -37,7 +39,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'sketch_job_references',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('job_id', sa.Integer(), sa.ForeignKey('sketch_jobs.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -47,7 +49,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'sketch_outputs',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('job_id', sa.Integer(), sa.ForeignKey('sketch_jobs.id', ondelete='CASCADE'), nullable=False, index=True),

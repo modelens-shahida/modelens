@@ -9,6 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from app.migration_guard import create_table_if_absent
+
 revision = 'ghost_studio_001'
 down_revision = 'architecture_v1_001'
 branch_labels = None
@@ -16,7 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    create_table_if_absent(
         'ghost_jobs',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -38,7 +40,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'ghost_job_assets',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('job_id', sa.Integer(), sa.ForeignKey('ghost_jobs.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -49,7 +51,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'ghost_outputs',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('job_id', sa.Integer(), sa.ForeignKey('ghost_jobs.id', ondelete='CASCADE'), nullable=False, index=True),

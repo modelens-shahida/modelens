@@ -9,6 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from app.migration_guard import create_table_if_absent
+
 revision = 'angle_shots_001'
 down_revision = 'catalog_studio_001'
 branch_labels = None
@@ -16,7 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    create_table_if_absent(
         'angle_shots',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('name', sa.String(255), nullable=False),
@@ -44,7 +46,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'angle_shot_compatibilities',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('angle_shot_id', sa.Integer(), sa.ForeignKey('angle_shots.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -54,7 +56,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'angle_shot_versions',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('angle_shot_id', sa.Integer(), sa.ForeignKey('angle_shots.id', ondelete='CASCADE'), nullable=False, index=True),
@@ -64,7 +66,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
-    op.create_table(
+    create_table_if_absent(
         'shoot_angle_shots',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('shoot_id', sa.Integer(), sa.ForeignKey('campaigns.id', ondelete='CASCADE'), nullable=True, index=True),

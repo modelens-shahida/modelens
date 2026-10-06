@@ -20,8 +20,8 @@ def upgrade():
         sa.Column('chain_hash', sa.String(64), nullable=True))
     op.add_column('credit_transactions',
         sa.Column('previous_hash', sa.String(64), nullable=True))
-    op.add_column('credit_transactions',
-        sa.Column('balance_after', sa.Integer, nullable=True))
+    # balance_after is not added here: credit_transactions_001 already creates
+    # it (NOT NULL), so adding it again failed on every database.
 
     op.create_index('ix_credit_transactions_chain_hash',
         'credit_transactions', ['chain_hash'])
@@ -48,5 +48,4 @@ def downgrade():
     op.drop_index('ix_credit_transactions_chain_hash', 'credit_transactions')
     op.drop_column('credit_transactions', 'chain_hash')
     op.drop_column('credit_transactions', 'previous_hash')
-    op.drop_column('credit_transactions', 'balance_after')
     op.drop_table('preservation_profiles')

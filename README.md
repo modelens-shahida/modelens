@@ -164,6 +164,28 @@ Initialize base templates and seed default workflows:
 docker compose exec api python seed_workflow_templates.py
 ```
 
+### 4. If local migrations fail
+The API container runs `backend/scripts/start-api.sh`, which runs `alembic upgrade head` before starting the API. If the upgrade fails, the API is not started. The script prints the revision your database has recorded and the repository head, then exits.
+
+1. **Rebuild the image first.** The API image contains a copy of the code; it does not mount it. A stale image still has old migrations:
+   ```bash
+   docker compose build api
+   docker compose up -d api
+   docker compose logs -f api
+   ```
+2. **Compare the record with the repository** (both are read-only):
+   ```bash
+   docker compose run --rm api alembic current   # revision stored in alembic_version
+   docker compose run --rm api alembic heads     # must print exactly one head
+   docker compose exec postgres psql -U postgres -d modelens -c '\dt'
+   ```
+   More than one head means two branches added migrations in parallel. Add a merge migration (`alembic merge -m "merge heads" <head1> <head2>`) in a PR. `tests/test_alembic_migrations.py` fails in that case.
+3. **`DuplicateTableError` / "relation ... already exists"** means your schema is ahead of `alembic_version`: tables exist from migrations that were never recorded. The migrations from `architecture_v1_001` to `fluid_studio_001` use `create_table_if_absent` (`backend/app/migration_guard.py`). A table that already exists with exactly the expected columns is skipped, and the revision is recorded as usual. After pulling this fix, rebuild (step 1) and the upgrade continues on its own. Use `create_table_if_absent` in new migrations too.
+4. **`SchemaMismatch: Table '...' already exists but does not match this migration`** means a table exists but has different columns, for example from a half-applied migration or a manual change. The message lists every difference. Nothing is skipped and nothing is changed; the whole upgrade is rolled back. Fix that table to match the migration, or ask in the team channel. Do not delete data to get past it.
+5. **Last resort, and only after agreeing with the team:** if you have confirmed that the schema matches a later revision exactly, `alembic stamp <revision>` records that revision without running anything. Never stamp a revision whose tables or columns are actually missing.
+
+Do not run `docker compose down -v`, `docker volume rm` or `docker system prune` to "fix" migrations. They delete your local database.
+
 ---
 
 ## 7. Production VM Deployment

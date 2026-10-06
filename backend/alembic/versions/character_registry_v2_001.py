@@ -35,26 +35,9 @@ def upgrade():
     op.create_index('ix_characters_v2_status', 'characters_v2', ['status'])
 
     # ==================== Character Version ====================
-    op.create_table('character_versions',
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('character_id', sa.String(50), nullable=False),
-        sa.Column('version', sa.String(10), nullable=False),
-        sa.Column('status', sa.String(30), default='DEVELOPMENT'),
-        sa.Column('locked', sa.Boolean, default=False),
-        sa.Column('locked_at', sa.DateTime, nullable=True),
-        sa.Column('locked_by', sa.String(100), nullable=True),
-        sa.Column('promoted_to_production', sa.Boolean, default=False),
-        sa.Column('promoted_at', sa.DateTime, nullable=True),
-        sa.Column('taxonomy_version', sa.String(20), nullable=True),
-        sa.Column('dna_snapshot', JSONB, nullable=True),
-        sa.Column('qa_snapshot', JSONB, nullable=True),
-        sa.Column('release_notes', sa.Text, nullable=True),
-        sa.Column('meta', JSONB, nullable=True),
-        sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
-    )
-    op.create_index('ix_char_versions_character_id', 'character_versions', ['character_id'])
-    op.create_unique_constraint('uq_char_version', 'character_versions', ['character_id', 'version'])
+    # Not created here: the name character_versions is already taken by the
+    # legacy training table (schema_upgrades_v1), so this create always failed.
+    # character_version_registry_001 creates it as character_registry_versions.
 
     # ==================== Identity DNA ====================
     op.create_table('character_identity_dna',
@@ -332,5 +315,4 @@ def downgrade():
     op.drop_table('character_appearance_profiles')
     op.drop_table('character_body_dna')
     op.drop_table('character_identity_dna')
-    op.drop_table('character_versions')
     op.drop_table('characters_v2')
