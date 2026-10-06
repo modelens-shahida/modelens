@@ -95,6 +95,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   const [selectedPose, setSelectedPose] = useState(SAMPLE_POSES[0]);
   const [poseDrawerTab, setPoseDrawerTab] = useState("pose"); // "pose" | "angles"
   const [selectedAngles, setSelectedAngles] = useState(["Front", "L30", "R30", "L45"]);
+  const [backgroundOptions, setBackgroundOptions] = useState(SAMPLE_BACKGROUNDS);
+  const [directionOptions, setDirectionOptions] = useState(SAMPLE_DIRECTIONS);
+  const [lightingOptions, setLightingOptions] = useState([]);
   const [selectedBackground, setSelectedBackground] = useState(SAMPLE_BACKGROUNDS[0]);
   const [selectedDirection, setSelectedDirection] = useState(SAMPLE_DIRECTIONS[0]);
   const [qualityMode, setQualityMode] = useState("studio_quality"); // "fast_draft" | "studio_quality"
@@ -102,6 +105,54 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
   // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
+
+  // Dynamically load validated locations, lighting presets, and campaign directions
+  useEffect(() => {
+    // 1. Locations
+    api.get("/api/v1/presets/locations")
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const list = data.map((l) => ({
+            id: l.id,
+            name: l.label || l.name,
+            desc: l.description || l.desc,
+            category: l.category || "Studio",
+            recommended_lighting_id: l.recommended_lighting_id,
+            is_default: l.is_default,
+          }));
+          setBackgroundOptions(list);
+          const def = list.find((l) => l.is_default) || list[0];
+          setSelectedBackground((prev) => (list.some((d) => d.id === prev?.id) ? prev : def));
+        }
+      })
+      .catch(() => {});
+
+    // 2. Campaigns / Directions
+    api.get("/api/v1/presets/campaigns")
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const list = data.map((c) => ({
+            id: c.id,
+            name: c.label || c.name,
+            desc: c.description || c.desc,
+            is_default: c.is_default,
+          }));
+          setDirectionOptions(list);
+          const def = list.find((c) => c.is_default) || list[0];
+          setSelectedDirection((prev) => (list.some((d) => d.id === prev?.id) ? prev : def));
+        }
+      })
+      .catch(() => {});
+
+    // 3. Lighting Presets
+    api.get("/api/v1/presets/lighting")
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setLightingOptions(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Dynamically load validated styling options, capability packs, and product-aware poses from backend
   useEffect(() => {
@@ -921,7 +972,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               </div>
 
               <div className="space-y-3 overflow-y-auto max-h-[70vh]">
-                {SAMPLE_BACKGROUNDS.map((bg) => {
+                {backgroundOptions.map((bg) => {
                   const isSelected = selectedBackground.id === bg.id;
                   return (
                     <div
@@ -940,6 +991,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                         <span className="text-[10px] font-mono text-zinc-500 uppercase">{bg.category}</span>
                         <h4 className="text-sm font-bold mt-0.5">{bg.name}</h4>
                         <span className="text-xs text-zinc-400">{bg.desc}</span>
+                        {bg.recommended_lighting_id && (
+                          <span className="inline-block text-[9px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded mt-1">
+                            Recommended Lighting: {bg.recommended_lighting_id}
+                          </span>
+                        )}
                       </div>
                       {isSelected && <Check className="w-5 h-5 text-emerald-400" />}
                     </div>
@@ -977,7 +1033,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               </div>
 
               <div className="space-y-3 overflow-y-auto max-h-[70vh]">
-                {SAMPLE_DIRECTIONS.map((dir) => {
+                {directionOptions.map((dir) => {
                   const isSelected = selectedDirection.id === dir.id;
                   return (
                     <div
