@@ -52,9 +52,9 @@ from app.services import appearance_options as appearance_service
 from app.services import capability_packs as pack_service
 from app.services import character_versions as version_service
 from app.services import pose_resolver as pose_service
+from app.services import presets_registry as preset_service
 from app.services import production_presets as presets
 from app.services.credits_sync_service import credits_sync_service, estimate_credits
-from app.services.fluid_service import LIGHTING_PRESETS
 from app.services.provider_names import tier_to_legacy
 
 JOB_TYPE = "production"
@@ -147,6 +147,42 @@ async def resolve_product_asset(db: AsyncSession, user: User, ref: str) -> Asset
     if asset is None or asset.brand_id not in await _dispatch_brand_ids(db, user):
         raise DispatchInvalid("product_asset_url", message)
     return asset
+
+
+async def _registry_preset(db: AsyncSession, preset_type: str, key: Optional[str], field: str):
+    """A PRODUCTION preset from the Presets Registry: the requested one (422 if
+    not offered) or, when none is requested, the type's default."""
+    if key:
+        found = await preset_service.production_preset(db, preset_type, key)
+        if found is None:
+            offered = [p.preset_key for p in await preset_service.list_presets(db, preset_type,
+                                                                               preset_service.PRODUCTION)]
+            raise DispatchInvalid(field, f"Unknown {field} {key}. Available: {offered}.")
+        return found
+    found = await preset_service.default_preset(db, preset_type)
+    if found is None:
+        raise DispatchUnavailable(f"No default {preset_type.lower()} preset is available. You have not been charged.")
+    return found
+
+
+async def _resolve_scene(db: AsyncSession, request: dict):
+    """(location, campaign, lighting) presets. Lighting: the requested one, else
+    the requested campaign's, else the location's recommended lighting, else
+    the default campaign's."""
+    location = await _registry_preset(db, preset_service.LOCATION, request.get("location_id"), "location_id")
+    campaign = await _registry_preset(db, preset_service.CAMPAIGN, request.get("campaign_preset"),
+                                      "campaign_preset")
+    if request.get("lighting_id"):
+        return location, campaign, await _registry_preset(db, preset_service.LIGHTING, request["lighting_id"],
+                                                          "lighting_id")
+    campaign_lighting = (campaign.technical_config or {}).get("lighting_id")
+    candidates = ([campaign_lighting] if request.get("campaign_preset") else []) + [
+        location.recommended_lighting_id, campaign_lighting]
+    for key in filter(None, candidates):
+        lighting = await preset_service.production_preset(db, preset_service.LIGHTING, key)
+        if lighting is not None:
+            return location, campaign, lighting
+    raise DispatchUnavailable("No lighting preset is available for this selection. You have not been charged.")
 
 
 async def _resolve_appearance(db: AsyncSession, character_id: str, character_version: str,
@@ -251,11 +287,9 @@ async def resolve_runtime_profile(db: AsyncSession, user: User, request: dict) -
     except pose_service.PoseNotAllowed:
         raise DispatchInvalid("pose_id", f"Pose {pose_id} is not available for {character_id} with {product_type}.")
 
-    campaign_id = request.get("campaign_preset") or presets.DEFAULT_CAMPAIGN_PRESET
-    campaign = presets.CAMPAIGN_PRESETS[campaign_id]
-    location_id = request.get("location_id") or presets.DEFAULT_LOCATION
-    lighting_id = request.get("lighting_id") or campaign["lighting_id"]
-    focal_length = request.get("focal_length_mm") or campaign["focal_length_mm"]
+    location, campaign, lighting = await _resolve_scene(db, request)
+    campaign_config = campaign.technical_config or {}
+    focal_length = request.get("focal_length_mm") or campaign_config["focal_length_mm"]
     quality = request.get("quality") or presets.DEFAULT_QUALITY
     resolution = request.get("resolution") or presets.DEFAULT_RESOLUTION
 
@@ -302,8 +336,12 @@ async def resolve_runtime_profile(db: AsyncSession, user: User, request: dict) -
                            "control_reference": pose.control_reference, "workflow_params": pose.workflow_params})
     layers["camera"].update({"focal_length_mm": focal_length, "aspect_ratio": request["aspect_ratio"]})
     layers["scene"].update({
-        "location": presets.LOCATIONS[location_id], "campaign_preset": campaign_id,
-        "lighting": {"preset_id": lighting_id, "workflow_params": LIGHTING_PRESETS[lighting_id]["workflow_params"]},
+        "location": {"env_id": location.preset_key, "display_name": location.label,
+                     "family": (location.technical_config or {}).get("family"), "preview_url": location.thumbnail_url,
+                     "technical_config": location.technical_config},
+        "campaign_preset": campaign.preset_key,
+        "lighting": {"preset_id": lighting.preset_key,
+                     "workflow_params": (lighting.technical_config or {}).get("workflow_params")},
     })
 
     profile = {

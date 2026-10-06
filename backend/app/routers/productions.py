@@ -21,11 +21,8 @@ from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import AIJob, User, get_db
 from app.services import production_dispatch as svc
 from app.services import production_presets as presets
-from app.services.fluid_service import FOCAL_LENGTHS, LIGHTING_PRESETS
+from app.services.fluid_service import FOCAL_LENGTHS
 
-LocationId = Literal[tuple(presets.LOCATIONS)]
-CampaignPreset = Literal[tuple(presets.CAMPAIGN_PRESETS)]
-LightingId = Literal[tuple(LIGHTING_PRESETS)]
 FocalLength = Literal[tuple(FOCAL_LENGTHS)]
 AspectRatio = Literal[presets.ASPECT_RATIOS]
 Quality = Literal[presets.QUALITY_TIERS]
@@ -79,10 +76,16 @@ class DispatchRequest(BaseModel):
     pose_id: Optional[str] = Field(None, max_length=60, description="From GET /api/v1/characters/{id}/poses. "
                                                                    "Defaults to the product type's default pose.",
                                    examples=["walking"])
-    location_id: Optional[LocationId] = Field(None, description="Environment preset (GET /api/v1/environments). "
-                                                                "Defaults to ENV-STU-0001.")
-    campaign_preset: Optional[CampaignPreset] = Field(None, description="Defaults to ecommerce.")
-    lighting_id: Optional[LightingId] = Field(None, description="Lighting preset. Defaults to the campaign preset's.")
+    location_id: Optional[str] = Field(
+        None, max_length=60, description="Location preset id from GET /api/v1/presets/locations. Defaults to the "
+                                         "default location.", examples=["ENV-STU-0001"])
+    campaign_preset: Optional[str] = Field(
+        None, max_length=60, description="Campaign preset id from GET /api/v1/presets/campaigns. Defaults to the "
+                                         "default campaign.", examples=["ecommerce"])
+    lighting_id: Optional[str] = Field(
+        None, max_length=60, description="Lighting preset id from GET /api/v1/presets/lighting. Defaults to the "
+                                         "chosen campaign's lighting, else the location's recommended lighting.",
+        examples=["STUDIO_SOFT_DIFFUSE"])
     focal_length_mm: Optional[FocalLength] = Field(None, description="Camera focal length. Defaults to the "
                                                                      "campaign preset's.")
     aspect_ratio: AspectRatio = Field("4:5")
@@ -120,8 +123,8 @@ class ProductionStatusResponse(BaseModel):
         "Resolve a production request server-side and queue it. The character's current locked version is used "
         "(and never modified); the product type must have a capability pack in PRODUCTION (else 409); appearance "
         "options must be PRODUCTION styling options of the character (omitted categories use the default); the "
-        "pose must be offered for the character and product type; location, campaign preset, lighting, focal "
-        "length, aspect ratio (one of 1:1, 3:4, 4:5, 2:3, 9:16, 16:9) and count (1-8) must be allowed values "
+        "pose must be offered for the character and product type; location, campaign and lighting must be "
+        "PRODUCTION presets (GET /api/v1/presets/...); focal length, aspect ratio (one of 1:1, 3:4, 4:5, 2:3, 9:16, 16:9) and count (1-8) must be allowed values "
         "(else 422). `product_asset_url` must be an asset your brand uploaded to ModeLens (owner, admin or editor "
         "role); external URLs are rejected and never fetched. Credits (existing credit rates, per image x count) "
         "are checked and reserved once in the brand ledger; insufficient credits return 402 and nothing is queued "

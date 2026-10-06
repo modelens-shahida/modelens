@@ -15,7 +15,7 @@ from app.models.db import (
 )
 from app.middleware.auth import get_current_user
 from app.api_docs import error_responses
-from app.services.production_presets import ENVIRONMENT_PRESETS
+from app.services import presets_registry
 
 router = APIRouter(prefix="/api/v1", tags=["Generation API & WebSockets"])
 
@@ -283,7 +283,8 @@ async def get_pose_presets(
 @router.get(
     "/environments",
     summary="List environment presets",
-    description="Get environment presets for Create Production background picker.",
+    description="Get environment presets for Create Production background picker: the PRODUCTION location "
+                "presets of the Presets Registry (same ids as GET /api/v1/presets/locations).",
     response_description="Environment presets for the background picker.",
     operation_id="list_environment_presets",
     responses=error_responses(401, 422),
@@ -294,7 +295,11 @@ async def get_environments(
     db: AsyncSession = Depends(get_db),
 ):
     """Get environment presets for Create Production background picker."""
-    environments = [dict(env) for env in ENVIRONMENT_PRESETS]
+    environments = [
+        {"env_id": p.preset_key, "display_name": p.label, "family": (p.technical_config or {}).get("family"),
+         "preview_url": p.thumbnail_url}
+        for p in await presets_registry.list_presets(db, presets_registry.LOCATION, presets_registry.PRODUCTION)
+    ]
 
     if family:
         environments = [e for e in environments if e["family"] == family]

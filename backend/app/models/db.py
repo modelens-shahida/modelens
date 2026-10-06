@@ -1787,6 +1787,41 @@ class Production(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+# ========================== Presets Registry ======================
+# Location, lighting and campaign presets a production can use. Customers
+# only see PRODUCTION presets, by their stable ``preset_key`` (e.g.
+# ENV-STU-0001, STUDIO_SOFT_DIFFUSE, ecommerce); ``technical_config`` holds
+# the generation parameters and is admin/runtime only.
+
+class Preset(Base):
+    __tablename__ = "presets"
+    __table_args__ = (
+        UniqueConstraint("preset_type", "preset_key", name="uq_preset_type_key"),
+        # At most one default per preset type.
+        Index("uq_preset_default", "preset_type", unique=True,
+              postgresql_where=sa.text("is_default"), sqlite_where=sa.text("is_default")),
+    )
+
+    id = Column(Integer, primary_key=True)
+    preset_type = Column(String(20), nullable=False, index=True)  # LOCATION | LIGHTING | CAMPAIGN
+    preset_key = Column(String(60), nullable=False)
+    label = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    thumbnail_url = Column(String(1000), nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="IN_DEVELOPMENT")
+    recommended_lighting_id = Column(String(60), nullable=True)  # LOCATION only: a LIGHTING preset_key
+
+    # Admin-only; never returned to customers.
+    technical_config = Column(JSONB, nullable=True)
+    created_by = Column(String(100), nullable=True)
+    status_changed_by = Column(String(100), nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 # ========================== P3 Rights Registry ===================
 
 class RightsRegistry(Base):

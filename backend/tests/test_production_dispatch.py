@@ -12,6 +12,7 @@ from app.services import appearance_options as appearance_service
 from app.services import capability_packs as pack_service
 from app.services import character_versions as version_service
 from app.services import pose_resolver as pose_service
+from app.services import presets_registry as preset_service
 from app.services import production_dispatch as dispatch_service
 
 DISPATCH = "/api/v1/productions/dispatch"
@@ -56,6 +57,7 @@ async def world(db_session):
     await version_service.seed_ee_f_002_v1(db_session)
     await appearance_service.seed_ee_f_002_defaults(db_session)
     await pose_service.seed_poses(db_session)
+    await preset_service.seed_presets(db_session)
     db_session.add_all([
         ModelArtifact(model_id="ADP-EE-F-002-IDENTITY-001", character_id="EE-F-002", character_version="1.0",
                       layer="IDENTITY", kind="TRAINED_MODEL", status="PRODUCTION", run_id="RUN-001",
