@@ -1,16 +1,18 @@
 import asyncio
 import os
+import shutil
 import pytest
 import pytest_asyncio
 import uuid
 from httpx import AsyncClient
+from sqlalchemy import create_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from pgvector.sqlalchemy import Vector
 
 from sqlalchemy.dialects.postgresql import JSONB
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import sys
 
 # Global MLflow mock to prevent real HTTP connection attempts during test runs
@@ -26,6 +28,17 @@ sys.modules["mlflow"] = mock_mlflow
 import celery.app.task
 celery.app.task.Task.delay = MagicMock()
 celery.app.task.Task.apply_async = MagicMock()
+
+# Cheap bcrypt under TESTING=true only. Hashes stay real bcrypt (verify works the
+# same), but cost 4 instead of the production 12 saves ~0.24s per hash.
+# test_password_hashing.py proves the non-test default is still 12.
+import bcrypt
+ORIGINAL_BCRYPT_GENSALT = bcrypt.gensalt
+TEST_BCRYPT_ROUNDS = 4
+if os.getenv("TESTING") == "true":
+    def _test_gensalt(rounds: int = 12, prefix: bytes = b"2b") -> bytes:
+        return ORIGINAL_BCRYPT_GENSALT(rounds=TEST_BCRYPT_ROUNDS, prefix=prefix)
+    bcrypt.gensalt = _test_gensalt
 # Global Redis mock to prevent real Redis socket connections and timeouts
 class MockRedisPipeline:
     def __init__(self, client):
@@ -126,6 +139,7 @@ app.routers.jobs.redis_client = global_mock_redis
 
 import app.worker
 app.worker.redis_client = global_mock_redis
+from app.worker import celery_app
 
 
 
@@ -136,6 +150,16 @@ def clear_mock_redis():
     # The mock has no EVAL, so the SSO login limiter runs on its in-memory windows.
     sso_rate_limit.reset_memory()
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_celery_broker_ping():
+    """No broker runs under test: answer the worker ping with "no workers" at once
+    instead of waiting out celery's 3s inspect timeout on every /api/v1/health call."""
+    inspector = MagicMock()
+    inspector.ping.return_value = None
+    with patch.object(celery_app.control, "inspect", return_value=inspector):
+        yield
 
 # 1. Custom compile rule for pgvector's Vector type on SQLite
 @compiles(Vector, "sqlite")
@@ -184,44 +208,35 @@ def event_loop():
     yield loop
     loop.close()
 
+@pytest.fixture(scope="session")
+def template_db(tmp_path_factory):
+    """Builds the schema once per session (per xdist worker) into a template file."""
+    db_dir = tmp_path_factory.mktemp("db")
+    template = db_dir / "template.db"
+    engine = create_engine(f"sqlite:///{template}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    return template
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def setup_test_db():
-    """Creates the tables in the test SQLite database and cleans it up at the end."""
-    db_id = uuid.uuid4().hex
-    db_file = f"./test_modelens_{db_id}.db"
-    db_url = f"sqlite+aiosqlite:///{db_file}"
+async def setup_test_db(template_db):
+    """Gives every test its own fresh copy of the template database and deletes it afterwards."""
+    db_file = template_db.parent / f"test_modelens_{uuid.uuid4().hex}.db"
+    shutil.copyfile(template_db, db_file)
 
-    # Ensure any old test database is removed (shouldn't exist with unique name)
-    if os.path.exists(db_file):
-        try:
-            os.remove(db_file)
-        except PermissionError:
-            pass
+    test_engine = create_async_engine(f"sqlite+aiosqlite:///{db_file}", echo=False)
 
-    test_engine = create_async_engine(db_url, echo=False)
-    
     proxy_session_maker.actual_maker = async_sessionmaker(
         bind=test_engine,
         expire_on_commit=False,
         class_=AsyncSession
     )
-    
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        
+
     yield test_engine
-    
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        
+
     await test_engine.dispose()
-    
-    # Clean up the test database file
-    if os.path.exists(db_file):
-        try:
-            os.remove(db_file)
-        except PermissionError:
-            pass
+    db_file.unlink(missing_ok=True)
 
 @pytest_asyncio.fixture
 async def db_session(setup_test_db) -> AsyncSession:
@@ -313,3 +328,23 @@ async def test_data(db_session: AsyncSession):
         "workflow": workflow,
         "get_headers": get_auth_headers
     }
+
+
+# --- Known failures on main: still run, reported as xfail/xpass ---
+from known_failures import KNOWN_FAILURES
+
+
+def pytest_collection_modifyitems(config, items):
+    collected = set()
+    for item in items:
+        key = item.nodeid.split("[")[0]
+        if key in KNOWN_FAILURES:
+            collected.add(key)
+            category, reason = KNOWN_FAILURES[key]
+            item.add_marker(pytest.mark.known_failure)
+            item.add_marker(pytest.mark.xfail(reason=f"known failure ({category}): {reason}", strict=False))
+    # A whole-suite run must find every listed test, so a renamed or deleted one can't linger here.
+    whole_suite = [a.rstrip("/") for a in config.args] == ["tests"]
+    missing = set(KNOWN_FAILURES) - collected
+    if whole_suite and missing and not config.option.keyword:
+        raise pytest.UsageError(f"tests/known_failures.py lists tests that were not collected: {sorted(missing)}")

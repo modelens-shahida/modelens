@@ -9,6 +9,8 @@ from app.models.db import Asset, AssetTag, AIJob
 from app.services.storage import storage_service
 from app.worker import _process_asset_upload_async
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def mock_image_file():

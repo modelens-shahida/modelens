@@ -8,6 +8,8 @@ from sqlalchemy import select
 from app.models.db import User, Brand, CreditTransaction
 from app.services.credits_sync_service import credits_sync_service
 
+pytestmark = pytest.mark.integration
+
 @pytest.mark.asyncio
 async def test_generation_credits_sync_full_flow(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     owner_headers = test_data["get_headers"]("owner")

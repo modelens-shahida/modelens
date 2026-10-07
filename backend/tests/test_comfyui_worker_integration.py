@@ -5,6 +5,8 @@ from sqlalchemy import select
 
 from app.models.db import AIJob
 
+pytestmark = pytest.mark.integration
+
 
 # ========================== Helper ===============================
 

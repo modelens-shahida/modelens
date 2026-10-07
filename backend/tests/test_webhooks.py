@@ -151,6 +151,7 @@ async def test_delete_webhook_not_found(client: AsyncClient, test_data: dict):
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_worker_dispatches_brand_webhooks_on_job_completed(db_session: AsyncSession, test_data: dict):
     """Worker should dispatch webhooks to brand subscribers on job completion."""

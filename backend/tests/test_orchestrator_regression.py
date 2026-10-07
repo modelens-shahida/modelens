@@ -8,6 +8,8 @@ from sqlalchemy import select
 from app.models.db import Campaign, Character, CharacterVersion
 from app.config import settings
 
+pytestmark = pytest.mark.integration
+
 
 # ========================== Fixtures ==============================
 

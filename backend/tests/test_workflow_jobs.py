@@ -145,6 +145,7 @@ async def test_flat_lay_to_model_execution(db_session: AsyncSession, test_data: 
     assert "At a luxury pool resort" in generated_asset.meta["prompt"]
 
 
+@pytest.mark.slow  # mock-mode generation still waits on the app's simulated progress delays
 @pytest.mark.asyncio
 async def test_video_generation_execution(db_session: AsyncSession, test_data: dict):
     brand = test_data["brand"]
@@ -471,6 +472,7 @@ async def test_workflow_job_valid_character_and_version_succeeds(client: AsyncCl
         assert res.status_code == 201
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_workflow_job_does_not_fail_on_first_retry(db_session: AsyncSession, test_data: dict):
     """Workflow job should not mark as failed or refund credits on first retry attempt."""

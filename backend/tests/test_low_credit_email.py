@@ -91,6 +91,7 @@ async def test_email_template_renders_correctly():
     assert "modelens.com/credits" in html
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_email_send_failure_triggers_retry():
     """Email send failure should trigger Celery retry."""

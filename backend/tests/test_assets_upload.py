@@ -339,6 +339,7 @@ async def test_trash_and_restore_asset(client: AsyncClient, db_session: AsyncSes
     assert asset_id in active_ids
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_worker_purge_deleted_assets(db_session: AsyncSession, test_data: dict, monkeypatch):
     """Test the daily Celery task that permanently purges soft-deleted assets older than 30 days."""

@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, UTC
 
 from app.models.db import WebhookDeliveryLog, WebhookSubscription
 
+pytestmark = pytest.mark.integration
+
 
 class MockSessionContext:
     def __init__(self, session):

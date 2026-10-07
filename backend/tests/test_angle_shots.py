@@ -370,6 +370,7 @@ class MockSessionContext:
         pass
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_angle_shot_worker_extraction(client: AsyncClient, db_session: AsyncSession):
     shot = AngleShot(

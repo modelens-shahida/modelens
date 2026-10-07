@@ -172,6 +172,7 @@ class MockSessionContext:
         pass
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_ghost_job_celery_task(db_session: AsyncSession, test_data: dict):
     editor_user = test_data["users"]["editor"]
@@ -221,6 +222,7 @@ async def test_process_ghost_job_celery_task(db_session: AsyncSession, test_data
     assert asset.status == "active"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, test_data: dict):
     editor_user = test_data["users"]["editor"]

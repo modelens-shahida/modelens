@@ -238,6 +238,7 @@ class MockSessionContext:
         pass
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_video_generation_celery_task(db_session: AsyncSession, test_data: dict):
     editor_user = test_data["users"]["editor"]
@@ -277,6 +278,7 @@ async def test_process_video_generation_celery_task(db_session: AsyncSession, te
     assert project.status == "ready_to_render"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_video_render_celery_task(db_session: AsyncSession, test_data: dict):
     editor_user = test_data["users"]["editor"]

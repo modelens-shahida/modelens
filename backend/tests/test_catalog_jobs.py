@@ -221,6 +221,7 @@ class MockSessionContext:
         pass
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_catalog_worker_mock_mode(client: AsyncClient, test_data: dict, db_session: AsyncSession):
     brand = test_data["brand"]

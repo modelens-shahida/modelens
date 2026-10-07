@@ -177,6 +177,7 @@ async def test_job_status_polling_cache_miss(client: AsyncClient, db_session: As
 
 # ========================== AI Generation Worker Tests ==============
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_generation_job_success_with_mock_image(db_session: AsyncSession, test_data: dict):
     """
@@ -233,6 +234,7 @@ async def test_process_generation_job_success_with_mock_image(db_session: AsyncS
     assert asset.meta.get("generated_by_job") == job.id
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSession, test_data: dict):
     """
@@ -285,6 +287,7 @@ async def test_process_generation_job_failure_refunds_credit(db_session: AsyncSe
     assert refunded_user.credits == starting_credits  # back to original after refund
 
 
+@pytest.mark.slow  # mock-mode generation still waits on the app's simulated progress delays
 @pytest.mark.asyncio
 async def test_generate_image_mock_fallback_without_api_key(monkeypatch):
     """
@@ -360,6 +363,7 @@ async def test_generation_job_retries_on_transient_error(db_session: AsyncSessio
     assert updated_user.credits == starting_credits
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_generation_job_does_not_fail_on_first_retry(db_session: AsyncSession, test_data: dict):
     """

@@ -14,6 +14,8 @@ from alembic.script import ScriptDirectory
 
 from app.migration_guard import SchemaMismatch, create_table_if_absent, table_differences
 
+pytestmark = pytest.mark.integration
+
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

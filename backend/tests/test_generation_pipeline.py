@@ -9,6 +9,7 @@ from app.services.generation_pipeline import (
     GenerationJobManager,
     run_with_retries,
     PIPELINE_STAGES,
+    RETRY_DELAYS,
     JOB_TIMEOUT_SECONDS,
 )
 from app.services.comfyui_service import ComfyUIService
@@ -123,6 +124,7 @@ async def test_cancel_completed_job_returns_false(db_session: AsyncSession, test
     assert result is False
 
 
+@pytest.mark.slow  # mock-mode generation still waits on the app's simulated progress delays
 @pytest.mark.asyncio
 async def test_generation_mock_mode_success(db_session: AsyncSession, test_data: dict):
     """Mock mode generation should complete successfully."""
@@ -208,9 +210,12 @@ async def test_retry_succeeds_on_second_attempt(db_session: AsyncSession, test_d
             raise Exception("Transient error")
         return {"image_bytes": b"fake_image", "outputs": [], "prompt_id": "mock"}
 
-    with patch.object(manager, "run_with_timeout", flaky_generation):
+    # The retry backoff is 30s; record it instead of really waiting.
+    with patch.object(manager, "run_with_timeout", flaky_generation), \
+         patch("app.services.generation_pipeline.asyncio.sleep", new_callable=AsyncMock) as backoff:
         result = await run_with_retries(manager, job, {}, max_retries=2)
 
+    backoff.assert_awaited_once_with(RETRY_DELAYS[0])
     assert call_count == 2
     assert result["image_bytes"] == b"fake_image"
 

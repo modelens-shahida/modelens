@@ -360,6 +360,7 @@ async def test_admin_endpoint_returns_snapshot_and_is_admin_only(client, world, 
 
 # ========================== Worker ================================
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_worker_completes_and_finalizes_credits(client, db_session, world, queue, monkeypatch):
     from app.services.storage import storage_service
@@ -385,6 +386,7 @@ async def test_worker_completes_and_finalizes_credits(client, db_session, world,
     _assert_customer_safe(str(body).replace("generation_", ""))
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_worker_failure_refunds(client, db_session, world, queue):
     production_id = (await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])).json()["production_id"]

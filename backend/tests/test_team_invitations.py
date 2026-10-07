@@ -292,6 +292,7 @@ class MockSessionContext:
         pass
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_celery_task_sends_email(db_session: AsyncSession, test_data: dict):
     brand_id = test_data["brand"].id

@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import Brand
 from app.config import settings
 
+pytestmark = pytest.mark.integration
+
 
 # ========================== Event Service Tests ==================
 

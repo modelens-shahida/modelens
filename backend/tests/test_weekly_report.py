@@ -5,6 +5,8 @@ from sqlalchemy import select
 
 from app.models.db import CreditTransaction, AuditLog
 
+pytestmark = pytest.mark.integration
+
 
 class MockSessionContext:
     def __init__(self, session):

@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, UTC
 
 from app.models.db import Brand
 
+pytestmark = pytest.mark.integration
+
 
 # ========================== Helper ===============================
 

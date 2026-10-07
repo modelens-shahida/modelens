@@ -4,6 +4,8 @@ from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
 from app.services.connection_manager import ConnectionManager
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_connection_manager_connect_disconnect():

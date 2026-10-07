@@ -232,6 +232,7 @@ async def test_get_generation_status(client: AsyncClient, db_session: AsyncSessi
     assert "progress" in data
 
 
+@pytest.mark.slow  # mock-mode generation still waits on the app's simulated progress delays
 @pytest.mark.asyncio
 async def test_comfyui_mock_mode():
     """ComfyUI mock mode should return mock outputs."""
