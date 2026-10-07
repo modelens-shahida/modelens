@@ -8,6 +8,7 @@ import { Megaphone, Plus, Trash2, Link2, Unlink, Sparkles, Image as ImageIcon, L
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 import CampaignOmnichannelStudio from "@/components/dashboard/CampaignOmnichannelStudio";
+import { characterRegistryApi } from "@/lib/characterRegistryApi";
 
 const defaultThemesToSeed = [
   {
@@ -372,18 +373,25 @@ export default function CampaignsPage() {
   };
 
   const handleSubmitGeneration = async () => {
-    if (!selectedCharacterId || !selectedVersionId) {
-      toast.error("Please select a character and version");
+    if (!selectedCharacterId) {
+      toast.error("Please select a character");
       return;
     }
     setGenerating(true);
     try {
-      await api.post(`/api/v1/campaigns/${activeCampaign.id}/generate`, {
-        character_id: parseInt(selectedCharacterId),
-        character_version_id: parseInt(selectedVersionId),
-        number_of_outputs: numOutputs,
-      });
-      toast.success("Generation started!");
+      const payload = {
+        character_id: selectedCharacterId.toString().startsWith("EE-") ? selectedCharacterId : "EE-F-002",
+        product_asset_url: activeCampaign?.product_asset_url || "https://assets.modelens.ai/demo-sku.png",
+        product_type: "garment",
+        appearance: { hair: "canonical", makeup: "natural", expression: "neutral_editorial" },
+        pose_id: "standing_editorial",
+        location_id: "bg_1",
+        campaign_preset: "dir_1",
+        aspect_ratio: "3:4",
+        count: numOutputs || 4,
+      };
+      await characterRegistryApi.dispatchProduction(payload);
+      toast.success("Campaign production dispatched!");
       setShowGenerateModal(false);
       fetchGenerations(activeCampaign.id);
     } catch (e) {
