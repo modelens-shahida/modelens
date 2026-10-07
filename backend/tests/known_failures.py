@@ -13,9 +13,6 @@ Categories:
 APP_BUG = "app bug"
 PENDING = "pending decision"
 
-_HEALTH = (APP_BUG, "health.py: 7b69795 inserted check_celery_workers() between @router.get(\"\") and "
-                    "health_check(), so GET /api/v1/health is bound to the Celery ping (always 200) and the "
-                    "DB/Redis 503/'services' check has no route")
 _FLUID = (APP_BUG, "editorial_fluid router calls FluidService methods that do not exist "
                    "(create_session/get_session/list_sessions/generate_base_layer/apply_product_layer) -> 500")
 _GHOST_LAZY = (APP_BUG, "worker loads GhostJob without selectinload and reads job.assets (lazy relationship) "
@@ -28,11 +25,6 @@ _DISPATCH_THROTTLE = (PENDING, "dispatch has no rate limit; orchestrator_rate_li
                                "- pending decision")
 
 KNOWN_FAILURES = {
-    "tests/test_health_check.py::test_health_check_all_healthy": _HEALTH,
-    "tests/test_health_check.py::test_health_check_db_down": _HEALTH,
-    "tests/test_health_check.py::test_health_check_redis_down": _HEALTH,
-    "tests/test_health_check.py::test_health_check_both_down": _HEALTH,
-
     "tests/test_editorial_fluid.py::test_create_editorial_session_success": _FLUID,
     "tests/test_editorial_fluid.py::test_get_and_delete_editorial_session": _FLUID,
     "tests/test_editorial_fluid.py::test_generate_base_layer": _FLUID,

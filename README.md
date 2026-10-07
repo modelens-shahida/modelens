@@ -269,6 +269,17 @@ Both jobs use Python 3.11, a pip cache, SQLite and dummy environment values only
   docker compose logs -f api
   ```
 
+### Health checks
+
+Both endpoints are public (no auth) and not rate limited.
+
+| Endpoint | Use for | Checks | Responses |
+| :--- | :--- | :--- | :--- |
+| `GET /api/v1/health/live` | **Liveness**: container healthchecks, Kubernetes `livenessProbe` | Nothing; the API process answered | `200 {"status": "alive"}` |
+| `GET /api/v1/health` | **Readiness**: Kubernetes `readinessProbe`, load-balancer target health | Database (`SELECT 1`) and Redis (`PING`), 2s each | `200` when both are up; `503` with `failing: ["database" \| "redis"]` when either is down |
+
+Point restart-triggering probes at `/live` only. If liveness used `/api/v1/health`, a short DB or Redis outage would restart every API container at once. Readiness takes the instance out of rotation until its dependencies are back. Celery workers are not part of either check; worker pods use their own `celery inspect ping` probe. `GET /health` is an older liveness alias.
+
 ---
 
 ## 10. Email Provider Setup

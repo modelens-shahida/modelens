@@ -139,7 +139,6 @@ app.routers.jobs.redis_client = global_mock_redis
 
 import app.worker
 app.worker.redis_client = global_mock_redis
-from app.worker import celery_app
 
 
 
@@ -151,15 +150,6 @@ def clear_mock_redis():
     sso_rate_limit.reset_memory()
     yield
 
-
-@pytest.fixture(autouse=True)
-def no_celery_broker_ping():
-    """No broker runs under test: answer the worker ping with "no workers" at once
-    instead of waiting out celery's 3s inspect timeout on every /api/v1/health call."""
-    inspector = MagicMock()
-    inspector.ping.return_value = None
-    with patch.object(celery_app.control, "inspect", return_value=inspector):
-        yield
 
 # 1. Custom compile rule for pgvector's Vector type on SQLite
 @compiles(Vector, "sqlite")
