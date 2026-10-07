@@ -4,26 +4,28 @@ conftest marks each one xfail(strict=False): it still runs in CI and its result
 is reported, but it does not fail the job. Remove an entry once the test passes.
 
 Categories:
-  APP_BUG    - the application code is wrong; the test describes the intended behaviour.
-  STALE_TEST - the test targets an endpoint/function that was removed, moved or proxied
-               elsewhere; the test (or the decision to drop the feature) needs updating.
+  APP_BUG  - the application code is wrong; the test describes the intended behaviour.
+             Fixed in separate app PRs, not by changing the test.
+  PENDING  - the endpoint the test targets was removed or replaced; whether to restore
+             the behaviour or drop the test is still to be decided.
 """
 
 APP_BUG = "app bug"
-STALE_TEST = "stale test"
+PENDING = "pending decision"
 
-_HEALTH = (APP_BUG, "GET /api/v1/health is bound to check_celery_workers (always 200); the DB/Redis "
-                    "health_check() below it has no route, so the 503/'services' contract is unreachable")
-_ORCH = (STALE_TEST, "POST /api/v1/campaigns/{id}/generate no longer exists in campaign_generation.py -> 404")
-_VIDEO_404 = (STALE_TEST, "video router prefix is /api/v1/video; tests call /api/v1/video-projects -> 404")
-_VIDEO_PATCH = (STALE_TEST, "patches app.routers.video_projects.process_video_* , which now live only in "
-                            "app.worker -> AttributeError")
+_HEALTH = (APP_BUG, "health.py: 7b69795 inserted check_celery_workers() between @router.get(\"\") and "
+                    "health_check(), so GET /api/v1/health is bound to the Celery ping (always 200) and the "
+                    "DB/Redis 503/'services' check has no route")
 _FLUID = (APP_BUG, "editorial_fluid router calls FluidService methods that do not exist "
                    "(create_session/get_session/list_sessions/generate_base_layer/apply_product_layer) -> 500")
-_GHOST_LAZY = (APP_BUG, "worker reads job.assets (lazy relationship) inside an async session -> "
-                        "MissingGreenlet (worker.py ~2262)")
-_SKETCH_LAZY = (APP_BUG, "worker reads job.references (lazy relationship) inside an async session -> "
-                         "MissingGreenlet (worker.py ~2638)")
+_GHOST_LAZY = (APP_BUG, "worker loads GhostJob without selectinload and reads job.assets (lazy relationship) "
+                        "after commit inside an async session -> MissingGreenlet (worker.py ~2262)")
+_SKETCH_LAZY = (APP_BUG, "worker loads SketchJob without selectinload and reads job.references (lazy relationship) "
+                         "after commit inside an async session -> MissingGreenlet (worker.py ~2638)")
+_MOVE_STUDIO = (PENDING, "/api/v1/video-projects router replaced in 1ed5029; Move Studio page still calls it "
+                         "- pending decision from Indra")
+_DISPATCH_THROTTLE = (PENDING, "dispatch has no rate limit; orchestrator_rate_limit setting is now unused "
+                               "- pending decision")
 
 KNOWN_FAILURES = {
     "tests/test_health_check.py::test_health_check_all_healthy": _HEALTH,
@@ -40,14 +42,14 @@ KNOWN_FAILURES = {
     "tests/test_ghost_jobs.py::test_process_ghost_job_celery_task": _GHOST_LAZY,
     "tests/test_sketch_jobs.py::test_process_sketch_job_celery_task_success": _SKETCH_LAZY,
 
-    "tests/test_orchestrator_regression.py::test_orchestrator_throttling": _ORCH,
-    "tests/test_orchestrator_regression.py::test_dynamic_rate_limit_enforced": _ORCH,
+    "tests/test_orchestrator_regression.py::test_orchestrator_throttling": _DISPATCH_THROTTLE,
+    "tests/test_orchestrator_regression.py::test_dynamic_rate_limit_enforced": _DISPATCH_THROTTLE,
 
-    "tests/test_video_projects.py::test_create_video_project": _VIDEO_404,
-    "tests/test_video_projects.py::test_create_storyboard": _VIDEO_404,
-    "tests/test_video_projects.py::test_generate_video_insufficient_credits": _VIDEO_404,
-    "tests/test_video_projects.py::test_get_generation_job_status": _VIDEO_404,
-    "tests/test_video_projects.py::test_list_video_projects": _VIDEO_404,
-    "tests/test_video_projects.py::test_generate_video_success": _VIDEO_PATCH,
-    "tests/test_video_projects.py::test_render_video_project": _VIDEO_PATCH,
+    "tests/test_video_projects.py::test_create_video_project": _MOVE_STUDIO,
+    "tests/test_video_projects.py::test_create_storyboard": _MOVE_STUDIO,
+    "tests/test_video_projects.py::test_generate_video_insufficient_credits": _MOVE_STUDIO,
+    "tests/test_video_projects.py::test_get_generation_job_status": _MOVE_STUDIO,
+    "tests/test_video_projects.py::test_list_video_projects": _MOVE_STUDIO,
+    "tests/test_video_projects.py::test_generate_video_success": _MOVE_STUDIO,
+    "tests/test_video_projects.py::test_render_video_project": _MOVE_STUDIO,
 }
