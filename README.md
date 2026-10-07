@@ -222,19 +222,41 @@ Follow this runbook to update and rebuild services deployed on the Azure VM:
 
 ## 8. Testing Suite
 
-ModelLens maintains a 100% passing testing suite leveraging in-memory isolated SQLite environments.
+The backend suite (about 1,100 tests in `backend/tests/`) runs on SQLite with Redis, Celery and MLflow mocked in `tests/conftest.py`. No running services or real keys are needed.
 
-To execute tests:
-1. Navigate to the backend folder and activate virtualenv:
-   ```bash
-   cd backend
-   .venv/Scripts/activate
-   ```
-2. Run pytest:
-   ```bash
-   $env:PYTHONPATH="backend"
-   python -m pytest tests/ -v
-   ```
+**What keeps it fast**
+- The schema is built once per session into a template SQLite file; every test gets its own fresh copy of it, so tests stay fully isolated.
+- With `TESTING=true`, bcrypt uses cost 4 instead of 12. Production hashing stays at cost 12 (`tests/test_password_hashing.py` checks this).
+- Retry backoffs and the Celery worker ping are mocked instead of really waited on.
+
+**Markers** (`backend/pytest.ini`)
+- `integration`: runs Celery worker task bodies, websockets or migrations.
+- `slow`: still takes over ~1s.
+- `known_failure`: already failing on main, listed with a reason and category in `tests/known_failures.py`. These run as `xfail(strict=False)`, so they still execute and are reported but do not fail the run. Remove an entry when its test is fixed.
+
+**Running tests** (from `backend/`, with `TESTING=true` set)
+```bash
+pip install -r app/requirements.txt -r tests/requirements-test.txt
+export TESTING=true
+
+python -m pytest -m "not slow and not integration"   # fast tests (what PRs gate on)
+python -m pytest -m "slow or integration"            # slow + integration tests
+python -m pytest                                     # everything
+python -m pytest -n auto                             # everything, in parallel (pytest-xdist)
+```
+
+Or in a throwaway container from the API image (nothing is written to the repo):
+```bash
+cd backend
+docker run --rm -v "$PWD":/src:ro -e TESTING=true --entrypoint sh indra-modelens-api:latest -c \
+  "cp -r /src /tmp/work && cd /tmp/work && pip install -q -r tests/requirements-test.txt && python -m pytest -m 'not slow and not integration'"
+```
+
+**What CI runs** (`.github/workflows/backend-tests.yml`, on every pull request and push to `main`)
+1. **Fast tests (unit + API)**: checks that every collected test is in exactly one of the two jobs, then runs `-m "not slow and not integration"`. This is the job to make required.
+2. **Slow + integration tests**: runs `-m "slow or integration"` in parallel with job 1.
+
+Both jobs use Python 3.11, a pip cache, SQLite and dummy environment values only.
 
 ---
 
