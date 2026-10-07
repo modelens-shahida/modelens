@@ -1,17 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  Cpu, 
-  Layers, 
-  ShieldCheck, 
-  ArrowRightLeft, 
-  Sliders, 
-  Sparkles, 
-  Eye, 
-  CheckCircle2, 
-  AlertCircle, 
-  Zap, 
+import {
+  Cpu,
+  Layers,
+  ShieldCheck,
+  ArrowRightLeft,
+  Sliders,
+  Sparkles,
+  Eye,
+  CheckCircle2,
+  AlertCircle,
+  Zap,
   Activity,
   Compass,
   RotateCw,
@@ -138,7 +138,7 @@ const POSE_PRESETS_DECOUPLED = [
 
 export default function ProviderRegistryManager() {
   const [activeTab, setActiveTab] = useState("providers"); // "providers" | "policies" | "pose"
-  
+
   // Decoupled Pose Geometry State
   const [selectedPose, setSelectedPose] = useState(POSE_PRESETS_DECOUPLED[0]);
   const [bodyYaw, setBodyYaw] = useState("R030");
@@ -190,33 +190,30 @@ export default function ProviderRegistryManager() {
       <div className="flex gap-2 border-b border-zinc-850 pb-3">
         <button
           onClick={() => setActiveTab("providers")}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
-            activeTab === "providers"
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${activeTab === "providers"
               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
               : "bg-zinc-900 text-zinc-400 hover:text-white"
-          }`}
+            }`}
         >
           <Cpu className="w-4 h-4" />
           Internal Providers Cluster
         </button>
         <button
           onClick={() => setActiveTab("policies")}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
-            activeTab === "policies"
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${activeTab === "policies"
               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
               : "bg-zinc-900 text-zinc-400 hover:text-white"
-          }`}
+            }`}
         >
           <ArrowRightLeft className="w-4 h-4" />
           Routing Policies & Fallbacks
         </button>
         <button
           onClick={() => setActiveTab("pose")}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
-            activeTab === "pose"
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${activeTab === "pose"
               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
               : "bg-zinc-900 text-zinc-400 hover:text-white"
-          }`}
+            }`}
         >
           <RotateCw className="w-4 h-4" />
           Independent Pose/Geometry Controller
@@ -336,11 +333,10 @@ export default function ProviderRegistryManager() {
                   <button
                     key={preset.code}
                     onClick={() => applyPosePreset(preset)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition flex flex-col gap-1.5 cursor-pointer ${
-                      isSelected
+                    className={`w-full text-left p-3.5 rounded-xl border transition flex flex-col gap-1.5 cursor-pointer ${isSelected
                         ? "bg-indigo-950/50 border-indigo-500 text-white shadow-md"
                         : "bg-zinc-900/50 border-zinc-850 text-zinc-300 hover:border-zinc-700"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs font-mono text-indigo-300">{preset.code}</span>
