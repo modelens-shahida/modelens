@@ -8,7 +8,7 @@ import asyncio
 import logging
 
 from app.models.db import get_db, User, Brand, BrandMember, async_session_maker
-from app.middleware.auth import get_current_user
+from app.middleware.auth import decode_token_subject, get_current_user, get_user_by_email
 from app.services.generation_events import generation_events, GenerationEvent, GENERATION_STEPS
 from app.api_docs import error_responses
 
@@ -22,18 +22,15 @@ router = APIRouter(prefix="/api/v1", tags=["Realtime Generation Events"])
 async def _authenticate_ws(token: str):
     """Authenticate WebSocket connection via JWT."""
     try:
-        import jwt
-        from app.config import settings
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
+        email = decode_token_subject(token)
+        if not email:
             return None, "Invalid token"
 
         async with async_session_maker() as db:
-            result = await db.execute(select(User).where(User.id == int(user_id)))
-            user = result.scalars().first()
+            user = await get_user_by_email(email, db)
             if not user:
-                return None, "User not found"
+                # Same reason as a bad payload: the close reason reaches the client.
+                return None, "Invalid token"
             return user, None
     except Exception as e:
         return None, str(e)

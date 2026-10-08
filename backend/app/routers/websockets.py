@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from sqlalchemy import select
 from app.models.db import async_session_maker, User, Brand, BrandMember
+from app.middleware.auth import decode_token_subject, get_user_by_email
 from app.services.connection_manager import manager
 
 logger = logging.getLogger("modelens.websocket")
@@ -20,16 +21,12 @@ async def _authenticate_websocket(token: str) -> tuple[User, None] | tuple[None,
     Returns (user, None) on success or (None, error_message) on failure.
     """
     try:
-        import jwt
-        from app.config import settings
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
+        email = decode_token_subject(token)
+        if not email:
             return None, "Invalid token payload"
 
         async with async_session_maker() as db:
-            result = await db.execute(select(User).where(User.id == int(user_id)))
-            user = result.scalars().first()
+            user = await get_user_by_email(email, db)
             if not user:
                 return None, "User not found"
             return user, None

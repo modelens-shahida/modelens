@@ -71,6 +71,22 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def decode_token_subject(token: str) -> Optional[str]:
+    """Decode one of our HS256 JWTs and return its `sub` (the user's email).
+
+    Raises jwt.PyJWTError if the token is invalid, forged or expired.
+    """
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    if not isinstance(payload, dict):
+        return None
+    return payload.get("sub")
+
+
+async def get_user_by_email(email: str, db: AsyncSession) -> Optional[User]:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalars().first()
+
+
 def hash_api_key(api_key: str) -> str:
     """Hash an API key using SHA-256 for secure storage."""
     return hashlib.sha256(api_key.encode()).hexdigest()
@@ -126,18 +142,13 @@ async def get_current_user(
     # --- Path 2: Bearer JWT ---
     if token is not None:
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            if not isinstance(payload, dict):
-                raise credentials_exception
-            email: Optional[str] = payload.get("sub")
-            if email is None:
-                raise credentials_exception
+            email = decode_token_subject(token)
         except jwt.PyJWTError:
             raise credentials_exception
+        if email is None:
+            raise credentials_exception
 
-        user_query = select(User).where(User.email == email)
-        user_result = await db.execute(user_query)
-        user = user_result.scalars().first()
+        user = await get_user_by_email(email, db)
         if user is None:
             raise credentials_exception
         return user
