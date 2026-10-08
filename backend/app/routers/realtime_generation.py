@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/v1", tags=["Realtime Generation Events"])
 async def _authenticate_ws(token: str):
     """Authenticate WebSocket connection via JWT."""
     try:
-        from jose import jwt
+        import jwt
         from app.config import settings
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")

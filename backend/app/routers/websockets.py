@@ -20,7 +20,7 @@ async def _authenticate_websocket(token: str) -> tuple[User, None] | tuple[None,
     Returns (user, None) on success or (None, error_message) on failure.
     """
     try:
-        from jose import jwt, JWTError
+        import jwt
         from app.config import settings
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")

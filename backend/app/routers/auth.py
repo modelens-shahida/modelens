@@ -3,7 +3,7 @@ from app.config import settings
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from datetime import datetime, timedelta, UTC
-from jose import jwt
+import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import secrets

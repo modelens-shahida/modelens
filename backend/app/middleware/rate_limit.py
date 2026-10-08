@@ -103,7 +103,7 @@ async def _resolve_identifier(request: Request) -> tuple[str, str, int | None]:
     if auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
-            from jose import jwt
+            import jwt
             from app.config import settings as cfg
             from sqlalchemy import select
             from app.models.db import async_session_maker, User, BrandMember

@@ -2,7 +2,7 @@ import hashlib
 import bcrypt
 from typing import Optional
 from app.config import settings
-from jose import jwt, JWTError
+import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,7 +132,7 @@ async def get_current_user(
             email: Optional[str] = payload.get("sub")
             if email is None:
                 raise credentials_exception
-        except JWTError:
+        except jwt.PyJWTError:
             raise credentials_exception
 
         user_query = select(User).where(User.email == email)

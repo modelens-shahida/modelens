@@ -1,7 +1,7 @@
 SQLAlchemy==2.0.50
 asyncpg==0.31.0
 alembic==1.18.4
-python-jose[cryptography]==3.5.0
+PyJWT==2.15.1
 passlib==1.7.4
 bcrypt==5.0.0
 fastapi==0.136.3
