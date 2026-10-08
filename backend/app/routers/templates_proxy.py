@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db
@@ -9,6 +11,9 @@ from app.middleware.auth import get_current_user
 from app.models.db import User
 from app.config import settings
 from app.api_docs import error_responses
+
+if TYPE_CHECKING:
+    from app.models.db import CreditTransaction
 
 
 
