@@ -296,3 +296,47 @@ async def test_process_sketch_job_celery_task_failure(db_session: AsyncSession, 
     user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
     user = user_result.scalars().first()
     assert user.credits == starting_credits + 5
+
+
+# ========================== Worker: references ====================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_process_sketch_job_with_references_in_fresh_session(db_session: AsyncSession, test_data: dict):
+    """The worker opens its own session, as in production: job.references must not be lazy-loaded (MissingGreenlet)."""
+    import app.models.db as models
+    from app.models.db import AssetRelationship
+
+    editor_user = test_data["users"]["editor"]
+    brand_id = test_data["brand"].id
+    job = SketchJob(user_id=editor_user.id, brand_id=brand_id, status="queued",
+                    generation_mode="studio_quality", credits_reserved=5)
+    db_session.add(job)
+    await db_session.commit()
+    db_session.add_all([
+        SketchJobReference(job_id=job.id, reference_type="sketch", image_path="/uploads/sketch_front.png"),
+        SketchJobReference(job_id=job.id, reference_type="swatch", image_path="/uploads/swatch.png"),
+        SketchJobReference(job_id=job.id, reference_type="note", image_path=None),
+    ])
+    await db_session.commit()
+    job_id = job.id
+    db_session.expunge_all()
+
+    mock_task_self = MagicMock()
+    with patch("app.worker.async_session_maker", models.async_session_maker), \
+         patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/sketch_mock_output.png"):
+        await _process_sketch_job_async(mock_task_self, job_id)
+
+    mock_task_self.retry.assert_not_called()
+    job = (await db_session.execute(select(SketchJob).where(SketchJob.id == job_id))).scalars().one()
+    assert job.status == "completed"
+    assert job.error_message is None
+    assert job.progress == 100
+    assert job.credits_consumed == 5
+
+    output = (await db_session.execute(select(SketchOutput).where(SketchOutput.job_id == job_id))).scalars().one()
+    rels = (await db_session.execute(
+        select(AssetRelationship).where(AssetRelationship.target_asset_id == output.asset_id)
+    )).scalars().all()
+    # One lineage row per reference that has an image (existing behaviour: the row points at the output itself).
+    assert [(r.source_asset_id, r.relationship_type) for r in rels] == [(output.asset_id, "REL-DERIVED-FROM")] * 2

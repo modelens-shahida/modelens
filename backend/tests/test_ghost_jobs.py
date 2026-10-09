@@ -366,3 +366,56 @@ async def test_batch_credit_deduction(client: AsyncClient, test_data: dict, db_s
     assert res.status_code == 201
     await db_session.refresh(owner_user)
     assert (owner_user.credits or 0) == 42  # 50 - (4+4) = 42
+
+
+# ========================== Worker: source assets =================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_process_ghost_job_with_source_assets_in_fresh_session(db_session: AsyncSession, test_data: dict):
+    """The worker opens its own session, as in production: job.assets must not be lazy-loaded (MissingGreenlet)."""
+    import app.models.db as models
+    from app.models.db import AssetRelationship
+
+    editor_user = test_data["users"]["editor"]
+    brand_id = test_data["brand"].id
+    sources = [
+        Asset(brand_id=brand_id, name=f"Source {i}", filename=f"src_{i}.png",
+              storage_path=f"/uploads/src_{i}.png", asset_type="upload", status="active")
+        for i in range(2)
+    ]
+    db_session.add_all(sources)
+    await db_session.commit()
+
+    job = GhostJob(user_id=editor_user.id, brand_id=brand_id, status="queued", garment_type="top",
+                   view="front", credits_reserved=4)
+    db_session.add(job)
+    await db_session.commit()
+    db_session.add_all([
+        GhostJobAsset(job_id=job.id, asset_id=sources[0].id, image_path="/uploads/src_0.png"),
+        GhostJobAsset(job_id=job.id, asset_id=sources[1].id, image_path="/uploads/src_1.png"),
+        GhostJobAsset(job_id=job.id, asset_id=None, image_path="/uploads/unregistered.png"),
+    ])
+    await db_session.commit()
+    job_id = job.id
+    db_session.expunge_all()
+
+    mock_task_self = MagicMock()
+    with patch("app.worker.async_session_maker", models.async_session_maker), \
+         patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/ghost_mock.png"):
+        await _process_ghost_job_async(mock_task_self, job_id)
+
+    mock_task_self.retry.assert_not_called()
+    job = (await db_session.execute(select(GhostJob).where(GhostJob.id == job_id))).scalars().one()
+    assert job.status == "completed"
+    assert job.error_message is None
+    assert job.progress == 100
+    assert job.credits_consumed == 4
+
+    output = (await db_session.execute(select(GhostOutput).where(GhostOutput.job_id == job_id))).scalars().one()
+    rels = (await db_session.execute(
+        select(AssetRelationship).where(AssetRelationship.target_asset_id == output.asset_id)
+    )).scalars().all()
+    assert sorted((r.source_asset_id, r.relationship_type) for r in rels) == sorted(
+        (s.id, "REL-DERIVED-FROM") for s in sources
+    )
