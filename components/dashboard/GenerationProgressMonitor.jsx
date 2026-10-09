@@ -34,8 +34,20 @@ export default function GenerationProgressMonitor({
     // Connect WebSocket
     const connectWs = () => {
       try {
+        const token = typeof window !== "undefined" ? (localStorage.getItem("modelens_token") || localStorage.getItem("token")) : null;
+        let brandId = 1;
+        try {
+          const userObj = JSON.parse(localStorage.getItem("modelens_user") || "{}");
+          brandId = userObj?.activeBrandId || userObj?.brand_id || userObj?.brandId || 1;
+        } catch (_) {}
+
+        if (!token) {
+          // No token available, rely on HTTP polling
+          return;
+        }
+
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/batch/${jobId}`;
+        const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/generation/${encodeURIComponent(jobId)}/progress?token=${encodeURIComponent(token)}&brand_id=${encodeURIComponent(brandId)}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
@@ -46,18 +58,45 @@ export default function GenerationProgressMonitor({
         ws.onmessage = (evt) => {
           try {
             const data = JSON.parse(evt.data);
-            if (data.event === "batch_progress" || data.event === "batch_finished") {
+            const isProgressEvent =
+              data.event === "generation.progress" ||
+              data.event === "generation.step" ||
+              data.event === "batch_progress" ||
+              data.event === "batch.progress";
+
+            const isCompletedEvent =
+              data.event === "generation.completed" ||
+              data.event === "batch_finished" ||
+              data.status === "completed";
+
+            const isFailedEvent =
+              data.event === "generation.failed" ||
+              data.status === "failed";
+
+            if (isProgressEvent) {
               if (data.status) setJobStatus(data.status);
+              if (data.percent !== undefined) {
+                // Update tiles progress proportionally
+                setTiles(prev =>
+                  prev.map((tile, idx) => ({
+                    ...tile,
+                    progress: Math.min(100, Math.max(0, data.percent - idx * 20)),
+                    status: data.percent >= (idx + 1) * 25 ? "completed" : "generating",
+                  }))
+                );
+              }
               if (data.completed !== undefined) setCompletedCount(data.completed);
               if (data.total !== undefined) setTotalCount(data.total);
               if (data.angle_tiles && data.angle_tiles.length > 0) {
                 setTiles(data.angle_tiles);
               }
-
-              if (data.event === "batch_finished" || data.status === "completed") {
-                setJobStatus("completed");
-                if (onComplete) onComplete(data);
-              }
+            } else if (isCompletedEvent) {
+              setJobStatus("completed");
+              setCompletedCount(totalCount);
+              setTiles(prev => prev.map(t => ({ ...t, status: "completed", progress: 100 })));
+              if (onComplete) onComplete(data);
+            } else if (isFailedEvent) {
+              setJobStatus("failed");
             }
           } catch (e) {
             console.error("WS parse error", e);
