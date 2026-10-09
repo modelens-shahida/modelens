@@ -11,7 +11,7 @@ import { useWebSocket } from "@/lib/useWebSocket";
 import { Loader2 } from "lucide-react";
 
 export default function DashboardLayout({ children }) {
-  const { token, loading } = useAuth();
+  const { token, user, loading } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [wsEvents, setWsEvents] = useState([]);
@@ -20,9 +20,11 @@ export default function DashboardLayout({ children }) {
     setWsEvents(prev => [...prev, event].slice(-50));
   };
 
+  const activeBrandId = user?.activeBrandId || user?.brand_id || user?.brandId || null;
+
   const { isConnected } = useWebSocket({
     token: token,
-    brandId: null,
+    brandId: activeBrandId,
     onEvent: handleWsEvent,
   });
 

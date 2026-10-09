@@ -55,7 +55,7 @@ export default function QADiagnosticCard({ assetId, qaProfileId = "QA-PROFILE-CA
 
   // WebSocket Live Telemetry Listener
   useWebSocket({
-    token: typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    token: typeof window !== "undefined" ? (localStorage.getItem("modelens_token") || localStorage.getItem("token")) : null,
     brandId: user?.brand_id || 1,
     onEvent: (event) => {
       if (!event?.type?.startsWith("qa.")) return;

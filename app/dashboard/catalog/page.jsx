@@ -125,7 +125,7 @@ export default function CatalogStudioPage() {
 
   // Live WebSocket Batch Telemetry Listener
   useWebSocket({
-    token: typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    token: typeof window !== "undefined" ? (localStorage.getItem("modelens_token") || localStorage.getItem("token")) : null,
     brandId: user?.brand_id || 1,
     onEvent: (event) => {
       if (event?.type === "batch.progress" && event.data) {
@@ -147,7 +147,7 @@ export default function CatalogStudioPage() {
     }
     setExportingZip(true);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = typeof window !== "undefined" ? (localStorage.getItem("modelens_token") || localStorage.getItem("token")) : null;
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/catalog-jobs/${jobId}/export-zip`, {
         headers: {
           ...(token && { Authorization: `Bearer ${token}` }),
