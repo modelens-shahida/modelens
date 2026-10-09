@@ -253,7 +253,6 @@ The backend suite (about 1,100 tests in `backend/tests/`) runs on SQLite with Re
 **Markers** (`backend/pytest.ini`)
 - `integration`: runs Celery worker task bodies, websockets or migrations.
 - `slow`: still takes over ~1s.
-- `known_failure`: already failing on main, listed with a reason and category in `tests/known_failures.py`. These run as `xfail(strict=False)`, so they still execute and are reported but do not fail the run. Remove an entry when its test is fixed.
 
 **Running tests** (from `backend/`, with `TESTING=true` set)
 ```bash

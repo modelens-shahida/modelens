@@ -319,23 +319,3 @@ async def test_data(db_session: AsyncSession):
         "workflow": workflow,
         "get_headers": get_auth_headers
     }
-
-
-# --- Known failures on main: still run, reported as xfail/xpass ---
-from known_failures import KNOWN_FAILURES
-
-
-def pytest_collection_modifyitems(config, items):
-    collected = set()
-    for item in items:
-        key = item.nodeid.split("[")[0]
-        if key in KNOWN_FAILURES:
-            collected.add(key)
-            category, reason = KNOWN_FAILURES[key]
-            item.add_marker(pytest.mark.known_failure)
-            item.add_marker(pytest.mark.xfail(reason=f"known failure ({category}): {reason}", strict=False))
-    # A whole-suite run must find every listed test, so a renamed or deleted one can't linger here.
-    whole_suite = [a.rstrip("/") for a in config.args] == ["tests"]
-    missing = set(KNOWN_FAILURES) - collected
-    if whole_suite and missing and not config.option.keyword:
-        raise pytest.UsageError(f"tests/known_failures.py lists tests that were not collected: {sorted(missing)}")
