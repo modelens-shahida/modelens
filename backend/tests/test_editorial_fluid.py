@@ -245,3 +245,133 @@ async def test_brand_model_creation_and_listing(client: AsyncClient, db_session:
     models = res.json()
     assert len(models) >= 1
     assert any(m["name"] == "Mia Private Model" for m in models)
+
+
+# ========================== Ownership & parent layers ============
+
+OPERATIONS = {
+    "apply-product": {"product_id": "prod_1"},
+    "edit": {"prompt": "Brighten the jacket"},
+    "model-swap": {"identity_prompt": "Short dark hair"},
+    "reframe": {"aspect_ratio": "16:9"},
+    "upscale": {"resolution": "4K"},
+}
+
+
+async def _seed_session(db_session: AsyncSession, user_id: int, session_id: str, layer_id: str) -> None:
+    db_session.add(FluidSession(id=session_id, user_id=user_id, workspace_id="workspace_test",
+                                name=f"Session {session_id}", model_id="model_01", aspect_ratio="4:5",
+                                active_layer_id=layer_id))
+    db_session.add(FluidLayer(id=layer_id, session_id=session_id, parent_layer_id=None,
+                              operation="base_generation", provider="FASHN Product-to-Model",
+                              provider_model="product-to-model", provider_job_id=f"job_{layer_id}",
+                              image_url=f"https://cdn.modelens.ai/{layer_id}.png", aspect_ratio="4:5"))
+    await db_session.commit()
+
+
+async def _layer_count(db_session: AsyncSession, session_id: str) -> int:
+    result = await db_session.execute(select(FluidLayer).where(FluidLayer.session_id == session_id))
+    return len(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_other_users_session_is_not_found(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+    """Another user's session behaves exactly like a missing one, for every endpoint."""
+    await _seed_session(db_session, test_data["users"]["editor"].id, "session_editor", "layer_editor")
+    viewer = test_data["get_headers"]("viewer")
+    base = "/api/v1/editorial-sessions/session_editor"
+
+    res = await client.get(base, headers=viewer)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+    assert res.json()["detail"] == "Fluid Session 'session_editor' not found"
+    assert (await client.get("/api/v1/editorial-sessions/session_missing", headers=viewer)).json()["detail"] == \
+        "Fluid Session 'session_missing' not found"
+
+    res = await client.post(f"{base}/generate", json={}, headers=viewer)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+    assert res.json()["detail"] == "Fluid session 'session_editor' not found"
+
+    for operation, payload in OPERATIONS.items():
+        res = await client.post(f"{base}/layers/layer_editor/{operation}", json=payload, headers=viewer)
+        assert res.status_code == status.HTTP_404_NOT_FOUND, operation
+        assert res.json()["detail"] == "Fluid session 'session_editor' not found"
+
+    res = await client.delete(base, headers=viewer)
+    assert res.status_code == status.HTTP_404_NOT_FOUND
+
+    listed = (await client.get("/api/v1/editorial-sessions", headers=viewer)).json()
+    assert all(s["session_id"] != "session_editor" for s in listed)
+
+    # Nothing changed for the owner.
+    assert await _layer_count(db_session, "session_editor") == 1
+    owner_view = await client.get(base, headers=test_data["get_headers"]("editor"))
+    assert owner_view.status_code == status.HTTP_200_OK
+    assert owner_view.json()["active_layer_id"] == "layer_editor"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", list(OPERATIONS))
+async def test_parent_layer_must_exist_in_the_session(client: AsyncClient, db_session: AsyncSession,
+                                                      test_data: dict, operation):
+    editor_id = test_data["users"]["editor"].id
+    await _seed_session(db_session, editor_id, "session_a", "layer_a")
+    await _seed_session(db_session, editor_id, "session_b", "layer_b")
+    headers = test_data["get_headers"]("editor")
+
+    for parent in ("layer_missing", "layer_b"):
+        res = await client.post(f"/api/v1/editorial-sessions/session_a/layers/{parent}/{operation}",
+                                json=OPERATIONS[operation], headers=headers)
+        assert res.status_code == status.HTTP_404_NOT_FOUND
+        assert res.json()["detail"] == f"Layer '{parent}' not found in Fluid session 'session_a'"
+
+    assert await _layer_count(db_session, "session_a") == 1
+
+
+@pytest.mark.asyncio
+async def test_fluid_operations_do_not_charge_credits(client: AsyncClient, db_session: AsyncSession,
+                                                      test_data: dict):
+    """Outputs are placeholders, so nothing is charged until there is a price list."""
+    editor = test_data["users"]["editor"]
+    editor.credits = 3
+    await db_session.commit()
+    headers = test_data["get_headers"]("editor")
+
+    created = await client.post("/api/v1/editorial-sessions", json={"name": "Free session"}, headers=headers)
+    assert created.status_code == status.HTTP_201_CREATED
+    session_id = created.json()["session_id"]
+
+    layer = (await client.post(f"/api/v1/editorial-sessions/{session_id}/generate", json={},
+                               headers=headers)).json()
+    for operation, payload in OPERATIONS.items():
+        res = await client.post(f"/api/v1/editorial-sessions/{session_id}/layers/{layer['layer_id']}/{operation}",
+                                json=payload, headers=headers)
+        assert res.status_code == status.HTTP_200_OK, operation
+        layer = res.json()
+
+    await db_session.refresh(editor)
+    assert editor.credits == 3
+
+
+@pytest.mark.asyncio
+async def test_frontend_flow_shapes(client: AsyncClient, test_data: dict):
+    """The calls app/dashboard/fluid/page.jsx makes, with the fields it reads."""
+    headers = test_data["get_headers"]("editor")
+    created = await client.post("/api/v1/editorial-sessions", headers=headers, json={
+        "name": "Page session", "scene_prompt": "Rooftop at dusk", "aspect_ratio": "3:4", "resolution": "2K",
+    })
+    assert created.status_code == status.HTTP_201_CREATED
+    session_id = created.json()["session_id"]
+
+    listed = (await client.get("/api/v1/editorial-sessions", headers=headers)).json()
+    assert isinstance(listed, list)
+    assert {"session_id", "name", "created_at"} <= set(listed[0])
+
+    base = (await client.post(f"/api/v1/editorial-sessions/{session_id}/generate", json={},
+                              headers=headers)).json()
+    assert base["prompt"] == "Rooftop at dusk"
+
+    session = (await client.get(f"/api/v1/editorial-sessions/{session_id}", headers=headers)).json()
+    assert session["session_id"] == session_id
+    assert [l["layer_id"] for l in session["layers"]] == [base["layer_id"]]
+    assert {"layer_id", "operation", "image_url", "prompt"} <= set(session["layers"][0])
+    assert session["active_layer_id"] == base["layer_id"]

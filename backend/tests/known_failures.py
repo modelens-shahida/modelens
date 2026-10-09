@@ -13,20 +13,12 @@ Categories:
 APP_BUG = "app bug"
 PENDING = "pending decision"
 
-_FLUID = (APP_BUG, "editorial_fluid router calls FluidService methods that do not exist "
-                   "(create_session/get_session/list_sessions/generate_base_layer/apply_product_layer) -> 500")
 _MOVE_STUDIO = (PENDING, "/api/v1/video-projects router replaced in 1ed5029; Move Studio page still calls it "
                          "- pending decision from Indra")
 _DISPATCH_THROTTLE = (PENDING, "dispatch has no rate limit; orchestrator_rate_limit setting is now unused "
                                "- pending decision")
 
 KNOWN_FAILURES = {
-    "tests/test_editorial_fluid.py::test_create_editorial_session_success": _FLUID,
-    "tests/test_editorial_fluid.py::test_get_and_delete_editorial_session": _FLUID,
-    "tests/test_editorial_fluid.py::test_generate_base_layer": _FLUID,
-    "tests/test_editorial_fluid.py::test_non_destructive_layer_pipeline": _FLUID,
-    "tests/test_editorial_fluid.py::test_list_editorial_sessions": _FLUID,
-
     "tests/test_orchestrator_regression.py::test_orchestrator_throttling": _DISPATCH_THROTTLE,
     "tests/test_orchestrator_regression.py::test_dynamic_rate_limit_enforced": _DISPATCH_THROTTLE,
 
