@@ -142,7 +142,7 @@ async def get_editorial_session(
     db: AsyncSession = Depends(get_db)
 ):
     """Retrieves Fluid Session and its non-destructive layer graph."""
-    session = await fluid_service.get_session(db, session_id)
+    session = await fluid_service.get_session(db, session_id, current_user.id)
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -165,7 +165,7 @@ async def delete_editorial_session(
     db: AsyncSession = Depends(get_db)
 ):
     """Deletes a Fluid Session."""
-    success = await fluid_service.delete_session(db, session_id)
+    success = await fluid_service.delete_session(db, session_id, current_user.id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -193,6 +193,7 @@ async def generate_base_layer(
         layer = await fluid_service.generate_base_layer(
             db=db,
             session_id=session_id,
+            user_id=current_user.id,
             use_premium_creative_model=payload.use_premium_creative_model,
         )
         return layer
@@ -220,6 +221,7 @@ async def apply_product_layer(
         layer = await fluid_service.apply_product_layer(
             db=db,
             session_id=session_id,
+            user_id=current_user.id,
             parent_layer_id=layer_id,
             product_id=payload.product_id,
             instructions=payload.instructions,
@@ -249,6 +251,7 @@ async def edit_layer(
         layer = await fluid_service.edit_layer(
             db=db,
             session_id=session_id,
+            user_id=current_user.id,
             parent_layer_id=layer_id,
             prompt=payload.prompt,
             mask_asset_id=payload.mask_asset_id,
@@ -279,6 +282,7 @@ async def model_swap_layer(
         layer = await fluid_service.model_swap_layer(
             db=db,
             session_id=session_id,
+            user_id=current_user.id,
             parent_layer_id=layer_id,
             target_model_id=payload.target_model_id,
             target_face_reference_id=payload.target_face_reference_id,
@@ -309,6 +313,7 @@ async def reframe_layer(
         layer = await fluid_service.reframe_layer(
             db=db,
             session_id=session_id,
+            user_id=current_user.id,
             parent_layer_id=layer_id,
             target_aspect_ratio=payload.aspect_ratio,
         )
@@ -337,6 +342,7 @@ async def upscale_layer(
         layer = await fluid_service.upscale_layer(
             db=db,
             session_id=session_id,
+            user_id=current_user.id,
             parent_layer_id=layer_id,
             target_resolution=payload.resolution,
             upscale_engine=payload.upscale_engine,
