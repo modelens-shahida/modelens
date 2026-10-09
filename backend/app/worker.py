@@ -68,6 +68,7 @@ import io
 from PIL import Image
 from PIL.ExifTags import TAGS
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand, Invitation
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
@@ -2156,7 +2157,10 @@ async def _process_ghost_job_async(task_self, job_id: int):
     import io
 
     async with async_session_maker() as db:
-        result = await db.execute(select(GhostJob).where(GhostJob.id == job_id))
+        # Eager-load: a lazy load of job.assets inside AsyncSession raises MissingGreenlet.
+        result = await db.execute(
+            select(GhostJob).where(GhostJob.id == job_id).options(selectinload(GhostJob.assets))
+        )
         job = result.scalars().first()
         if not job:
             print(f"[GhostJob] Job {job_id} not found.")
@@ -2524,7 +2528,10 @@ async def _process_sketch_job_async(task_self, job_id: int):
     from app.models.db import SketchJob, SketchJobReference, SketchOutput, Asset
 
     async with async_session_maker() as db:
-        result = await db.execute(select(SketchJob).where(SketchJob.id == job_id))
+        # Eager-load: a lazy load of job.references inside AsyncSession raises MissingGreenlet.
+        result = await db.execute(
+            select(SketchJob).where(SketchJob.id == job_id).options(selectinload(SketchJob.references))
+        )
         job = result.scalars().first()
         if not job:
             print(f"[SketchJob] Job {job_id} not found.")
