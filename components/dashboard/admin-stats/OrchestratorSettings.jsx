@@ -132,7 +132,7 @@ export default function OrchestratorSettings() {
           </div>
           
           <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
-            Adjust the platform-wide rate limit for campaign generation jobs. Persisted in Redis and enforced immediately without reboot.
+            Adjust the per-brand photoshoot dispatch rate limit (dispatches per minute). Persisted in Redis and enforced immediately on production runs without reboot.
           </p>
 
           <div className="space-y-4">
