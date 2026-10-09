@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api_docs import error_responses
+from app.middleware import dispatch_rate_limit
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import AIJob, User, get_db
 from app.services import production_dispatch as svc
@@ -46,6 +47,12 @@ async def _run(coro):
             "error": "insufficient_credits", "message": str(exc), "required": exc.required, "balance": exc.balance})
     except svc.EnqueueFailed as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+    except dispatch_rate_limit.DispatchRateLimited as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail={
+            "error": "rate_limited", "message": str(exc), "scope": exc.scope, "limit": exc.limit,
+            "window_seconds": exc.window, "retry_after": exc.retry_after,
+        }, headers={"Retry-After": str(exc.retry_after), "X-RateLimit-Limit": str(exc.limit),
+                    "X-RateLimit-Remaining": "0"})
 
 
 # ========================== Customer ==============================
@@ -129,12 +136,14 @@ class ProductionStatusResponse(BaseModel):
         "role); external URLs are rejected and never fetched. Credits (existing credit rates, per image x count) "
         "are checked and reserved once in the brand ledger; insufficient credits return 402 and nothing is queued "
         "or charged. Send an `Idempotency-Key` header to make retries safe: the same key returns the original "
-        "production without charging again (`Idempotent-Replayed: true`). The response never reveals adapters, "
-        "workflows, providers or seeds."
+        "production without charging again (`Idempotent-Replayed: true`). Dispatches are rate limited per user "
+        "and per charged brand; over the limit returns 429 with Retry-After, and nothing is queued or charged "
+        "(replaying an Idempotency-Key does not count). The response never reveals adapters, workflows, "
+        "providers or seeds."
     ),
     response_description="The queued production.",
     operation_id="dispatch_production",
-    responses=error_responses(401, 402, 404, 409, 422, 503),
+    responses=error_responses(401, 402, 404, 409, 422, 429, 503),
 )
 async def dispatch_production(
     payload: DispatchRequest,
@@ -145,7 +154,8 @@ async def dispatch_production(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    production, job, replayed = await _run(svc.dispatch(db, current_user, payload.model_dump(), idempotency_key))
+    production, job, replayed = await _run(svc.dispatch(
+        db, current_user, payload.model_dump(), idempotency_key, rate_limit=dispatch_rate_limit.check_dispatch))
     if replayed:
         response.headers["Idempotent-Replayed"] = "true"
     return DispatchResponse(production_id=production.production_id, status=svc.customer_status(job),

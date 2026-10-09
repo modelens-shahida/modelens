@@ -30,6 +30,7 @@ ModelLens is an enterprise-grade, AI-powered visual catalog and model generation
 * [9. Monitoring & Observability](#9-monitoring--observability)
 * [10. Email Provider Setup](#10-email-provider-setup)
 * [11. SSO Login Rate Limiting](#11-sso-login-rate-limiting)
+* [12. Production Dispatch Rate Limiting](#12-production-dispatch-rate-limiting)
 
 ---
 
@@ -374,3 +375,19 @@ SSO_RATE_LIMIT_TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
 ```
 
 `X-Forwarded-For` is then read right to left, skipping trusted proxies; the first untrusted address is the client.
+
+---
+
+## 12. Production Dispatch Rate Limiting
+
+`POST /api/v1/productions/dispatch` is limited **per brand** (the brand whose credits are charged) and **per user** (across all of their brands). Over either limit the API answers `429` with a `Retry-After` header and a JSON body (`detail.error` is `rate_limited`, `detail.scope` is `brand` or `user`). Nothing is queued or charged. Replaying an `Idempotency-Key` returns the original production and does not count against either limit.
+
+The per-brand limit is the **Orchestrator Limit** admin setting (`orchestrator_rate_limit`, dispatches per minute), edited in the admin dashboard or with `POST /api/v1/admin/settings`. It is stored in Redis and applies immediately. Until it is set, `ORCHESTRATOR_RATE_LIMIT` is used.
+
+Counters are kept in Redis (`REDIS_URL`), with an in-memory fallback per process when Redis is unreachable, as for SSO login.
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `ORCHESTRATOR_RATE_LIMIT` | Dispatches allowed per brand per minute, until the admin setting is saved | `10` |
+| `DISPATCH_RATE_LIMIT_USER_REQUESTS` | Dispatches allowed per user per window | `5` |
+| `DISPATCH_RATE_LIMIT_USER_WINDOW_SECONDS` | Per-user window, in seconds | `60` |

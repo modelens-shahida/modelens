@@ -14,7 +14,9 @@ router = APIRouter(
 )
 
 class UpdateSettingsRequest(BaseModel):
-    orchestrator_rate_limit: int = Field(..., ge=1, le=1000)
+    orchestrator_rate_limit: int = Field(
+        ..., ge=1, le=1000,
+        description="Production dispatches allowed per brand per minute (POST /api/v1/productions/dispatch).")
 
 @router.get(
     "",

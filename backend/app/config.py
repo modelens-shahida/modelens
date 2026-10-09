@@ -67,7 +67,13 @@ class Settings(BaseSettings):
     WEBHOOK_LOG_PRUNE_BATCH_SIZE: int = Field(default=1000)
 
     # Orchestrator throttling settings
-    ORCHESTRATOR_RATE_LIMIT: int = Field(default=10)
+    # Default per-brand limit for POST /api/v1/productions/dispatch, in dispatches
+    # per minute. Admins override it at runtime (POST /api/v1/admin/settings,
+    # stored in Redis as settings:orchestrator_rate_limit).
+    ORCHESTRATOR_RATE_LIMIT: int = Field(default=10, ge=1)
+    # Per-user limit for POST /api/v1/productions/dispatch, across all brands.
+    DISPATCH_RATE_LIMIT_USER_REQUESTS: int = Field(default=5, ge=1)
+    DISPATCH_RATE_LIMIT_USER_WINDOW_SECONDS: int = Field(default=60, ge=1)
 
     # Stripe Price IDs
     STRIPE_PRICE_LITE_MONTHLY: str = Field(default="price_lite_monthly_mock")

@@ -376,11 +376,14 @@ async def _existing(db: AsyncSession, user_id: int, key: str, digest: str) -> Op
 
 
 async def dispatch(db: AsyncSession, user: User, request: dict, idempotency_key: Optional[str] = None,
-                   enqueue_job: Callable[[int], Any] = None) -> tuple[Production, AIJob, bool]:
+                   enqueue_job: Callable[[int], Any] = None,
+                   rate_limit: Callable[[int, int], Awaitable[None]] = None) -> tuple[Production, AIJob, bool]:
     """Resolve, charge once and queue a production.
 
     Returns (production, job, replayed). A repeated Idempotency-Key returns
-    the original production without charging again.
+    the original production without charging again. ``rate_limit(brand_id,
+    user_id)`` runs after the replay check and the credit check, before
+    anything is written; it raises to reject the dispatch.
     """
     enqueue_job = enqueue_job or enqueue
     digest = request_hash(request)
@@ -395,6 +398,8 @@ async def dispatch(db: AsyncSession, user: User, request: dict, idempotency_key:
     check = await credits_sync_service.check_sufficient_credits(brand_id, estimated, db)
     if not check["sufficient"]:
         raise InsufficientCredits(estimated, check["balance"])
+    if rate_limit is not None:
+        await rate_limit(brand_id, user_id)
 
     production_id = f"prd_{uuid.uuid4().hex}"
     job = AIJob(user_id=user_id, brand_id=brand_id, asset_id=None, status="queued", job_type=JOB_TYPE,

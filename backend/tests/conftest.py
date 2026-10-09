@@ -129,7 +129,7 @@ app.models.db.async_session_maker = proxy_session_maker
 
 import app.middleware.rate_limit
 app.middleware.rate_limit.redis_client = global_mock_redis
-from app.middleware import sso_rate_limit
+from app.middleware import dispatch_rate_limit, sso_rate_limit
 
 import app.services.cache_service
 app.services.cache_service.redis_client = global_mock_redis
@@ -146,8 +146,9 @@ app.worker.redis_client = global_mock_redis
 @pytest.fixture(autouse=True)
 def clear_mock_redis():
     global_mock_redis.store.clear()
-    # The mock has no EVAL, so the SSO login limiter runs on its in-memory windows.
+    # The mock has no EVAL, so the SSO login and dispatch limiters run on their in-memory windows.
     sso_rate_limit.reset_memory()
+    dispatch_rate_limit.reset_memory()
     yield
 
 
