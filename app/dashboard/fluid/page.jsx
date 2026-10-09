@@ -94,11 +94,29 @@ export default function FluidStudioPage() {
     }
   };
 
+  const handleGenerateBaseLayer = async (sessionId = activeSession?.session_id) => {
+    if (!sessionId) return;
+    setLoading(true);
+    try {
+      await api.post(`/api/v1/editorial-sessions/${sessionId}/generate`, {
+        use_premium_creative_model: false,
+      });
+      toast.success("Base layer generated!");
+      await fetchSession(sessionId);
+      await fetchSessions();
+    } catch (e) {
+      toast.error(e.message || "Failed to generate base layer");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateSession = async () => {
     if (!newSessionName.trim()) { toast.error("Please enter a session name"); return; }
     setCreating(true);
     try {
       const data = await api.post("/api/v1/editorial-sessions", {
+        workspace_id: String(brands[0]?.id || "workspace_demo"),
         name: newSessionName,
         scene_prompt: newScenePrompt,
         aspect_ratio: newAspectRatio,
@@ -110,6 +128,8 @@ export default function FluidStudioPage() {
       setNewScenePrompt("");
       await fetchSessions();
       await fetchSession(data.session_id);
+      // Automatically generate initial base layer
+      await handleGenerateBaseLayer(data.session_id);
     } catch (e) {
       toast.error("Failed to create session");
     } finally {
@@ -126,7 +146,19 @@ export default function FluidStudioPage() {
         payload = { product_id: opProductId, instructions: opInstructions };
       } else if (operation === "edit") {
         payload = { prompt: opPrompt };
-        if (opMaskFile) payload.mask_asset_id = opMaskFile.name;
+        if (opMaskFile) {
+          try {
+            const maskForm = new FormData();
+            maskForm.append("brand_id", String(brands[0]?.id || "1"));
+            maskForm.append("name", `mask_${Date.now()}`);
+            maskForm.append("asset_type", "mask");
+            maskForm.append("file", opMaskFile);
+            const maskRes = await api.post("/api/v1/assets", maskForm);
+            payload.mask_asset_id = String(maskRes.id);
+          } catch (_) {
+            payload.mask_asset_id = opMaskFile.name;
+          }
+        }
       } else if (operation === "model-swap") {
         payload = { identity_prompt: opModelPrompt };
       } else if (operation === "reframe") {
@@ -139,7 +171,7 @@ export default function FluidStudioPage() {
         `/api/v1/editorial-sessions/${activeSession.session_id}/layers/${activeLayer.layer_id}/${operation}`,
         payload
       );
-      toast.success("Operation queued!");
+      toast.success("New layer applied!");
       await fetchSession(activeSession.session_id);
       setActiveOp(null);
     } catch (e) {
@@ -275,9 +307,17 @@ export default function FluidStudioPage() {
                   ) : activeLayer?.image_url ? (
                     <img src={activeLayer.image_url} alt="Layer output" className="max-h-full max-w-full object-contain rounded-xl border border-zinc-800" />
                   ) : (
-                    <div className="text-center">
-                      <Layers className="w-16 h-16 text-zinc-700 mx-auto mb-3" />
-                      <p className="text-zinc-500 text-sm">Select or generate a layer</p>
+                    <div className="text-center space-y-3">
+                      <Layers className="w-16 h-16 text-zinc-700 mx-auto" />
+                      <p className="text-zinc-500 text-sm">No layers generated for this session yet</p>
+                      <button
+                        onClick={() => handleGenerateBaseLayer(activeSession.session_id)}
+                        disabled={loading}
+                        className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-4 py-2 rounded-xl text-xs font-medium text-white transition"
+                      >
+                        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                        Generate Base Layer
+                      </button>
                     </div>
                   )}
                 </div>
@@ -335,7 +375,7 @@ export default function FluidStudioPage() {
                       )}
                       <button onClick={() => handleOperation(activeOp)} disabled={opSubmitting} className="mt-3 w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-2 rounded-xl text-xs font-medium transition flex items-center justify-center gap-2">
                         {opSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                        {opSubmitting ? "Processing..." : `Apply ${activeOp.replace("-", " ")}`}
+                        {opSubmitting ? "Processing..." : `Apply ${activeOp.replace(/-/g, " ")}`}
                       </button>
                     </div>
                   )}
