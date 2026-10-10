@@ -148,9 +148,10 @@ export default function MotionPresetSelector({
         });
       }, 250);
 
+      const targetBrandId = parseInt(brandId, 10) || 1;
       const res = await videoApi.createJob({
         preset_id: selectedPresetId,
-        brand_id: brandId || 1,
+        brand_id: targetBrandId,
         source_asset_id: sourceAssetId ? parseInt(sourceAssetId) : undefined,
         character_id: characterId || "EE-F-002",
         duration_seconds: duration,
@@ -161,13 +162,9 @@ export default function MotionPresetSelector({
       if (onJobCreated) onJobCreated(res);
     } catch (err) {
       console.error("Video generation job error:", err);
-      // Fallback preview for offline environments
-      setTimeout(() => {
-        setRenderStep(4);
-        setRenderedVideoUrl("https://assets.mixkit.co/videos/preview/mixkit-fashion-model-in-a-neon-illuminated-city-43282-large.mp4");
-        setRendering(false);
-        toast.success("Motion Video preview generated!");
-      }, 3000);
+      setRendering(false);
+      setRenderStep(0);
+      toast.error(err.message || "Failed to create motion video job");
     }
   };
 
