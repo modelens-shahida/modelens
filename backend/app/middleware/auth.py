@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.db import User, APIKey, Brand, BrandMember, get_db
+from app.models.db import Asset, User, APIKey, Brand, BrandMember, get_db
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
@@ -201,6 +201,26 @@ async def check_brand_role(brand_id: int, user: User, db: AsyncSession, minimum_
                 f"Your role: '{membership.role}'"
             ),
         )
+
+
+async def check_brand_asset(asset_id: int, brand_id: int, db: AsyncSession) -> Asset:
+    """Return the asset if it belongs to ``brand_id`` and is not deleted.
+
+    Otherwise 404 with the same message, so the response never tells whether
+    the asset exists in another brand.
+    """
+    result = await db.execute(select(Asset).where(
+        Asset.id == asset_id,
+        Asset.brand_id == brand_id,
+        Asset.deleted_at.is_(None),
+    ))
+    asset = result.scalars().first()
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found",
+        )
+    return asset
 
 
 def require_brand_role(minimum_role: str):

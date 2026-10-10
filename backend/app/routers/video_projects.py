@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import get_db, User
-from app.middleware.auth import check_brand_role, get_current_user
+from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.services.video_service import video_service, MOTION_PRESETS
 from app.api_docs import error_responses
 
@@ -69,7 +69,8 @@ async def get_motion_preset(
     summary="Submit a motion video job",
     description=(
         "Submit a motion video generation job for `brand_id`. The caller must own the brand or be a member "
-        "of it (else 403); an unknown brand returns 404. Nothing is queued when the request is rejected."
+        "with at least the editor role (else 403); an unknown brand returns 404. `source_asset_id` must be an "
+        "asset of that brand (else 404). Nothing is queued when the request is rejected."
     ),
     response_description="The video job was accepted and queued.",
     operation_id="create_video_job",
@@ -81,7 +82,9 @@ async def create_video_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a motion video generation job."""
-    await check_brand_role(payload.brand_id, current_user, db)
+    await check_brand_role(payload.brand_id, current_user, db, minimum_role="editor")
+    if payload.source_asset_id is not None:
+        await check_brand_asset(payload.source_asset_id, payload.brand_id, db)
 
     # Validate preset
     preset = video_service.get_preset(payload.preset_id)

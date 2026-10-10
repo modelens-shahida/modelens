@@ -1,4 +1,5 @@
 """Move Studio API: /api/v1/video presets and jobs (routers/video_projects.py)."""
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,6 +18,14 @@ def video_task():
     task.delay.return_value = MagicMock(id="celery-task-1")
     with patch("app.worker.run_video_generation_job", task):
         yield task
+
+
+async def _asset(db_session, brand_id, **fields):
+    asset = Asset(brand_id=brand_id, filename="look.png", storage_path="/uploads/look.png", asset_type="image",
+                  **fields)
+    db_session.add(asset)
+    await db_session.commit()
+    return asset
 
 
 def _job(brand, **overrides):
@@ -65,9 +74,10 @@ async def test_video_endpoints_require_login(client, test_data, method, url):
 # ========================== Jobs ==================================
 
 @pytest.mark.asyncio
-async def test_create_job_queues_the_worker_task(client, test_data, video_task):
+async def test_create_job_queues_the_worker_task(client, db_session, test_data, video_task):
     editor, brand = test_data["users"]["editor"], test_data["brand"]
-    resp = await client.post(JOBS, json=_job(brand.id, source_asset_id=7, character_id="EE-F-002"),
+    source = await _asset(db_session, brand.id)
+    resp = await client.post(JOBS, json=_job(brand.id, source_asset_id=source.id, character_id="EE-F-002"),
                              headers=test_data["get_headers"]("editor"))
     assert resp.status_code == 202, resp.text
     assert resp.json() == {
@@ -77,7 +87,7 @@ async def test_create_job_queues_the_worker_task(client, test_data, video_task):
     video_task.delay.assert_called_once()
     kwargs = video_task.delay.call_args.kwargs
     assert (kwargs["brand_id"], kwargs["user_id"], kwargs["preset_id"]) == (brand.id, editor.id, "MOT-WALK")
-    assert (kwargs["source_asset_id"], kwargs["character_id"]) == (7, "EE-F-002")
+    assert (kwargs["source_asset_id"], kwargs["character_id"]) == (source.id, "EE-F-002")
     params = kwargs["workflow_params"]
     assert (params["width"], params["height"], params["fps"], params["total_frames"]) == (1080, 1920, 24, 96)
     assert params["motion_type"] == "walk_forward"
@@ -127,8 +137,8 @@ async def _side_effects(db_session):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", ["owner", "editor", "viewer"])
-async def test_owner_and_members_can_create_jobs(client, test_data, video_task, role):
+@pytest.mark.parametrize("role", ["owner", "editor"])
+async def test_owner_and_editors_can_create_jobs(client, test_data, video_task, role):
     resp = await client.post(JOBS, json=_job(test_data["brand"].id), headers=test_data["get_headers"](role))
     assert resp.status_code == 202, resp.text
     assert video_task.delay.call_args.kwargs["brand_id"] == test_data["brand"].id
@@ -187,3 +197,37 @@ async def test_brand_is_checked_before_the_preset(client, test_data, video_task)
     resp = await client.post(JOBS, json=_job(test_data["brand"].id, preset_id="MOT-NOPE"),
                              headers=test_data["get_headers"]("nonmember"))
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_gets_403_and_nothing_is_queued(client, db_session, test_data, video_task):
+    before = await _side_effects(db_session)
+    resp = await client.post(JOBS, json=_job(test_data["brand"].id), headers=test_data["get_headers"]("viewer"))
+    assert resp.status_code == 403
+    assert "Requires at least 'editor' role" in resp.json()["detail"]
+    video_task.delay.assert_not_called()
+    assert await _side_effects(db_session) == before
+
+
+# ========================== Source asset ==========================
+
+@pytest.mark.asyncio
+async def test_source_asset_of_another_brand_is_404(client, db_session, test_data, video_task):
+    foreign = await _asset(db_session, test_data["other_brand"].id)
+    before = await _side_effects(db_session)
+    resp = await client.post(JOBS, json=_job(test_data["brand"].id, source_asset_id=foreign.id),
+                             headers=test_data["get_headers"]("editor"))
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Asset not found"
+    video_task.delay.assert_not_called()
+    assert await _side_effects(db_session) == before
+
+
+@pytest.mark.asyncio
+async def test_missing_or_deleted_source_asset_is_the_same_404(client, db_session, test_data, video_task):
+    deleted = await _asset(db_session, test_data["brand"].id, deleted_at=datetime(2026, 1, 1))
+    for asset_id in (999_999, deleted.id):
+        resp = await client.post(JOBS, json=_job(test_data["brand"].id, source_asset_id=asset_id),
+                                 headers=test_data["get_headers"]("editor"))
+        assert (resp.status_code, resp.json()["detail"]) == (404, "Asset not found")
+    video_task.delay.assert_not_called()
