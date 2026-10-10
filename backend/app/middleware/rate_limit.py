@@ -1,7 +1,7 @@
 import time
 import hashlib
 import logging
-from fastapi import HTTPException, status, Request, Response
+from fastapi import HTTPException, status, Request
 import redis.asyncio as aioredis
 from app.config import settings
 
@@ -143,13 +143,11 @@ class RateLimiter:
         window_seconds: int = 60,
         api_key_limit: int = None,
         check_credit_quota: bool = False,
-        ignore_tier: bool = False,
     ):
         self.requests_limit = requests_limit
         self.window_seconds = window_seconds
         self.api_key_limit = api_key_limit or requests_limit
         self.check_credit_quota = check_credit_quota
-        self.ignore_tier = ignore_tier
 
     async def __call__(self, request: Request):
         id_type, id_value, brand_id = await _resolve_identifier(request)
@@ -177,21 +175,7 @@ class RateLimiter:
                         )
 
         # Apply tier-based limits
-        if self.ignore_tier:
-            effective_limit = self.requests_limit
-            # Check dynamic rate limit from Redis if it's the orchestrator path
-            is_orchestrator_path = (
-                "/api/v1/campaigns/" in request.url.path 
-                and request.url.path.endswith("/generate")
-            )
-            if is_orchestrator_path:
-                try:
-                    dynamic_limit = await redis_client.get("settings:orchestrator_rate_limit")
-                    if dynamic_limit is not None:
-                        effective_limit = int(dynamic_limit)
-                except Exception as e:
-                    logger.warning(f"Failed to fetch dynamic orchestrator limit: {e}")
-        elif id_type == "apikey":
+        if id_type == "apikey":
             effective_limit = tier_limits["rpm"] * 3  # API keys get 3x rpm
         elif brand_id:
             effective_limit = tier_limits["rpm"]
@@ -212,8 +196,6 @@ class RateLimiter:
         except Exception as e:
             logger.warning(f"Redis rate limiter failed: {e}. Bypassing.")
             return
-
-        remaining = max(0, effective_limit - count)
 
         if count > effective_limit:
             logger.warning(f"Rate limit exceeded for {id_type}:{id_value} on {request.url.path}")
