@@ -159,6 +159,50 @@ async def get_current_user(
 
 # ========================== RBAC Dependency Factory ========================
 
+async def check_brand_role(brand_id: int, user: User, db: AsyncSession, minimum_role: str = "viewer") -> None:
+    """Raise 404 if the brand doesn't exist, 403 unless ``user`` owns it or is a
+    member with at least ``minimum_role``.
+
+    For a ``brand_id`` taken from a request body or query; for a path
+    parameter use the ``require_brand_role`` dependency.
+    """
+    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
+    brand = brand_result.scalars().first()
+    if brand is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Brand not found",
+        )
+
+    # Owner always has full access
+    if brand.owner_id == user.id:
+        return
+
+    # Lookup membership
+    member_query = select(BrandMember).where(
+        BrandMember.brand_id == brand_id,
+        BrandMember.user_id == user.id,
+    )
+    member_result = await db.execute(member_query)
+    membership = member_result.scalars().first()
+
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this brand",
+        )
+
+    user_level = ROLE_HIERARCHY.get(membership.role, 0)
+    if user_level < ROLE_HIERARCHY.get(minimum_role, 0):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Requires at least '{minimum_role}' role. "
+                f"Your role: '{membership.role}'"
+            ),
+        )
+
+
 def require_brand_role(minimum_role: str):
     """
     FastAPI dependency factory for per-brand RBAC enforcement.
@@ -181,51 +225,12 @@ def require_brand_role(minimum_role: str):
         ):
             ...
     """
-    min_level = ROLE_HIERARCHY.get(minimum_role, 0)
-
     async def _check_brand_role(
         brand_id: int,
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        # Verify brand exists
-        brand_query = select(Brand).where(Brand.id == brand_id)
-        brand_result = await db.execute(brand_query)
-        brand = brand_result.scalars().first()
-        if brand is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Brand not found",
-            )
-
-        # Owner always has full access
-        if brand.owner_id == current_user.id:
-            return current_user
-
-        # Lookup membership
-        member_query = select(BrandMember).where(
-            BrandMember.brand_id == brand_id,
-            BrandMember.user_id == current_user.id,
-        )
-        member_result = await db.execute(member_query)
-        membership = member_result.scalars().first()
-
-        if membership is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not a member of this brand",
-            )
-
-        user_level = ROLE_HIERARCHY.get(membership.role, 0)
-        if user_level < min_level:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    f"Requires at least '{minimum_role}' role. "
-                    f"Your role: '{membership.role}'"
-                ),
-            )
-
+        await check_brand_role(brand_id, current_user, db, minimum_role)
         return current_user
 
     return _check_brand_role

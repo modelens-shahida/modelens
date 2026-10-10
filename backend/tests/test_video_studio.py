@@ -2,6 +2,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import delete, func, select
+
+from app.models.db import AIJob, Asset, Brand, BrandMember, CreditTransaction
 
 PRESETS = "/api/v1/video/presets"
 JOBS = "/api/v1/video/jobs"
@@ -111,3 +114,76 @@ async def test_create_job_validates_the_body(client, test_data, video_task, over
                              headers=test_data["get_headers"]("editor"))
     assert resp.status_code == 422
     video_task.delay.assert_not_called()
+
+
+# ========================== Brand access ==========================
+
+async def _side_effects(db_session):
+    """Rows a video job could create or charge."""
+    counts = [(await db_session.execute(select(func.count()).select_from(model))).scalar()
+              for model in (AIJob, Asset, CreditTransaction)]
+    credits = (await db_session.execute(select(Brand.id, Brand.credits).order_by(Brand.id))).all()
+    return counts, credits
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["owner", "editor", "viewer"])
+async def test_owner_and_members_can_create_jobs(client, test_data, video_task, role):
+    resp = await client.post(JOBS, json=_job(test_data["brand"].id), headers=test_data["get_headers"](role))
+    assert resp.status_code == 202, resp.text
+    assert video_task.delay.call_args.kwargs["brand_id"] == test_data["brand"].id
+    assert video_task.delay.call_args.kwargs["user_id"] == test_data["users"][role].id
+
+
+@pytest.mark.asyncio
+async def test_non_member_gets_403_and_nothing_is_queued(client, db_session, test_data, video_task):
+    before = await _side_effects(db_session)
+    # nonmember owns other_brand, but not test_data["brand"].
+    resp = await client.post(JOBS, json=_job(test_data["brand"].id), headers=test_data["get_headers"]("nonmember"))
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "You are not a member of this brand"
+    video_task.delay.assert_not_called()
+    assert await _side_effects(db_session) == before
+
+
+@pytest.mark.asyncio
+async def test_member_of_another_brand_gets_403(client, test_data, video_task):
+    resp = await client.post(JOBS, json=_job(test_data["other_brand"].id), headers=test_data["get_headers"]("editor"))
+    assert resp.status_code == 403
+    video_task.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_removed_member_gets_403(client, db_session, test_data, video_task):
+    editor, brand = test_data["users"]["editor"], test_data["brand"]
+    headers = test_data["get_headers"]("editor")
+    assert (await client.post(JOBS, json=_job(brand.id), headers=headers)).status_code == 202
+
+    await db_session.execute(delete(BrandMember).where(BrandMember.brand_id == brand.id,
+                                                       BrandMember.user_id == editor.id))
+    await db_session.commit()
+    video_task.delay.reset_mock()
+    before = await _side_effects(db_session)
+
+    resp = await client.post(JOBS, json=_job(brand.id), headers=headers)
+    assert resp.status_code == 403
+    video_task.delay.assert_not_called()
+    assert await _side_effects(db_session) == before
+
+
+@pytest.mark.asyncio
+async def test_missing_brand_returns_404(client, db_session, test_data, video_task):
+    before = await _side_effects(db_session)
+    resp = await client.post(JOBS, json=_job(999_999), headers=test_data["get_headers"]("owner"))
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Brand not found"
+    video_task.delay.assert_not_called()
+    assert await _side_effects(db_session) == before
+
+
+@pytest.mark.asyncio
+async def test_brand_is_checked_before_the_preset(client, test_data, video_task):
+    """An outsider learns nothing about presets or options from the error."""
+    resp = await client.post(JOBS, json=_job(test_data["brand"].id, preset_id="MOT-NOPE"),
+                             headers=test_data["get_headers"]("nonmember"))
+    assert resp.status_code == 403
