@@ -390,3 +390,7 @@ Counters are kept in Redis (`REDIS_URL`), with an in-memory fallback per process
 | `ORCHESTRATOR_RATE_LIMIT` | Dispatches allowed per brand per minute, until the admin setting is saved | `10` |
 | `DISPATCH_RATE_LIMIT_USER_REQUESTS` | Dispatches allowed per user per window | `5` |
 | `DISPATCH_RATE_LIMIT_USER_WINDOW_SECONDS` | Per-user window, in seconds | `60` |
+
+### Production metrics
+
+`GET /api/v1/admin/settings` returns `metrics.productions_*`, counted from the database by each production's job status: `productions_success` (completed), `productions_failed` (failed or timed out), `productions_total` (success + failed, so success / total is the success rate), `productions_in_progress` (queued or running), and `productions_cancelled` (not counted in total). `productions_retries` is always `0` because productions are never retried. Platform admins see every brand; brand admins and owners see only their own brands.

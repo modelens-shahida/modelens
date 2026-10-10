@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Any, Optional
 
-from app.models.db import User
+from app.models.db import Brand, BrandMember, User, get_db
 from app.config import settings
 from app.services.metrics import campaigns_total, campaigns_success, campaigns_failed, campaigns_retries
+from app.services.production_metrics import production_metrics
 from app.routers.admin_stats import _require_admin_or_owner
 from app.api_docs import error_responses
 
@@ -12,6 +15,17 @@ router = APIRouter(
     prefix="/api/v1/admin/settings",
     tags=["Admin Settings"],
 )
+
+async def _metrics_brand_ids(user: User, db: AsyncSession) -> Optional[list[int]]:
+    """Brands whose productions the caller may count: every brand (None) for a
+    platform admin/owner, else the brands they own or administer."""
+    if user.role in ("admin", "owner"):
+        return None
+    administered = select(BrandMember.brand_id).where(
+        BrandMember.user_id == user.id, BrandMember.role.in_(["admin", "owner"]))
+    result = await db.execute(select(Brand.id).where(or_(Brand.owner_id == user.id, Brand.id.in_(administered))))
+    return list(result.scalars().all())
+
 
 class UpdateSettingsRequest(BaseModel):
     orchestrator_rate_limit: int = Field(
@@ -22,18 +36,26 @@ class UpdateSettingsRequest(BaseModel):
     "",
     summary="Get admin runtime settings",
     description=(
-        "Get dynamic rate limit settings and Prometheus metrics.\n"
+        "Get dynamic rate limit settings and orchestrator metrics.\n"
+        "\n"
+        "`metrics.productions_*` count productions (POST /api/v1/productions/dispatch) by outcome: "
+        "`productions_total` = success + failed (finished productions, so success / total is the success "
+        "rate); cancelled and in-progress productions are reported separately and are not part of total; "
+        "`productions_retries` is always 0 because productions are never retried. A platform admin/owner "
+        "sees every brand, a brand admin/owner only the brands they own or administer. "
+        "`metrics.campaigns_*` are the legacy Prometheus counters of the removed campaign generation route.\n"
         "\n"
         "Requires a platform admin/owner, or the admin/owner of at least one brand."
     ),
-    response_description="Current dynamic settings and selected Prometheus metrics.",
+    response_description="Current dynamic settings and orchestrator metrics.",
     operation_id="get_admin_settings",
     responses=error_responses(401, 403),
 )
 async def get_admin_settings(
-    _caller: User = Depends(_require_admin_or_owner),
+    caller: User = Depends(_require_admin_or_owner),
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get dynamic rate limit settings and Prometheus metrics."""
+    """Get dynamic rate limit settings and orchestrator metrics."""
     # 1. Fetch orchestrator rate limit
     from app.middleware.rate_limit import redis_client
     orchestrator_rate_limit = settings.ORCHESTRATOR_RATE_LIMIT
@@ -50,6 +72,7 @@ async def get_admin_settings(
         "campaigns_success": int(campaigns_success._value.get()),
         "campaigns_failed": int(campaigns_failed._value.get()),
         "campaigns_retries": int(campaigns_retries._value.get()),
+        **await production_metrics(db, await _metrics_brand_ids(caller, db)),
     }
 
     return {
