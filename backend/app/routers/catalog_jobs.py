@@ -5,12 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Brand, BrandMember
-from app.middleware.auth import get_current_user
+from app.middleware.auth import check_brand_role, get_current_user
 from app.worker import process_catalog_job, process_catalog_item
 from app.services.storage import storage_service
 import os
 import uuid
 from app.api_docs import error_responses
+from app.routers.body_parsing import parse_body
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Studio"])
 
@@ -51,10 +52,14 @@ async def get_marketplaces():
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Create a catalog job",
-    description="Create a new catalog batch job supporting both JSON and FormData.",
+    description=(
+        "Create a new catalog batch job supporting both JSON and FormData. Without `brand_id` (FormData) the "
+        "caller's first brand is used. The caller must own the brand or be a member with at least the editor "
+        "role (else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected."
+    ),
     response_description="The created catalog job with reserved credits.",
     operation_id="create_catalog_job",
-    responses=error_responses(400, 401, 402),
+    responses=error_responses(400, 401, 402, 403, 404, 422),
 )
 async def create_catalog_job(
     request: Request,
@@ -75,22 +80,13 @@ async def create_catalog_job(
         aspect_ratio = form.get("aspect_ratio") or "4:5"
         resolution = form.get("resolution") or "2K"
         
+        # Files are saved once the brand is authorized
         products = []
-        uploaded_files = form.getlist("products")
-        for i, file in enumerate(uploaded_files):
-            sku_tag = form.get(f"sku_{i}") or f"SKU-{i+1}"
-            filename = file.filename or "file.png"
-            file_ext = os.path.splitext(filename)[1]
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_bytes = await file.read()
-            storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
-            products.append({
-                "sku_tag": sku_tag,
-                "image_path": storage_path
-            })
+        files_to_save = [(form.get(f"sku_{i}") or f"SKU-{i+1}", file)
+                         for i, file in enumerate(form.getlist("products"))]
     else:
         json_data = await request.json()
-        payload = CatalogJobCreate(**json_data)
+        payload = parse_body(CatalogJobCreate, json_data)
         brand_id = payload.brand_id
         engine_mode = payload.engine_mode
         generation_mode = payload.generation_mode
@@ -100,6 +96,7 @@ async def create_catalog_job(
         aspect_ratio = payload.aspect_ratio
         resolution = payload.resolution
         products = payload.products
+        files_to_save = []
 
     # Fallback to user's first brand if brand_id is missing or None
     if not brand_id:
@@ -115,18 +112,29 @@ async def create_catalog_job(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No active brand found for the user. Please create a brand first."
             )
+    await check_brand_role(brand_id, current_user, db, minimum_role="editor")
 
-    if not products:
+    if not products and not files_to_save:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one product is required.")
 
     credits_per_sku = CREDITS_PER_SKU.get(generation_mode, 5)
-    credits_needed = len(products) * credits_per_sku
+    credits_needed = (len(products) + len(files_to_save)) * credits_per_sku
 
     if (current_user.credits or 0) < credits_needed:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
+
+    for sku_tag, file in files_to_save:
+        file_ext = os.path.splitext(file.filename or "file.png")[1]
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_bytes = await file.read()
+        storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
+        products.append({
+            "sku_tag": sku_tag,
+            "image_path": storage_path
+        })
 
     current_user.credits = (current_user.credits or 0) - credits_needed
 

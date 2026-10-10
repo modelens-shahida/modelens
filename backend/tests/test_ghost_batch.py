@@ -22,6 +22,7 @@ async def test_ghost_batch_estimate_and_check(client: AsyncClient, test_data: di
     owner_headers = test_data["get_headers"]("owner")
     
     payload = {
+        "brand_id": test_data["brand"].id,
         "items": [
             {
                 "sku": "SKU-GHOST-01",
@@ -58,6 +59,7 @@ async def test_ghost_batch_creation_and_callbacks(client: AsyncClient, db_sessio
     owner_headers = test_data["get_headers"]("owner")
 
     batch_payload = {
+        "brand_id": test_data["brand"].id,
         "items": [
             {
                 "sku": "SKU-DRESS-001",

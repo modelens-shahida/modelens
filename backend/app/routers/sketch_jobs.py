@@ -5,9 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.db import get_db, User, SketchJob, SketchJobReference, SketchOutput, Brand, BrandMember
-from app.middleware.auth import get_current_user
+from app.middleware.auth import check_brand_role, get_current_user
 from app.worker import process_sketch_job
 from app.api_docs import error_responses
+from app.routers.body_parsing import parse_body
 
 router = APIRouter(prefix="/api/v1/sketch-jobs", tags=["Sketch Studio"])
 
@@ -39,10 +40,14 @@ class SketchJobCreate(BaseModel):
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Create a sketch-to-image job",
-    description="Create a new sketch-to-image job supporting both JSON and FormData.",
+    description=(
+        "Create a new sketch-to-image job supporting both JSON and FormData. Without `brand_id` the caller's "
+        "first brand is used. The caller must own the brand or be a member with at least the editor role "
+        "(else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected."
+    ),
     response_description="The created sketch job with reserved credits.",
     operation_id="create_sketch_job",
-    responses=error_responses(400, 401, 402),
+    responses=error_responses(400, 401, 402, 403, 404, 422),
 )
 async def create_sketch_job(
     request: Request,
@@ -56,6 +61,7 @@ async def create_sketch_job(
 
     content_type = request.headers.get("content-type", "")
     references_to_create = []
+    files_to_save = []
 
     if "multipart/form-data" in content_type:
         form = await request.form()
@@ -70,7 +76,7 @@ async def create_sketch_job(
         aspect_ratio = form.get("aspect_ratio") or "3:4"
         generation_mode = form.get("model_tier") or form.get("generation_mode") or "studio_quality"
 
-        # Parse and save files
+        # Parse files; they are saved once the brand is authorized
         for key in ["sketches", "fabric_refs", "print_refs", "construction_refs"]:
             # Map frontend keys to DB reference types
             ref_type = "sketch"
@@ -84,18 +90,10 @@ async def create_sketch_job(
             uploaded_files = form.getlist(key)
             for file in uploaded_files:
                 if file and file.filename:
-                    filename = file.filename
-                    file_ext = os.path.splitext(filename)[1]
-                    unique_filename = f"{uuid.uuid4()}{file_ext}"
-                    file_bytes = await file.read()
-                    storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
-                    references_to_create.append({
-                        "reference_type": ref_type,
-                        "image_path": storage_path,
-                    })
+                    files_to_save.append((ref_type, file))
     else:
         json_data = await request.json()
-        payload = SketchJobCreate(**json_data)
+        payload = parse_body(SketchJobCreate, json_data)
         brand_id = payload.brand_id
         product_hint = payload.product_hint
         material_description = payload.material_description
@@ -126,6 +124,7 @@ async def create_sketch_job(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No active brand found for the user. Please create a brand first."
             )
+    await check_brand_role(brand_id, current_user, db, minimum_role="editor")
 
     credits_needed = MODE_CREDITS.get(generation_mode, 5)
 
@@ -134,6 +133,16 @@ async def create_sketch_job(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
+
+    for ref_type, file in files_to_save:
+        file_ext = os.path.splitext(file.filename)[1]
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_bytes = await file.read()
+        storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
+        references_to_create.append({
+            "reference_type": ref_type,
+            "image_path": storage_path,
+        })
 
     # Deduct credits
     current_user.credits = (current_user.credits or 0) - credits_needed

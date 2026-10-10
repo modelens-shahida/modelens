@@ -5,10 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput, CreditTransaction, Brand, BrandMember
-from app.middleware.auth import get_current_user
+from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput
+from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.worker import process_ghost_job
 from app.api_docs import error_responses
+from app.routers.body_parsing import parse_body
 
 router = APIRouter(prefix="/api/v1/ghost-jobs", tags=["Ghost Studio"])
 
@@ -20,10 +21,13 @@ RESOLUTION_CREDITS = {
     "4K": 7,
 }
 
+# Creating ghost jobs spends credits for a brand: owner, or member with editor+.
+GHOST_ROLE = "editor"
+
 # ========================== Schemas ==============================
 
 class GhostJobCreate(BaseModel):
-    brand_id: Optional[int] = None
+    brand_id: int
     product_hint: Optional[str] = None
     garment_type: Optional[str] = "dress"
     view: Optional[str] = "front"
@@ -54,10 +58,14 @@ async def get_ghost_views():
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Create a ghost mannequin job",
-    description="Create a new ghost mannequin generation job supporting both JSON and FormData.",
+    description=(
+        "Create a new ghost mannequin generation job supporting both JSON and FormData. `brand_id` is required "
+        "(else 422); the caller must own the brand or be a member with at least the editor role (else 403), "
+        "and an unknown brand returns 404. Nothing is stored, queued or charged when the request is rejected."
+    ),
     response_description="The created ghost job with reserved credits.",
     operation_id="create_ghost_job",
-    responses=error_responses(400, 401, 402),
+    responses=error_responses(401, 402, 403, 404, 422),
 )
 async def create_ghost_job(
     request: Request,
@@ -71,11 +79,13 @@ async def create_ghost_job(
 
     content_type = request.headers.get("content-type", "")
     image_path = None
+    file = None
 
     if "multipart/form-data" in content_type:
         form = await request.form()
-        brand_id_val = form.get("brand_id")
-        brand_id = int(brand_id_val) if brand_id_val else None
+        brand_field = form.get("brand_id")
+        payload = parse_body(GhostJobCreate, {"brand_id": brand_field} if brand_field not in (None, "") else {})
+        brand_id = payload.brand_id
         product_hint = form.get("product_hint")
         garment_type = form.get("garment_type", "dress")
         view = form.get("view", "front")
@@ -86,15 +96,9 @@ async def create_ghost_job(
         generation_mode = form.get("generation_mode", "studio")
 
         file = form.get("image")
-        if file:
-            filename = file.filename or "file.png"
-            file_ext = os.path.splitext(filename)[1]
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_bytes = await file.read()
-            image_path = storage_service.save_file_bytes(unique_filename, file_bytes)
     else:
         json_data = await request.json()
-        payload = GhostJobCreate(**json_data)
+        payload = parse_body(GhostJobCreate, json_data)
         brand_id = payload.brand_id
         product_hint = payload.product_hint
         garment_type = payload.garment_type
@@ -105,20 +109,7 @@ async def create_ghost_job(
         preserve_seams = payload.preserve_seams
         generation_mode = payload.generation_mode
 
-    # Fallback to user's first brand if brand_id is missing or None
-    if not brand_id:
-        brand_query = select(Brand.id).where(Brand.owner_id == current_user.id).limit(1)
-        brand_res = await db.execute(brand_query)
-        brand_id = brand_res.scalar()
-        if not brand_id:
-            member_query = select(BrandMember.brand_id).where(BrandMember.user_id == current_user.id).limit(1)
-            member_res = await db.execute(member_query)
-            brand_id = member_res.scalar()
-        if not brand_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No active brand found for the user. Please create a brand first."
-            )
+    await check_brand_role(brand_id, current_user, db, minimum_role=GHOST_ROLE)
 
     # Check credits
     credits_needed = RESOLUTION_CREDITS.get(resolution, 4)
@@ -127,6 +118,13 @@ async def create_ghost_job(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
+
+    if file:
+        filename = file.filename or "file.png"
+        file_ext = os.path.splitext(filename)[1]
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_bytes = await file.read()
+        image_path = storage_service.save_file_bytes(unique_filename, file_bytes)
 
     # Deduct credits
     current_user.credits = (current_user.credits or 0) - credits_needed
@@ -330,10 +328,13 @@ class GhostJobBatchCreate(BaseModel):
     "/batch",
     status_code=status.HTTP_201_CREATED,
     summary="Create a batch of ghost mannequin jobs",
-    description="Create a batch of ghost mannequin generation jobs atomically.",
+    description=(
+        "Create a batch of ghost mannequin generation jobs atomically. The caller must own `brand_id` or be a "
+        "member with at least the editor role (else 403); an unknown brand returns 404."
+    ),
     response_description="The created ghost jobs.",
     operation_id="create_ghost_job_batch",
-    responses=error_responses(400, 401, 402, 422),
+    responses=error_responses(400, 401, 402, 403, 404, 422),
 )
 async def create_ghost_job_batch(
     payload: GhostJobBatchCreate,
@@ -341,6 +342,7 @@ async def create_ghost_job_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a batch of ghost mannequin generation jobs atomically."""
+    await check_brand_role(payload.brand_id, current_user, db, minimum_role=GHOST_ROLE)
     if not payload.jobs:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one job is required.")
 
@@ -420,10 +422,14 @@ class GhostVolumetricRequest(BaseModel):
     "/volumetric",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Submit a volumetric ghost mannequin job",
-    description="Submit a 3D volumetric ghost mannequin job.",
+    description=(
+        "Submit a 3D volumetric ghost mannequin job. The caller must own `brand_id` or be a member with at "
+        "least the editor role (else 403); an unknown brand returns 404. `source_asset_id` must be an asset "
+        "of that brand (else 404)."
+    ),
     response_description="The volumetric ghost job was accepted and queued.",
     operation_id="create_volumetric_ghost_job",
-    responses=error_responses(400, 401, 402, 422),
+    responses=error_responses(400, 401, 402, 403, 404, 422),
 )
 async def create_volumetric_ghost_job(
     payload: GhostVolumetricRequest,
@@ -432,6 +438,10 @@ async def create_volumetric_ghost_job(
 ):
     """Submit a 3D volumetric ghost mannequin job."""
     from app.services.ghost_volumetric_service import ghost_volumetric_service
+
+    await check_brand_role(payload.brand_id, current_user, db, minimum_role=GHOST_ROLE)
+    if payload.source_asset_id is not None:
+        await check_brand_asset(payload.source_asset_id, payload.brand_id, db)
 
     try:
         workflow_params = ghost_volumetric_service.build_workflow_params(

@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import get_db, User
-from app.middleware.auth import get_current_user
+from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.services.sketch_service import sketch_service, SKETCH_MODES, FABRIC_TEXTURES, PANTONE_COLORWAYS
 from app.api_docs import error_responses
 
@@ -52,10 +52,14 @@ async def list_sketch_modes(
     "/jobs",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Submit a sketch-to-product job",
-    description="Submit a sketch-to-product generation job.",
+    description=(
+        "Submit a sketch-to-product generation job. The caller must own `brand_id` or be a member with at "
+        "least the editor role (else 403); an unknown brand returns 404. `sketch_asset_id` must be an asset of "
+        "that brand (else 404). Nothing is queued or charged when the request is rejected."
+    ),
     response_description="The sketch job was accepted and queued.",
     operation_id="create_sketch_studio_job",
-    responses=error_responses(400, 401, 402, 422),
+    responses=error_responses(400, 401, 402, 403, 404, 422),
 )
 async def create_sketch_job(
     payload: SketchJobRequest,
@@ -63,6 +67,10 @@ async def create_sketch_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a sketch-to-product generation job."""
+    await check_brand_role(payload.brand_id, current_user, db, minimum_role="editor")
+    if payload.sketch_asset_id is not None:
+        await check_brand_asset(payload.sketch_asset_id, payload.brand_id, db)
+
     try:
         workflow_params = sketch_service.build_workflow_params(
             sketch_mode=payload.sketch_mode,

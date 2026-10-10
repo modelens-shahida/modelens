@@ -7,7 +7,7 @@ from datetime import datetime
 import uuid
 
 from app.models.db import get_db, User, GhostJob
-from app.middleware.auth import get_current_user
+from app.middleware.auth import check_brand_role, get_current_user
 from app.services.credits_sync_service import credits_sync_service, estimate_credits
 from app.api_docs import error_responses
 
@@ -47,6 +47,7 @@ class GhostBatchItem(BaseModel):
 
 
 class GhostBatchRequest(BaseModel):
+    brand_id: int = Field(..., description="Brand whose credits are reserved.")
     items: List[GhostBatchItem]
     quality_mode: str = "STUDIO_QUALITY"
     preserve_print: bool = True
@@ -59,6 +60,27 @@ class GhostBatchRequest(BaseModel):
 class GhostCreditEstimateRequest(BaseModel):
     items: List[GhostBatchItem]
     quality_mode: str = "STUDIO_QUALITY"
+
+
+class GhostCreditCheckRequest(GhostCreditEstimateRequest):
+    brand_id: int = Field(..., description="Brand whose credit balance is checked.")
+
+
+# Reserving brand credits needs the owner or a member with editor+.
+GHOST_BATCH_ROLE = "editor"
+
+
+async def _get_batch_job(job_id: str, user: User, db: AsyncSession, minimum_role: str) -> GhostJob:
+    """The ghost batch job, if the user has ``minimum_role`` in its brand; else 404."""
+    result = await db.execute(select(GhostJob).where(GhostJob.job_id == job_id))
+    job = result.scalars().first()
+    if job is not None:
+        try:
+            await check_brand_role(job.brand_id, user, db, minimum_role)
+            return job
+        except HTTPException:
+            pass
+    raise HTTPException(status_code=404, detail="Ghost job not found.")
 
 
 # ========================== Credit Estimation ====================
@@ -116,18 +138,22 @@ async def estimate_ghost_batch(
 @router.post(
     "/batch/check",
     summary="Check ghost batch credits",
-    description="Pre-flight credit check for ghost batch job.",
+    description=(
+        "Pre-flight credit check for a ghost batch job against `brand_id`. The caller must own the brand or "
+        "be a member with at least the editor role (else 403); an unknown brand returns 404."
+    ),
     response_description="Whether the brand has enough credits, with balance and shortfall.",
     operation_id="check_ghost_batch_credits",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def check_ghost_batch_credits(
-    payload: GhostCreditEstimateRequest,
+    payload: GhostCreditCheckRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Pre-flight credit check for ghost batch job."""
-    brand_id = getattr(current_user, 'brand_id', None) or 1
+    brand_id = payload.brand_id
+    await check_brand_role(brand_id, current_user, db, minimum_role=GHOST_BATCH_ROLE)
 
     estimate = estimate_ghost_batch_credits(payload.items, payload.quality_mode)
     required = estimate["total_credits"]
@@ -146,10 +172,14 @@ async def check_ghost_batch_credits(
     "/batch",
     status_code=status.HTTP_201_CREATED,
     summary="Create a ghost batch job",
-    description="Create multi-garment ghost batch job with credit reservation.",
+    description=(
+        "Create multi-garment ghost batch job with credit reservation on `brand_id`. The caller must own the "
+        "brand or be a member with at least the editor role (else 403); an unknown brand returns 404. Nothing "
+        "is created or reserved when the request is rejected."
+    ),
     response_description="The created batch job with reserved credits.",
     operation_id="create_ghost_batch_job",
-    responses=error_responses(401, 402, 404, 422),
+    responses=error_responses(401, 402, 403, 404, 422),
 )
 async def create_ghost_batch(
     payload: GhostBatchRequest,
@@ -157,7 +187,8 @@ async def create_ghost_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create multi-garment ghost batch job with credit reservation."""
-    brand_id = getattr(current_user, 'brand_id', None) or 1
+    brand_id = payload.brand_id
+    await check_brand_role(brand_id, current_user, db, minimum_role=GHOST_BATCH_ROLE)
 
     # Estimate credits
     estimate = estimate_ghost_batch_credits(payload.items, payload.quality_mode)
@@ -225,7 +256,7 @@ async def create_ghost_batch(
 @router.get(
     "/batch/{job_id}",
     summary="Get a ghost batch job",
-    description="Get ghost batch job status.",
+    description="Get ghost batch job status. Only members of the job's brand can see it (else 404).",
     response_description="Ghost batch job status.",
     operation_id="get_ghost_batch_job",
     responses=error_responses(401, 404, 422),
@@ -236,12 +267,7 @@ async def get_ghost_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Get ghost batch job status."""
-    result = await db.execute(
-        select(GhostJob).where(GhostJob.job_id == job_id)
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Ghost job not found.")
+    job = await _get_batch_job(job_id, current_user, db, minimum_role="viewer")
 
     return {
         "job_id": job_id,
@@ -258,7 +284,8 @@ async def get_ghost_batch(
 @router.post(
     "/batch/{job_id}/complete",
     summary="Finalize ghost batch credits",
-    description="Finalize credits on ghost batch completion.",
+    description="Finalize credits on ghost batch completion. Only for a ghost batch job of a brand where the "
+                "caller is owner or editor+ (else 404).",
     response_description="Confirmation that reserved credits were finalized.",
     operation_id="complete_ghost_batch_job",
     responses=error_responses(401, 404, 422),
@@ -269,6 +296,7 @@ async def complete_ghost_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Finalize credits on ghost batch completion."""
+    await _get_batch_job(job_id, current_user, db, minimum_role=GHOST_BATCH_ROLE)
     result = await credits_sync_service.finalize_credits(job_id, db)
     return result
 
@@ -276,7 +304,8 @@ async def complete_ghost_batch(
 @router.post(
     "/batch/{job_id}/fail",
     summary="Refund ghost batch credits",
-    description="Refund credits on ghost batch failure.",
+    description="Refund credits on ghost batch failure. Only for a ghost batch job of a brand where the "
+                "caller is owner or editor+ (else 404).",
     response_description="Confirmation that reserved credits were refunded.",
     operation_id="fail_ghost_batch_job",
     responses=error_responses(401, 404, 422),
@@ -288,6 +317,7 @@ async def fail_ghost_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Refund credits on ghost batch failure."""
+    await _get_batch_job(job_id, current_user, db, minimum_role=GHOST_BATCH_ROLE)
     result = await credits_sync_service.refund_credits(
         generation_id=job_id,
         reason=reason,
