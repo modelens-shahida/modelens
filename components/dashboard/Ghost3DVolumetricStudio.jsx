@@ -133,6 +133,12 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
   };
 
   const handleLaunchVolumetricJob = async () => {
+    const activeBrand = Number(brandId) || null;
+    if (!activeBrand) {
+      toast.error("Please select a brand workspace first");
+      return;
+    }
+
     try {
       // 1. Pre-flight credit check
       const creditCheck = await checkGhostBatchCredits(
@@ -142,7 +148,8 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
             views: selectedViews.map((v) => ({ view: v, resolution: resolution })),
           },
         ],
-        "STUDIO_QUALITY"
+        "STUDIO_QUALITY",
+        activeBrand
       );
 
       if (creditCheck && !creditCheck.sufficient) {
@@ -159,7 +166,7 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
       setStageMessage("Segmenting flatlay contours & separating collar layers (ghost.segmenting)...");
 
       const res = await ghostApi.createVolumetricJob({
-        brand_id: Number(brandId) || 1,
+        brand_id: activeBrand,
         source_asset_id: sourceAssetId,
         garment_type: garmentType,
         neckline_type: necklineType,
@@ -203,14 +210,8 @@ export default function Ghost3DVolumetricStudio({ brandId, sourceAssetId = 1 }) 
     } catch (err) {
       console.error(err);
       setIsGenerating(false);
-      const fallbackTaskId = `wf_ghost_mock_${Date.now()}`;
-      setCompletedJob({
-        taskId: fallbackTaskId,
-        timestamp: new Date().toLocaleTimeString(),
-        c2pa_id: `urn:c2pa:modelens:ghost_${fallbackTaskId.slice(-6)}`,
-        views: selectedViews,
-      });
-      toast.success("3D Volumetric Ghost Mannequin batch created!");
+      setProgress(0);
+      toast.error(err.message || "Failed to launch 3D volumetric job");
     }
   };
 

@@ -206,6 +206,12 @@ export default function GhostStudioPage() {
     if (!primaryImage) { toast.error("Please upload a primary image"); return; }
     if (!productHint.trim()) { toast.error("Please enter a product description"); return; }
 
+    const activeBrand = selectedBrandId || brands[0]?.id;
+    if (!activeBrand) {
+      toast.error("Please select a brand workspace first");
+      return;
+    }
+
     try {
       // 1. Pre-flight credit check
       const creditCheck = await checkGhostBatchCredits(
@@ -213,7 +219,8 @@ export default function GhostStudioPage() {
           sku: productHint || "SKU-SINGLE",
           views: [{ view: view.toUpperCase(), resolution }]
         }],
-        generationMode === "fast" ? "FAST_DRAFT" : "STUDIO_QUALITY"
+        generationMode === "fast" ? "FAST_DRAFT" : "STUDIO_QUALITY",
+        activeBrand
       );
 
       if (creditCheck && !creditCheck.sufficient) {
@@ -238,9 +245,7 @@ export default function GhostStudioPage() {
       formData.append("generation_mode", generationMode);
       formData.append("preserve_print", preservePrint ? "true" : "false");
       formData.append("preserve_seams", preserveSeams ? "true" : "false");
-      if (selectedBrandId) {
-        formData.append("brand_id", selectedBrandId);
-      }
+      formData.append("brand_id", String(activeBrand));
       if (selectedAngleShot) {
         formData.append("angle_shot_code", selectedAngleShot.code || "");
         formData.append("angle_shot_version", selectedAngleShot.version || 1);
@@ -488,6 +493,12 @@ export default function GhostStudioPage() {
       return;
     }
 
+    const activeBrand = selectedBrandId || brands[0]?.id;
+    if (!activeBrand) {
+      toast.error("Please select a brand workspace first");
+      return;
+    }
+
     try {
       // 1. Pre-flight credit check
       const creditCheck = await checkGhostBatchCredits(
@@ -495,7 +506,8 @@ export default function GhostStudioPage() {
           sku: item.productHint || `SKU-${item.id}`,
           views: [{ view: item.view?.toUpperCase() || "FRONT", resolution: item.resolution || "2K" }]
         })),
-        "STUDIO_QUALITY"
+        "STUDIO_QUALITY",
+        activeBrand
       );
 
       if (creditCheck && !creditCheck.sufficient) {
@@ -510,7 +522,7 @@ export default function GhostStudioPage() {
       setBatchSubmitting(true);
       setBatchJobsStatus({});
       const payload = {
-        brand_id: parseInt(selectedBrandId),
+        brand_id: parseInt(activeBrand, 10),
         jobs: readyItems.map(item => ({
           product_hint: item.productHint,
           garment_type: item.garmentType,
