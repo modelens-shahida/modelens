@@ -114,7 +114,6 @@ from app.api_docs import (
     TAGS_METADATA,
     add_webhook_docs,
 )
-import app.services.metrics
 
 # ContextVar to hold the request ID for the current async task execution
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")

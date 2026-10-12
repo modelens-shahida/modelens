@@ -7,7 +7,7 @@ from datetime import datetime
 import uuid
 
 from app.models.db import get_db, User, GhostJob
-from app.middleware.auth import check_brand_role, get_current_user
+from app.middleware.auth import check_brand_role, get_current_user, require_platform_admin
 from app.services.credits_sync_service import credits_sync_service, estimate_credits
 from app.api_docs import error_responses
 
@@ -81,6 +81,18 @@ async def _get_batch_job(job_id: str, user: User, db: AsyncSession, minimum_role
         except HTTPException:
             pass
     raise HTTPException(status_code=404, detail="Ghost job not found.")
+
+
+async def _get_any_batch_job(job_id: str, db: AsyncSession) -> GhostJob:
+    """The ghost job with this job_id, in any brand (platform admins only); else 404.
+
+    Credits are finalized and refunded through the shared ledger by generation
+    id, so only ids of ghost jobs may be passed on (never a production's)."""
+    result = await db.execute(select(GhostJob).where(GhostJob.job_id == job_id))
+    job = result.scalars().first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Ghost job not found.")
+    return job
 
 
 # ========================== Credit Estimation ====================
@@ -284,19 +296,20 @@ async def get_ghost_batch(
 @router.post(
     "/batch/{job_id}/complete",
     summary="Finalize ghost batch credits",
-    description="Finalize credits on ghost batch completion. Only for a ghost batch job of a brand where the "
-                "caller is owner or editor+ (else 404).",
+    description="Finalize credits on ghost batch completion, for manual recovery. Platform admins/owners only "
+                "(`users.role`); brand members, including brand admins and owners, get 403. Unknown or non-ghost "
+                "job ids get 404.",
     response_description="Confirmation that reserved credits were finalized.",
     operation_id="complete_ghost_batch_job",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def complete_ghost_batch(
     job_id: str,
-    current_user: User = Depends(get_current_user),
+    _admin: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Finalize credits on ghost batch completion."""
-    await _get_batch_job(job_id, current_user, db, minimum_role=GHOST_BATCH_ROLE)
+    await _get_any_batch_job(job_id, db)
     result = await credits_sync_service.finalize_credits(job_id, db)
     return result
 
@@ -304,20 +317,21 @@ async def complete_ghost_batch(
 @router.post(
     "/batch/{job_id}/fail",
     summary="Refund ghost batch credits",
-    description="Refund credits on ghost batch failure. Only for a ghost batch job of a brand where the "
-                "caller is owner or editor+ (else 404).",
+    description="Refund credits on ghost batch failure, for manual recovery. Platform admins/owners only "
+                "(`users.role`); brand members, including brand admins and owners, get 403. Unknown or non-ghost "
+                "job ids get 404.",
     response_description="Confirmation that reserved credits were refunded.",
     operation_id="fail_ghost_batch_job",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def fail_ghost_batch(
     job_id: str,
     reason: str = "Ghost generation failed",
-    current_user: User = Depends(get_current_user),
+    _admin: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Refund credits on ghost batch failure."""
-    await _get_batch_job(job_id, current_user, db, minimum_role=GHOST_BATCH_ROLE)
+    await _get_any_batch_job(job_id, db)
     result = await credits_sync_service.refund_credits(
         generation_id=job_id,
         reason=reason,

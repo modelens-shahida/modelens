@@ -3,6 +3,9 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi import status
 from httpx import AsyncClient
 
+from app.middleware.auth import create_access_token, hash_password
+from app.models.db import User
+
 pytestmark = pytest.mark.integration
 
 
@@ -27,7 +30,8 @@ async def test_prometheus_metrics_endpoint(client: AsyncClient):
     """Verify that the /metrics endpoint is exposed and returns Prometheus formatting."""
     res = await client.get("/metrics")
     assert res.status_code == status.HTTP_200_OK
-    assert "campaigns_total" in res.text
+    assert "# HELP" in res.text
+    assert "campaigns_" not in res.text  # legacy campaign counters are gone
 
 
 @pytest.mark.asyncio
@@ -38,9 +42,14 @@ async def test_admin_settings_get_unauthorized(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_admin_settings_get_and_post(client: AsyncClient, test_data: dict, mock_redis_global):
-    """Admin/Owner should be able to get and post dynamic settings."""
+async def test_admin_settings_get_and_post(client: AsyncClient, db_session, test_data: dict, mock_redis_global):
+    """Brand owners can read the settings; only platform admins can change them."""
     owner_headers = test_data["get_headers"]("owner")
+    admin = User(email="platform-admin@modelens.ai", hashed_password=hash_password("pw"), full_name="Admin",
+                 role="admin")
+    db_session.add(admin)
+    await db_session.commit()
+    admin_headers = {"Authorization": f"Bearer {create_access_token({'sub': admin.email})}"}
     mock_redis, mock_pipe = mock_redis_global
 
     # Mock Redis GET
@@ -54,8 +63,11 @@ async def test_admin_settings_get_and_post(client: AsyncClient, test_data: dict,
     assert data["orchestrator_rate_limit"] == 15
     assert "metrics" in data
 
-    # Post settings
+    # Post settings: a brand owner is refused, a platform admin is not
     res_post = await client.post("/api/v1/admin/settings", json={"orchestrator_rate_limit": 25}, headers=owner_headers)
+    assert res_post.status_code == status.HTTP_403_FORBIDDEN
+    mock_redis.set.assert_not_called()
+    res_post = await client.post("/api/v1/admin/settings", json={"orchestrator_rate_limit": 25}, headers=admin_headers)
     assert res_post.status_code == status.HTTP_200_OK
     assert res_post.json()["orchestrator_rate_limit"] == 25
     mock_redis.set.assert_called_once_with("settings:orchestrator_rate_limit", "25")

@@ -3,6 +3,9 @@ from httpx import AsyncClient
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.middleware.auth import create_access_token, hash_password
+from app.models.db import User
+
 @pytest.mark.asyncio
 async def test_ghost_batch_rates(client: AsyncClient, test_data: dict):
     owner_headers = test_data["get_headers"]("owner")
@@ -94,8 +97,15 @@ async def test_ghost_batch_creation_and_callbacks(client: AsyncClient, db_sessio
     assert status_data["status"] == "queued"
     assert status_data["total_items"] == 1
 
-    # 3. Complete Callback
+    # 3. Complete Callback: platform admins only (manual recovery)
     res = await client.post(f"/api/v1/ghost/batch/{job_id}/complete", headers=owner_headers)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+    admin = User(email="platform-admin@modelens.ai", hashed_password=hash_password("pw"), full_name="Admin",
+                 role="admin")
+    db_session.add(admin)
+    await db_session.commit()
+    admin_headers = {"Authorization": f"Bearer {create_access_token({'sub': admin.email})}"}
+    res = await client.post(f"/api/v1/ghost/batch/{job_id}/complete", headers=admin_headers)
     assert res.status_code == status.HTTP_200_OK
     complete_data = res.json()
     assert complete_data["status"] in ["finalized", "completed", "success"]

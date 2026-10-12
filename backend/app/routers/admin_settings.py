@@ -4,9 +4,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
 
+from app.middleware.auth import require_platform_admin
 from app.models.db import Brand, BrandMember, User, get_db
 from app.config import settings
-from app.services.metrics import campaigns_total, campaigns_success, campaigns_failed, campaigns_retries
 from app.services.production_metrics import production_metrics
 from app.routers.admin_stats import _require_admin_or_owner
 from app.api_docs import error_responses
@@ -42,8 +42,7 @@ class UpdateSettingsRequest(BaseModel):
         "`productions_total` = success + failed (finished productions, so success / total is the success "
         "rate); cancelled and in-progress productions are reported separately and are not part of total; "
         "`productions_retries` is always 0 because productions are never retried. A platform admin/owner "
-        "sees every brand, a brand admin/owner only the brands they own or administer. "
-        "`metrics.campaigns_*` are the legacy Prometheus counters of the removed campaign generation route.\n"
+        "sees every brand, a brand admin/owner only the brands they own or administer.\n"
         "\n"
         "Requires a platform admin/owner, or the admin/owner of at least one brand."
     ),
@@ -67,13 +66,7 @@ async def get_admin_settings(
         pass
 
     # 2. Get current values of metrics
-    metrics = {
-        "campaigns_total": int(campaigns_total._value.get()),
-        "campaigns_success": int(campaigns_success._value.get()),
-        "campaigns_failed": int(campaigns_failed._value.get()),
-        "campaigns_retries": int(campaigns_retries._value.get()),
-        **await production_metrics(db, await _metrics_brand_ids(caller, db)),
-    }
+    metrics = await production_metrics(db, await _metrics_brand_ids(caller, db))
 
     return {
         "orchestrator_rate_limit": orchestrator_rate_limit,
@@ -84,9 +77,9 @@ async def get_admin_settings(
     "",
     summary="Update admin runtime settings",
     description=(
-        "Update dynamic settings in Redis.\n"
+        "Update dynamic settings in Redis. They apply to every brand.\n"
         "\n"
-        "Requires a platform admin/owner, or the admin/owner of at least one brand."
+        "Requires a platform admin/owner (`users.role`); brand admins/owners get 403."
     ),
     response_description="The updated dynamic settings.",
     operation_id="update_admin_settings",
@@ -94,7 +87,7 @@ async def get_admin_settings(
 )
 async def update_admin_settings(
     payload: UpdateSettingsRequest,
-    _caller: User = Depends(_require_admin_or_owner),
+    _caller: User = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Update dynamic settings in Redis."""
     from app.middleware.rate_limit import redis_client

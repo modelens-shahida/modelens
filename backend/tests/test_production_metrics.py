@@ -13,7 +13,6 @@ from test_production_dispatch import DISPATCH, _body, queue, world  # noqa: F401
 SETTINGS = "/api/v1/admin/settings"
 PRODUCTION_FIELDS = ("productions_total", "productions_success", "productions_failed", "productions_retries",
                      "productions_in_progress", "productions_cancelled")
-CAMPAIGN_FIELDS = ("campaigns_total", "campaigns_success", "campaigns_failed", "campaigns_retries")
 
 
 async def _production(db_session, brand_id, user_id, status, with_job=True):
@@ -96,12 +95,11 @@ async def test_brand_filter(db_session, test_data):
 # ========================== Endpoint ==============================
 
 @pytest.mark.asyncio
-async def test_settings_return_production_and_campaign_fields(client, db_session, test_data):
+async def test_settings_return_production_fields_only(client, db_session, test_data):
     await _productions(db_session, test_data["brand"].id, test_data["users"]["owner"].id, MIXED)
     metrics = _metrics(await client.get(SETTINGS, headers=test_data["get_headers"]("owner")))
-    assert _productions_only(metrics) == MIXED_COUNTS
-    for field in PRODUCTION_FIELDS + CAMPAIGN_FIELDS:
-        assert isinstance(metrics[field], int)
+    assert metrics == MIXED_COUNTS
+    assert set(metrics) == set(PRODUCTION_FIELDS)
 
 
 @pytest.mark.asyncio

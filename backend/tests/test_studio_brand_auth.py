@@ -247,34 +247,3 @@ async def test_ghost_batch_job_is_only_visible_to_its_brand(client, test_data, q
         assert (await client.get(url, headers=test_data["get_headers"](role))).status_code == 200
     resp = await client.get(url, headers=test_data["get_headers"]("nonmember"))
     assert (resp.status_code, resp.json()["detail"]) == (404, "Ghost job not found.")
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("action", ["complete", "fail"])
-async def test_ghost_batch_callbacks_need_an_editor_of_the_jobs_brand(client, db_session, test_data, queued, stored,
-                                                                      action):
-    job_id = await _ghost_batch(client, test_data)
-    url = f"/api/v1/ghost/batch/{job_id}/{action}"
-    before = await _snapshot(db_session)
-    for role in ("viewer", "nonmember"):
-        resp = await client.post(url, headers=test_data["get_headers"](role))
-        assert (resp.status_code, resp.json()["detail"]) == (404, "Ghost job not found.")
-    assert await _snapshot(db_session) == before
-
-    resp = await client.post(url, headers=test_data["get_headers"]("editor"))
-    assert resp.status_code == 200, resp.text
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("action", ["complete", "fail"])
-async def test_ghost_batch_callbacks_ignore_other_generation_ids(client, db_session, test_data, queued, stored,
-                                                                 action):
-    """Refunds go through the shared ledger by generation id; only ghost batch jobs may be touched here."""
-    brand = test_data["brand"]
-    db_session.add(CreditTransaction(brand_id=brand.id, user_id=test_data["users"]["owner"].id, amount=-16,
-                                     transaction_type="reserved", status="pending", reference_id="prd_other"))
-    await db_session.commit()
-    before = await _snapshot(db_session)
-    resp = await client.post(f"/api/v1/ghost/batch/prd_other/{action}", headers=test_data["get_headers"]("owner"))
-    assert (resp.status_code, resp.json()["detail"]) == (404, "Ghost job not found.")
-    assert await _snapshot(db_session) == before

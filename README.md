@@ -381,7 +381,7 @@ SSO_RATE_LIMIT_TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
 
 `POST /api/v1/productions/dispatch` is limited **per brand** (the brand whose credits are charged) and **per user** (across all of their brands). Over either limit the API answers `429` with a `Retry-After` header and a JSON body (`detail.error` is `rate_limited`, `detail.scope` is `brand` or `user`). Nothing is queued or charged. Replaying an `Idempotency-Key` returns the original production and does not count against either limit.
 
-The per-brand limit is the **Orchestrator Limit** admin setting (`orchestrator_rate_limit`, dispatches per minute), edited in the admin dashboard or with `POST /api/v1/admin/settings`. It is stored in Redis and applies immediately. Until it is set, `ORCHESTRATOR_RATE_LIMIT` is used.
+The per-brand limit is the **Orchestrator Limit** admin setting (`orchestrator_rate_limit`, dispatches per minute), edited in the admin dashboard or with `POST /api/v1/admin/settings` (platform admins only; brand admins and owners can read it but get `403` on changes). It is stored in Redis and applies immediately. Until it is set, `ORCHESTRATOR_RATE_LIMIT` is used.
 
 Counters are kept in Redis (`REDIS_URL`), with an in-memory fallback per process when Redis is unreachable, as for SSO login.
 
@@ -393,4 +393,4 @@ Counters are kept in Redis (`REDIS_URL`), with an in-memory fallback per process
 
 ### Production metrics
 
-`GET /api/v1/admin/settings` returns `metrics.productions_*`, counted from the database by each production's job status: `productions_success` (completed), `productions_failed` (failed or timed out), `productions_total` (success + failed, so success / total is the success rate), `productions_in_progress` (queued or running), and `productions_cancelled` (not counted in total). `productions_retries` is always `0` because productions are never retried. Platform admins see every brand; brand admins and owners see only their own brands.
+`GET /api/v1/admin/settings` returns `metrics.productions_*`, counted from the database by each production's job status: `productions_success` (completed), `productions_failed` (failed or timed out), `productions_total` (success + failed, so success / total is the success rate), `productions_in_progress` (queued or running), and `productions_cancelled` (not counted in total). `productions_retries` is always `0` because productions are never retried. Platform admins see every brand; brand admins and owners see only their own brands. These are the only metrics returned; the legacy `campaigns_*` counters were removed.
