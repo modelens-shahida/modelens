@@ -37,7 +37,7 @@ def user_limit(monkeypatch):
 
 
 async def _set_brand_limit(client, world, limit: int):
-    resp = await client.post(ADMIN_SETTINGS, json={"orchestrator_rate_limit": limit}, headers=world["h"]["owner"])
+    resp = await client.post(ADMIN_SETTINGS, json={"orchestrator_rate_limit": limit}, headers=world["h"]["admin"])
     assert resp.status_code == 200, resp.text
 
 
