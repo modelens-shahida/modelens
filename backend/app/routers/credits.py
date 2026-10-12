@@ -7,7 +7,8 @@ from datetime import datetime, UTC
 
 from app.models.db import get_db, CreditTransaction, User
 from datetime import timedelta
-from app.middleware.auth import get_current_user
+from app.config import settings
+from app.middleware.auth import PLATFORM_ADMIN_ROLES, get_current_user
 from app.worker import send_low_credit_warning_email
 from app.api_docs import error_responses, limit_query, offset_query
 
@@ -146,18 +147,47 @@ async def get_credit_history(
     return list(result.scalars().all())
 
 
+# APP_ENV values where anyone may use mock-purchase. Production, and any
+# missing or unknown value, is locked to platform admins/owners.
+MOCK_PURCHASE_ENVS = {"development", "dev", "local", "staging", "test", "testing"}
+PRODUCTION_ENVS = {"production", "prod"}
+
+
+def mock_purchase_open() -> bool:
+    """Mock purchases are open to everyone outside production (tests too, unless APP_ENV is production)."""
+    app_env = (settings.APP_ENV or "").strip().lower()
+    if app_env in PRODUCTION_ENVS:
+        return False
+    return app_env in MOCK_PURCHASE_ENVS or settings.TESTING
+
+
+async def _require_mock_purchase_allowed(current_user: User = Depends(get_current_user)) -> User:
+    if mock_purchase_open() or current_user.role in PLATFORM_ADMIN_ROLES:
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Mock purchases are disabled in this environment.",
+    )
+
+
 @router.post(
     "/mock-purchase",
     status_code=status.HTTP_201_CREATED,
     summary="Simulate a credit purchase",
-    description="Simulate a credit package purchase (Stripe mock).",
+    description=(
+        "Simulate a credit package purchase (Stripe mock): adds the package's credits to the caller's account.\n"
+        "\n"
+        "Open to every user only when `APP_ENV` is development, dev, local, staging, test or testing. In "
+        "production, or when `APP_ENV` is missing or unknown, only platform admins/owners (`users.role`) may "
+        "call it; everyone else gets 403 and no credits change."
+    ),
     response_description="The resulting credit transaction and new balance.",
     operation_id="mock_credit_purchase",
-    responses=error_responses(400, 401, 422),
+    responses=error_responses(400, 401, 403, 422),
 )
 async def mock_purchase(
     payload: MockPurchaseRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_mock_purchase_allowed),
     db: AsyncSession = Depends(get_db),
 ):
     """Simulate a credit package purchase (Stripe mock)."""
