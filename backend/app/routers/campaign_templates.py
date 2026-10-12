@@ -6,7 +6,7 @@ from sqlalchemy import select
 from datetime import datetime
 
 from app.models.db import get_db, CampaignTemplate, User
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.api_docs import error_responses
 
 router = APIRouter(
@@ -62,11 +62,11 @@ async def list_campaign_templates(
     description="Create a new campaign template.",
     response_description="The created campaign template.",
     operation_id="create_campaign_template",
-    responses=error_responses(401, 409, 422),
+    responses=error_responses(401, 403, 409, 422),
 )
 async def create_campaign_template(
     payload: CampaignTemplateCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new campaign template."""
@@ -114,12 +114,12 @@ async def get_campaign_template(
     description="Update a campaign template.",
     response_description="The updated campaign template.",
     operation_id="update_campaign_template",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def update_campaign_template(
     template_id: int,
     payload: CampaignTemplateUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a campaign template."""
@@ -147,11 +147,11 @@ async def update_campaign_template(
     description="Delete a campaign template.",
     response_description="Template deleted; no content returned.",
     operation_id="delete_campaign_template",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def delete_campaign_template(
     template_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a campaign template."""

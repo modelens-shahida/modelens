@@ -13,7 +13,7 @@ from app.models.db import (
     CharacterHairProfile,
     CharacterRuntimeProfile,
 )
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/characters", tags=["Character Registry"])
@@ -140,11 +140,11 @@ async def list_characters(
     description="Create a character identity profile.",
     response_description="The created character identity profile.",
     operation_id="create_character_identity",
-    responses=error_responses(401, 409, 422),
+    responses=error_responses(401, 403, 409, 422),
 )
 async def create_character_identity(
     payload: CharacterIdentityCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a character identity profile."""
@@ -221,12 +221,12 @@ async def get_character(
     description="Create character body profile.",
     response_description="The created body profile.",
     operation_id="create_body_profile",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_body_profile(
     character_id: str,
     payload: CharacterBodyCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create character body profile."""
@@ -243,12 +243,12 @@ async def create_body_profile(
     description="Create character skin profile.",
     response_description="The created skin profile.",
     operation_id="create_skin_profile",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_skin_profile(
     character_id: str,
     payload: CharacterSkinCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create character skin profile."""
@@ -265,12 +265,12 @@ async def create_skin_profile(
     description="Create character hair DNA profile.",
     response_description="The created hair DNA profile.",
     operation_id="create_hair_profile",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_hair_profile(
     character_id: str,
     payload: CharacterHairCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create character hair DNA profile."""
@@ -287,12 +287,12 @@ async def create_hair_profile(
     description="Create character runtime profile.",
     response_description="The created runtime profile.",
     operation_id="create_runtime_profile",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_runtime_profile(
     character_id: str,
     payload: CharacterRuntimeCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create character runtime profile."""
@@ -308,12 +308,12 @@ async def create_runtime_profile(
     description="Update character lifecycle status.",
     response_description="The character with its updated lifecycle status.",
     operation_id="update_registry_character_status",
-    responses=error_responses(400, 401, 404, 422),
+    responses=error_responses(400, 401, 403, 404, 422),
 )
 async def update_character_status(
     character_id: str,
     new_status: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update character lifecycle status."""

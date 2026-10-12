@@ -79,15 +79,16 @@ async def test_characters_pagination_max_limit(client: AsyncClient, test_data: d
 # ========================== Prompts Pagination ====================
 
 @pytest.mark.asyncio
-async def test_prompts_pagination_limit(client: AsyncClient, test_data: dict):
+async def test_prompts_pagination_limit(client: AsyncClient, test_data: dict, platform_admin_headers: dict):
     """Prompts list should respect limit parameter."""
     editor_headers = test_data["get_headers"]("editor")
 
     for i in range(5):
-        await client.post("/api/v1/prompts", json={
+        res = await client.post("/api/v1/prompts", json={
             "name": f"Prompt {i}",
             "prompt_text": f"Test prompt text {i}"
-        }, headers=editor_headers)
+        }, headers=platform_admin_headers)
+        assert res.status_code == 201
 
     res = await client.get("/api/v1/prompts?limit=2&offset=0", headers=editor_headers)
     assert res.status_code == status.HTTP_200_OK

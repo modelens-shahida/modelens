@@ -83,17 +83,18 @@ async def test_prompts_endpoints_auth_required(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_prompts_crud(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+async def test_prompts_crud(client: AsyncClient, db_session: AsyncSession, test_data: dict,
+                            platform_admin_headers: dict):
     editor_headers = test_data["get_headers"]("editor")
 
-    # 1. Create a prompt template (should succeed since prompts are global resources)
+    # 1. Create a prompt template (prompts are global resources, so only a platform admin may)
     res = await client.post(
         "/api/v1/prompts",
         json={
             "name": "Luxury Lighting Prompt",
             "prompt_text": "Soft editorial studio lighting with gentle highlights, fashion look"
         },
-        headers=editor_headers
+        headers=platform_admin_headers
     )
     assert res.status_code == status.HTTP_201_CREATED
     data = res.json()
@@ -186,13 +187,13 @@ async def test_delete_character_access_control_extended(client: AsyncClient, tes
 
 
 @pytest.mark.asyncio
-async def test_get_prompt_by_id_extended(client: AsyncClient, test_data: dict):
+async def test_get_prompt_by_id_extended(client: AsyncClient, test_data: dict, platform_admin_headers: dict):
     editor_headers = test_data["get_headers"]("editor")
 
     res = await client.post(
         "/api/v1/prompts",
         json={"name": "Test Prompt", "prompt_text": "Golden hour lighting"},
-        headers=editor_headers
+        headers=platform_admin_headers
     )
     assert res.status_code == status.HTTP_201_CREATED
     prompt_id = res.json()["id"]
@@ -206,26 +207,24 @@ async def test_get_prompt_by_id_extended(client: AsyncClient, test_data: dict):
 
 
 @pytest.mark.asyncio
-async def test_update_and_delete_prompt_extended(client: AsyncClient, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
-
+async def test_update_and_delete_prompt_extended(client: AsyncClient, platform_admin_headers: dict):
     res = await client.post(
         "/api/v1/prompts",
         json={"name": "Original Prompt", "prompt_text": "Original text"},
-        headers=editor_headers
+        headers=platform_admin_headers
     )
     assert res.status_code == status.HTTP_201_CREATED
     prompt_id = res.json()["id"]
 
-    res = await client.patch(f"/api/v1/prompts/{prompt_id}", json={"name": "Updated Prompt"}, headers=editor_headers)
+    res = await client.patch(f"/api/v1/prompts/{prompt_id}", json={"name": "Updated Prompt"}, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["name"] == "Updated Prompt"
 
-    res = await client.patch("/api/v1/prompts/99999", json={"name": "Ghost"}, headers=editor_headers)
+    res = await client.patch("/api/v1/prompts/99999", json={"name": "Ghost"}, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_404_NOT_FOUND
 
-    res = await client.delete(f"/api/v1/prompts/{prompt_id}", headers=editor_headers)
+    res = await client.delete(f"/api/v1/prompts/{prompt_id}", headers=platform_admin_headers)
     assert res.status_code == status.HTTP_204_NO_CONTENT
 
-    res = await client.delete("/api/v1/prompts/99999", headers=editor_headers)
+    res = await client.delete("/api/v1/prompts/99999", headers=platform_admin_headers)
     assert res.status_code == status.HTTP_404_NOT_FOUND

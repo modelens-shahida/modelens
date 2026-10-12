@@ -90,6 +90,7 @@ ModelLens enforces immutable character identity DNA alongside versioned capabili
 * **Canonical Identity Lock**: Locked character definitions (such as `EE-F-002` V1.0) maintain fixed visual attributes, face vectors, and baseline proportions.
 * **Capability Packs**: Modular packs defining allowed pose ranges, lighting rigs, styling options, and camera perspectives.
 * **Model Promotion Guards**: `PATCH /api/v1/models/{model_id}/promote` is restricted to platform administrators.
+* **Shared Catalogs**: Creating, changing, reordering or deleting angle shots (`/api/v1/angle-shots`, also through the templates proxy), taxonomy items (`/api/v1/taxonomy`), prompt templates (`/api/v1/prompts`), campaign templates (`/api/v1/campaign-templates`) and character registry entries (`/api/v1/characters` identity, body, skin, hair, runtime and status) is restricted to platform administrators (`users.role` admin or owner). Brand owners and admins get `403`. Every logged-in user can still read them.
 
 ### Presets Registry & Production Dispatch
 * **Presets Registry**: Database-backed endpoints for Location, Lighting, and Campaign presets (`/api/v1/presets/*`).

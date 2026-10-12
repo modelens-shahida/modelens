@@ -10,7 +10,7 @@ import os
 from jsonschema import validate, ValidationError
 
 from app.models.db import get_db, User, AngleShot, AngleShotCompatibility, AngleShotVersion
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.services.compatibility import load_framing_rules, validate_compatibility
 from app.api_docs import error_responses, limit_query, page_query
 
@@ -375,11 +375,11 @@ async def get_angle_shot(
     description="Create a new angle shot preset supporting both JSON and FormData.",
     response_description="The created angle shot preset.",
     operation_id="create_angle_shot",
-    responses=error_responses(400, 401),
+    responses=error_responses(400, 401, 403),
 )
 async def create_angle_shot(
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new angle shot preset supporting both JSON and FormData."""
@@ -538,12 +538,12 @@ async def create_angle_shot(
     description="Update an angle shot preset.",
     response_description="The updated angle shot preset.",
     operation_id="update_angle_shot",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def update_angle_shot(
     shot_id: int,
     payload: AngleShotUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an angle shot preset."""
@@ -602,11 +602,11 @@ async def update_angle_shot(
     description="Soft delete an angle shot preset.",
     response_description="Preset soft-deleted; no content returned.",
     operation_id="delete_angle_shot",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def delete_angle_shot(
     shot_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Soft delete an angle shot preset."""
@@ -653,12 +653,12 @@ async def get_angle_shot_history(
     description="Restore a previous version of an angle shot.",
     response_description="The angle shot preset after restoring the requested version.",
     operation_id="restore_angle_shot_version",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def restore_angle_shot_version(
     shot_id: int,
     version_number: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Restore a previous version of an angle shot."""
@@ -767,7 +767,7 @@ async def validate_preset_payload(
     description="Reorder multiple angle shot presets.",
     response_description="Confirmation of the new preset ordering.",
     operation_id="admin_reorder_angle_shots",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 @router.post(
     "/reorder",
@@ -775,11 +775,11 @@ async def validate_preset_payload(
     description="Reorder multiple angle shot presets.",
     response_description="Confirmation of the new preset ordering.",
     operation_id="reorder_angle_shots",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def reorder_angle_shots(
     payload: ReorderRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Reorder multiple angle shot presets."""
@@ -802,7 +802,7 @@ async def reorder_angle_shots(
     description="Bulk update multiple angle shot presets.",
     response_description="Summary of the presets that were updated.",
     operation_id="admin_bulk_update_angle_shots",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 @router.post(
     "/bulk-update",
@@ -810,11 +810,11 @@ async def reorder_angle_shots(
     description="Bulk update multiple angle shot presets.",
     response_description="Summary of the presets that were updated.",
     operation_id="bulk_update_angle_shots",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def bulk_update_angle_shots(
     payload: BulkUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Bulk update multiple angle shot presets."""
@@ -850,11 +850,11 @@ async def bulk_update_angle_shots(
     description="Request a mock or pre-signed upload URL for a custom reference image.",
     response_description="Upload URL and storage key for the custom reference image.",
     operation_id="request_custom_upload_url",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def request_custom_upload_url(
     payload: CustomUploadUrlRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
 ):
     """Request a mock or pre-signed upload URL for a custom reference image."""
     import uuid
@@ -875,11 +875,11 @@ async def request_custom_upload_url(
     description="Create a custom preset from an uploaded reference image key.",
     response_description="The created custom angle shot preset.",
     operation_id="create_custom_angle_shot",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_custom_angle_shot_custom(
     payload: CustomAngleShotCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a custom preset from an uploaded reference image key."""

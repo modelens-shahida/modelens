@@ -142,8 +142,7 @@ async def test_get_angle_shot_details(client: AsyncClient, db_session: AsyncSess
 
 
 @pytest.mark.asyncio
-async def test_create_custom_angle_shot(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_create_custom_angle_shot(client: AsyncClient, db_session: AsyncSession, test_data: dict, platform_admin_headers: dict):
 
     payload = {
         "name": "Custom Runway Pose",
@@ -154,7 +153,7 @@ async def test_create_custom_angle_shot(client: AsyncClient, db_session: AsyncSe
         "compatible_products": ["Dress", "Skirt"],
     }
 
-    res = await client.post("/api/v1/angle-shots", json=payload, headers=editor_headers)
+    res = await client.post("/api/v1/angle-shots", json=payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_201_CREATED
     data = res.json()
     assert data["name"] == "Custom Runway Pose"
@@ -185,8 +184,7 @@ async def test_create_custom_angle_shot(client: AsyncClient, db_session: AsyncSe
 
 
 @pytest.mark.asyncio
-async def test_update_angle_shot(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_update_angle_shot(client: AsyncClient, db_session: AsyncSession, test_data: dict, platform_admin_headers: dict):
 
     shot = AngleShot(
         name="Initial Shot Name",
@@ -203,7 +201,7 @@ async def test_update_angle_shot(client: AsyncClient, db_session: AsyncSession, 
         "change_note": "Changed pose concept",
     }
 
-    res = await client.patch(f"/api/v1/angle-shots/{shot.id}", json=payload, headers=editor_headers)
+    res = await client.patch(f"/api/v1/angle-shots/{shot.id}", json=payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["version"] == 2
     assert res.json()["name"] == "Updated Shot Name"
@@ -226,8 +224,7 @@ async def test_update_angle_shot(client: AsyncClient, db_session: AsyncSession, 
 
 
 @pytest.mark.asyncio
-async def test_delete_angle_shot(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_delete_angle_shot(client: AsyncClient, db_session: AsyncSession, test_data: dict, platform_admin_headers: dict):
 
     shot = AngleShot(
         name="Shot to delete",
@@ -237,7 +234,7 @@ async def test_delete_angle_shot(client: AsyncClient, db_session: AsyncSession, 
     db_session.add(shot)
     await db_session.commit()
 
-    res = await client.delete(f"/api/v1/angle-shots/{shot.id}", headers=editor_headers)
+    res = await client.delete(f"/api/v1/angle-shots/{shot.id}", headers=platform_admin_headers)
     assert res.status_code == status.HTTP_204_NO_CONTENT
 
     # Verify soft delete
@@ -282,8 +279,7 @@ async def test_angle_shot_history(client: AsyncClient, db_session: AsyncSession,
 
 
 @pytest.mark.asyncio
-async def test_restore_angle_shot_version(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_restore_angle_shot_version(client: AsyncClient, db_session: AsyncSession, test_data: dict, platform_admin_headers: dict):
 
     shot = AngleShot(
         name="Restorable Shot",
@@ -310,7 +306,7 @@ async def test_restore_angle_shot_version(client: AsyncClient, db_session: Async
     await db_session.commit()
 
     res = await client.post(
-        f"/api/v1/angle-shots/{shot.id}/restore?version_number=1", headers=editor_headers
+        f"/api/v1/angle-shots/{shot.id}/restore?version_number=1", headers=platform_admin_headers
     )
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["restored_from_version"] == 1
@@ -445,8 +441,7 @@ async def test_validate_pose_preset_schema(client: AsyncClient, test_data: dict)
 
 
 @pytest.mark.asyncio
-async def test_create_preset_with_schema_validation(client: AsyncClient, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_create_preset_with_schema_validation(client: AsyncClient, test_data: dict, platform_admin_headers: dict):
 
     # 1. Valid ML-POSE creation
     payload = {
@@ -463,7 +458,7 @@ async def test_create_preset_with_schema_validation(client: AsyncClient, test_da
             "risk_level": "LOW"
         }
     }
-    res = await client.post("/api/v1/angle-shots", json=payload, headers=editor_headers)
+    res = await client.post("/api/v1/angle-shots", json=payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_201_CREATED
 
     # 2. Invalid ML-POSE creation (missing framing)
@@ -478,7 +473,7 @@ async def test_create_preset_with_schema_validation(client: AsyncClient, test_da
             "tier": "CORE"
         }
     }
-    res = await client.post("/api/v1/angle-shots", json=invalid_payload, headers=editor_headers)
+    res = await client.post("/api/v1/angle-shots", json=invalid_payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_400_BAD_REQUEST
 
 
@@ -583,8 +578,7 @@ async def test_get_filter_facets_endpoint(client: AsyncClient, db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_reorder_and_bulk_update_endpoints(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_reorder_and_bulk_update_endpoints(client: AsyncClient, db_session: AsyncSession, test_data: dict, platform_admin_headers: dict):
 
     shot_a = AngleShot(name="Shot A", is_visible=True, sort_order=0)
     shot_b = AngleShot(name="Shot B", is_visible=True, sort_order=0)
@@ -598,7 +592,7 @@ async def test_reorder_and_bulk_update_endpoints(client: AsyncClient, db_session
             {"id": shot_b.id, "sortOrder": 20}
         ]
     }
-    res = await client.post("/api/v1/angle-shots/admin/reorder", json=reorder_payload, headers=editor_headers)
+    res = await client.post("/api/v1/angle-shots/admin/reorder", json=reorder_payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_200_OK
     
     await db_session.refresh(shot_a)
@@ -612,7 +606,7 @@ async def test_reorder_and_bulk_update_endpoints(client: AsyncClient, db_session
         "status": "ARCHIVED",
         "isVisible": False
     }
-    res = await client.post("/api/v1/angle-shots/admin/bulk-update", json=bulk_payload, headers=editor_headers)
+    res = await client.post("/api/v1/angle-shots/admin/bulk-update", json=bulk_payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["updated_count"] == 2
 
@@ -622,14 +616,13 @@ async def test_reorder_and_bulk_update_endpoints(client: AsyncClient, db_session
 
 
 @pytest.mark.asyncio
-async def test_custom_pose_endpoints(client: AsyncClient, db_session: AsyncSession, test_data: dict):
-    editor_headers = test_data["get_headers"]("editor")
+async def test_custom_pose_endpoints(client: AsyncClient, db_session: AsyncSession, test_data: dict, platform_admin_headers: dict):
 
     # 1. Request upload URL
     res = await client.post(
         "/api/v1/angle-shots/custom/upload-url",
         json={"fileName": "my-pose.png", "mimeType": "image/png", "fileSize": 1000},
-        headers=editor_headers
+        headers=platform_admin_headers
     )
     assert res.status_code == status.HTTP_200_OK
     data = res.json()
@@ -644,7 +637,7 @@ async def test_custom_pose_endpoints(client: AsyncClient, db_session: AsyncSessi
         "ageGroups": ["ADULT"],
         "requestedFraming": "FULL_BODY"
     }
-    res = await client.post("/api/v1/angle-shots/custom", json=create_payload, headers=editor_headers)
+    res = await client.post("/api/v1/angle-shots/custom", json=create_payload, headers=platform_admin_headers)
     assert res.status_code == status.HTTP_200_OK
     assert res.json()["status"] == "processing"
     

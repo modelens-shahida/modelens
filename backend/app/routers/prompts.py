@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.db import get_db, PromptTemplate, User
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.api_docs import error_responses, limit_query, offset_query
 
 router = APIRouter(
@@ -36,11 +36,11 @@ class PromptResponse(BaseModel):
     description="Create a new prompt template.",
     response_description="The created prompt template.",
     operation_id="create_prompt",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_prompt(
     payload: PromptCreateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -118,12 +118,12 @@ async def get_prompt(
     description="Update a prompt template.",
     response_description="The updated prompt template.",
     operation_id="update_prompt",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def update_prompt(
     prompt_id: int,
     payload: PromptUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a prompt template."""
@@ -147,11 +147,11 @@ async def update_prompt(
     description="Delete a prompt template.",
     response_description="Prompt template deleted; no content returned.",
     operation_id="delete_prompt",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def delete_prompt(
     prompt_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a prompt template."""

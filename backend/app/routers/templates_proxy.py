@@ -4,10 +4,11 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db
 import json
+import re
 import uuid
 from fastapi.responses import JSONResponse
 from httpx import AsyncClient, ConnectError, TimeoutException
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import User
 from app.config import settings
 from app.api_docs import error_responses
@@ -286,6 +287,28 @@ async def proxy_generations(
 
 # ========================== Angle-Shots Proxy =====================
 
+# Angle shots are a shared catalog: only platform admins may change them.
+# Reads, plus the two POSTs that only check a payload, stay open to every
+# logged-in user.
+READ_ONLY_ANGLE_SHOT_POSTS = re.compile(r"validate|[^/]+/compatibility-check")
+
+
+async def _angle_shots_user(request: Request, path: str = "",
+                            current_user: User = Depends(get_current_user)) -> User:
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return current_user
+    if request.method == "POST" and READ_ONLY_ANGLE_SHOT_POSTS.fullmatch(path.strip("/")):
+        return current_user
+    return await require_platform_admin(current_user)
+
+
+async def _admin_angle_shots_user(request: Request,
+                                  current_user: User = Depends(get_current_user)) -> User:
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return current_user
+    return await require_platform_admin(current_user)
+
+
 @router.get(
     "/api/v1/angle-shots",
     summary="Proxy GET angle-shots request (collection)",
@@ -320,7 +343,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_collection_post",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.post(
     "/api/v1/angle-shots/{path:path}",
@@ -332,7 +355,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_post",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.patch(
     "/api/v1/angle-shots",
@@ -344,7 +367,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_collection_patch",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.patch(
     "/api/v1/angle-shots/{path:path}",
@@ -356,7 +379,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_patch",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.put(
     "/api/v1/angle-shots",
@@ -368,7 +391,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_collection_put",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.put(
     "/api/v1/angle-shots/{path:path}",
@@ -380,7 +403,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_put",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.delete(
     "/api/v1/angle-shots",
@@ -392,7 +415,7 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_collection_delete",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.delete(
     "/api/v1/angle-shots/{path:path}",
@@ -404,12 +427,12 @@ async def proxy_generations(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_angle_shots_delete",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 async def proxy_angle_shots(
     request: Request,
     path: str = "",
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_angle_shots_user),
 ):
     """Proxy all angle-shots requests to NestJS templates service."""
     target_path = f"v1/angle-shots/{path}" if path else "v1/angle-shots"
@@ -450,7 +473,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_collection_post",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.post(
     "/api/v1/admin/angle-shots/{path:path}",
@@ -462,7 +485,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_post",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.patch(
     "/api/v1/admin/angle-shots",
@@ -474,7 +497,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_collection_patch",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.patch(
     "/api/v1/admin/angle-shots/{path:path}",
@@ -486,7 +509,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_patch",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.put(
     "/api/v1/admin/angle-shots",
@@ -498,7 +521,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_collection_put",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.put(
     "/api/v1/admin/angle-shots/{path:path}",
@@ -510,7 +533,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_put",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.delete(
     "/api/v1/admin/angle-shots",
@@ -522,7 +545,7 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_collection_delete",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 @router.delete(
     "/api/v1/admin/angle-shots/{path:path}",
@@ -534,12 +557,12 @@ async def proxy_angle_shots(
     ),
     response_description="Response forwarded unchanged from the templates service.",
     operation_id="proxy_admin_angle_shots_delete",
-    responses=error_responses(401, 422, 500, 502, 504),
+    responses=error_responses(401, 403, 422, 500, 502, 504),
 )
 async def proxy_admin_angle_shots(
     request: Request,
     path: str = "",
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_admin_angle_shots_user),
 ):
     """Proxy all admin angle-shots requests to NestJS templates service."""
     target_path = f"v1/admin/angle-shots/{path}" if path else "v1/admin/angle-shots"

@@ -319,3 +319,13 @@ async def test_data(db_session: AsyncSession):
         "workflow": workflow,
         "get_headers": get_auth_headers
     }
+
+
+@pytest_asyncio.fixture
+async def platform_admin_headers(db_session: AsyncSession):
+    """Auth headers for a platform admin (users.role="admin"), who may change shared catalogs."""
+    user = User(email="platform-admin@modelens.ai", hashed_password=hash_password("password"),
+                full_name="Platform Admin", role="admin")
+    db_session.add(user)
+    await db_session.commit()
+    return {"Authorization": f"Bearer {create_access_token({'sub': user.email})}"}

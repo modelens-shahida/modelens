@@ -6,7 +6,7 @@ from sqlalchemy import select, or_
 from datetime import datetime
 
 from app.models.db import get_db, User, TaxonomyItem
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_platform_admin
 from app.api_docs import error_responses, limit_query, page_query
 
 router = APIRouter(prefix="/api/v1/taxonomy", tags=["Taxonomy"])
@@ -134,12 +134,12 @@ async def get_taxonomy_item(
     description="Create a new taxonomy item.",
     response_description="The created taxonomy item.",
     operation_id="create_taxonomy_item",
-    responses=error_responses(400, 401, 409, 422),
+    responses=error_responses(400, 401, 403, 409, 422),
 )
 async def create_taxonomy_item(
     taxonomy_type: str,
     payload: TaxonomyItemCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new taxonomy item."""
@@ -178,13 +178,13 @@ async def create_taxonomy_item(
     description="Update a taxonomy item.",
     response_description="The updated taxonomy item.",
     operation_id="update_taxonomy_item",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def update_taxonomy_item(
     taxonomy_type: str,
     item_id: int,
     payload: TaxonomyItemUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a taxonomy item."""
@@ -232,12 +232,12 @@ async def update_taxonomy_item(
     description="Soft delete a taxonomy item.",
     response_description="Taxonomy item soft-deleted; no content returned.",
     operation_id="delete_taxonomy_item",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def delete_taxonomy_item(
     taxonomy_type: str,
     item_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Soft delete a taxonomy item."""
