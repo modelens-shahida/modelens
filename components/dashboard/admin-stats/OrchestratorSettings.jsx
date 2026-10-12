@@ -99,7 +99,7 @@ export default function OrchestratorSettings() {
       }
     } catch (error) {
       console.error("Failed to save settings:", error);
-      toast.error("Failed to save settings to backend");
+      toast.error(error.message || "Failed to save settings to backend");
     } finally {
       setSaving(false);
     }
