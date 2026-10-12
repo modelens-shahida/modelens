@@ -10,7 +10,8 @@ import {
   XCircle, 
   AlertCircle, 
   Play, 
-  Save 
+  Save,
+  Loader2 
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
@@ -44,6 +45,12 @@ export default function OrchestratorSettings() {
     }
   };
   const [metrics, setMetrics] = useState({
+    productions_total: 0,
+    productions_success: 0,
+    productions_failed: 0,
+    productions_retries: 0,
+    productions_in_progress: 0,
+    productions_cancelled: 0,
     campaigns_total: 0,
     campaigns_success: 0,
     campaigns_failed: 0,
@@ -106,10 +113,16 @@ export default function OrchestratorSettings() {
     );
   }
 
-  // Calculate success rate percentage
-  const total = metrics.campaigns_total || 0;
-  const success = metrics.campaigns_success || 0;
-  const successRate = total > 0 ? ((success / total) * 100).toFixed(1) : "0.0";
+  // Calculate success rate percentage (finished productions: success / total)
+  // Fall back to legacy campaigns_* counters if productions_* are not yet populated
+  const total = metrics.productions_total ?? metrics.campaigns_total ?? 0;
+  const success = metrics.productions_success ?? metrics.campaigns_success ?? 0;
+  const failed = metrics.productions_failed ?? metrics.campaigns_failed ?? 0;
+  const retries = metrics.productions_retries ?? metrics.campaigns_retries ?? 0;
+  const inProgress = metrics.productions_in_progress ?? 0;
+
+  const hasData = total > 0;
+  const successRate = hasData ? ((success / total) * 100).toFixed(1) : null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -188,7 +201,7 @@ export default function OrchestratorSettings() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">Pipeline Telemetry</h2>
-                <p className="text-xs text-zinc-500 mt-0.5">Real-time stats from custom Prometheus instrumentation</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Real-time production pipeline execution & outcome metrics</p>
               </div>
             </div>
 
@@ -202,15 +215,15 @@ export default function OrchestratorSettings() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3.5">
             
-            {/* Total */}
+            {/* Total Productions */}
             <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 hover:border-zinc-700/50 transition-all">
               <div className="flex items-center gap-2 text-zinc-500 mb-2">
                 <Play size={14} className="text-purple-400" />
                 <span className="text-xs font-medium">Total Runs</span>
               </div>
-              <div className="text-2xl font-bold text-white font-mono">{metrics.campaigns_total}</div>
+              <div className="text-2xl font-bold text-white font-mono">{total}</div>
             </div>
 
             {/* Success */}
@@ -219,7 +232,7 @@ export default function OrchestratorSettings() {
                 <CheckCircle2 size={14} className="text-emerald-400" />
                 <span className="text-xs font-medium">Successes</span>
               </div>
-              <div className="text-2xl font-bold text-white font-mono text-emerald-400">{metrics.campaigns_success}</div>
+              <div className="text-2xl font-bold text-white font-mono text-emerald-400">{success}</div>
             </div>
 
             {/* Failed */}
@@ -228,7 +241,16 @@ export default function OrchestratorSettings() {
                 <XCircle size={14} className="text-rose-400" />
                 <span className="text-xs font-medium">Failures</span>
               </div>
-              <div className="text-2xl font-bold text-white font-mono text-rose-400">{metrics.campaigns_failed}</div>
+              <div className="text-2xl font-bold text-white font-mono text-rose-400">{failed}</div>
+            </div>
+
+            {/* In Progress */}
+            <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 hover:border-zinc-700/50 transition-all">
+              <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                <Loader2 size={14} className={`text-cyan-400 ${inProgress > 0 ? 'animate-spin' : ''}`} />
+                <span className="text-xs font-medium">In Progress</span>
+              </div>
+              <div className="text-2xl font-bold text-white font-mono text-cyan-400">{inProgress}</div>
             </div>
 
             {/* Retries */}
@@ -237,7 +259,7 @@ export default function OrchestratorSettings() {
                 <AlertCircle size={14} className="text-amber-400" />
                 <span className="text-xs font-medium">Retries</span>
               </div>
-              <div className="text-2xl font-bold text-white font-mono text-amber-400">{metrics.campaigns_retries}</div>
+              <div className="text-2xl font-bold text-white font-mono text-amber-400">{retries}</div>
             </div>
 
           </div>
@@ -248,12 +270,14 @@ export default function OrchestratorSettings() {
           <div className="flex-1">
             <div className="flex justify-between items-center text-xs mb-1.5 font-medium">
               <span className="text-zinc-400">Pipeline Success Rate</span>
-              <span className="text-emerald-400 font-mono">{successRate}%</span>
+              <span className="text-emerald-400 font-mono">
+                {hasData ? `${successRate}%` : "No data"}
+              </span>
             </div>
             <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
               <motion.div 
                 initial={{ width: 0 }}
-                animate={{ width: `${successRate}%` }}
+                animate={{ width: hasData ? `${successRate}%` : "0%" }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
                 className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full"
               />
