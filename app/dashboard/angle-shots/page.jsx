@@ -214,7 +214,7 @@ export default function AngleShotsPage() {
   const handleRestoreVersion = async (versionNumber) => {
     if (!selectedPreset) return;
     try {
-      const result = await api.post(`/api/v1/angle-shots/${selectedPreset.id}/restore/${versionNumber}`);
+      const result = await api.post(`/api/v1/angle-shots/${selectedPreset.id}/restore?version_number=${versionNumber}`);
       toast.success(`Preset successfully restored to version ${versionNumber}!`);
       
       // Refresh presets list and select state
