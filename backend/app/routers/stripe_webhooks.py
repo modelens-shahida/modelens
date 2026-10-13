@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import get_db, User, CreditTransaction
 from app.config import DEFAULT_STRIPE_WEBHOOK_SECRET, production_rules_apply, settings
+from app.routers.billing import credits_for
+from app.services.stripe_client import stripe_mock_mode
 import json
 import logging
 from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
@@ -14,20 +16,29 @@ router = APIRouter(
     tags=["Stripe Webhooks"],
 )
 
-PACKAGE_CREDITS = {
-    "lite": 50,
-    "plus": 250,
-    "pro": 1000,
-}
 
+async def _provision_credits(db: AsyncSession, user_id: int, credits: int, reference_type: str, description: str,
+                             reference_id: str | None = None):
+    """Add credits to user and log CreditTransaction.
 
-async def _provision_credits(db: AsyncSession, user_id: int, credits: int, reference_type: str, description: str):
-    """Add credits to user and log CreditTransaction."""
-    result = await db.execute(select(User).where(User.id == user_id))
+    reference_id is the Stripe checkout session or invoice id; Stripe retries
+    deliveries, so an id that already granted credits is skipped.
+    """
+    # Lock the user row so two deliveries of the same event cannot both pass the check below.
+    result = await db.execute(select(User).where(User.id == user_id).with_for_update())
     user = result.scalars().first()
     if not user:
         print(f"[Stripe] User {user_id} not found for provisioning.")
         return
+    if reference_id:
+        already = await db.execute(select(CreditTransaction.id).where(
+            CreditTransaction.reference_type == reference_type,
+            CreditTransaction.reference_id == reference_id,
+        ).limit(1))
+        if already.first():
+            # Nothing was changed; closing the request session releases the row lock.
+            logger.info("Stripe %s already provisioned; skipping duplicate delivery.", reference_id)
+            return
 
     user.credits += credits
     txn = CreditTransaction(
@@ -35,6 +46,7 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
         amount=credits,
         transaction_type="top_up",
         reference_type=reference_type,
+        reference_id=reference_id,
         balance_after=user.credits,
         description=description,
     )
@@ -45,6 +57,38 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
 
     await db.commit()
     print(f"[Stripe] Provisioned {credits} credits to user {user_id}. New balance: {user.credits}")
+
+
+def _invoice_metadata(invoice: dict) -> dict:
+    """The subscription metadata (from checkout's subscription_data) on an invoice.
+
+    Its location depends on the webhook endpoint's Stripe API version.
+    """
+    parent = (invoice.get("parent") or {}).get("subscription_details") or {}
+    lines = (invoice.get("lines") or {}).get("data") or [{}]
+    for metadata in (parent.get("metadata"), (invoice.get("subscription_details") or {}).get("metadata"),
+                     lines[0].get("metadata"), invoice.get("metadata")):
+        if metadata and metadata.get("user_id"):
+            return metadata
+    return {}
+
+
+async def _grant_for_metadata(db: AsyncSession, metadata: dict, reference_id: str | None, what: str):
+    user_id, package, frequency = metadata.get("user_id"), metadata.get("package"), metadata.get("frequency")
+    if not user_id:
+        logger.warning("%s without a user_id in its metadata (%s); no credits granted.", what, reference_id)
+        return
+    credits = credits_for(package, frequency)
+    if credits is None:
+        logger.error("%s with unknown package/frequency %r/%r (%s); no credits granted.",
+                     what, package, frequency, reference_id)
+        return
+    await _provision_credits(
+        db, int(user_id), credits,
+        reference_type="purchase_invoice",
+        reference_id=reference_id,
+        description=f"{what}: {package} plan, {frequency or 'monthly'} ({credits} credits)",
+    )
 
 
 @router.post(
@@ -78,7 +122,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Stripe webhooks are not configured.")
 
-    if settings.STRIPE_MOCK_MODE and not production:
+    if stripe_mock_mode():
         # Mock mode outside production: parse JSON directly without signature verification
         try:
             event = json.loads(payload)
@@ -87,7 +131,6 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     else:
         try:
             import stripe
-            stripe.api_key = settings.STRIPE_SECRET_KEY
             stripe.Webhook.construct_event(
                 payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
             )
@@ -100,34 +143,19 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     data = event.get("data", {}).get("object", {})
 
     if event_type == "checkout.session.completed":
-        metadata = data.get("metadata", {})
-        user_id = metadata.get("user_id")
-        package = metadata.get("package", "lite")
-
-        if user_id:
-            credits = PACKAGE_CREDITS.get(package, 50)
-            await _provision_credits(
-                db,
-                int(user_id), credits,
-                reference_type="purchase_invoice",
-                description=f"Stripe checkout completed: {package} plan ({credits} credits)"
-            )
+        # Metadata set by POST /api/v1/billing/checkout-session.
+        metadata = data.get("metadata") or {}
+        if data.get("payment_status") == "unpaid":
+            logger.info("Stripe checkout %s completed unpaid; no credits yet.", data.get("id"))
+        else:
+            await _grant_for_metadata(db, metadata, data.get("id"), "Stripe checkout completed")
 
     elif event_type == "invoice.payment_succeeded":
-        # Recurring billing - renew credits
-        subscription = data.get("subscription", "")
-        metadata = data.get("lines", {}).get("data", [{}])[0].get("metadata", {})
-        user_id = metadata.get("user_id") or data.get("metadata", {}).get("user_id")
-        package = metadata.get("package", "lite")
-
-        if user_id:
-            credits = PACKAGE_CREDITS.get(package, 50)
-            await _provision_credits(
-                db,
-                int(user_id), credits,
-                reference_type="purchase_invoice",
-                description=f"Recurring payment succeeded: {package} plan ({credits} credits renewed)"
-            )
+        # Recurring billing - renew credits. The first invoice of a subscription is
+        # paid by the checkout above, which already granted its credits.
+        if data.get("billing_reason") == "subscription_create":
+            return {"status": "ok", "event_type": event_type}
+        await _grant_for_metadata(db, _invoice_metadata(data), data.get("id"), "Recurring payment succeeded")
 
     elif event_type == "customer.subscription.deleted":
         # Handle cancellation

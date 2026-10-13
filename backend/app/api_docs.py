@@ -140,6 +140,14 @@ NOT_CONFIGURED_RESPONSE: dict[int, dict[str, Any]] = {
     },
 }
 
+PAYMENTS_NOT_CONFIGURED_RESPONSE: dict[int, dict[str, Any]] = {
+    503: {
+        "model": ErrorResponse,
+        "description": "STRIPE_SECRET_KEY is unset or the repository default in production; Stripe was not called.",
+        "content": _example("Payments are not configured."),
+    },
+}
+
 
 # ========================== Pagination Params =====================
 # These keep each endpoint's existing default and bounds; only the docs differ.
