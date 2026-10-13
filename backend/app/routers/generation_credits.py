@@ -13,17 +13,13 @@ from app.services.credits_sync_service import (
     estimate_batch_credits,
     CREDIT_RATES,
 )
-from app.config import settings
-from app.api_docs import error_responses
+from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
+from app.services.internal_auth import check_internal_secret
 
 router = APIRouter(prefix="/api/v1", tags=["Generation Credits Sync"])
 
-INTERNAL_SECRET = getattr(settings, "INTERNAL_CALLBACK_SECRET", "modelens-internal-secret")
-
-
 def verify_internal_secret(x_internal_secret: Optional[str] = Header(None)):
-    if x_internal_secret != INTERNAL_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid internal secret.")
+    check_internal_secret(x_internal_secret, "Invalid internal secret.")
     return x_internal_secret
 
 
@@ -202,7 +198,7 @@ async def check_credits(
     ),
     response_description="Confirmation that reserved credits were finalized.",
     operation_id="internal_finalize_generation_credits",
-    responses=error_responses(403, 404, 422),
+    responses={**error_responses(403, 404, 422), **NOT_CONFIGURED_RESPONSE},
     include_in_schema=False,
 )
 async def complete_generation_callback(
@@ -228,7 +224,7 @@ async def complete_generation_callback(
     ),
     response_description="Confirmation that reserved credits were refunded.",
     operation_id="internal_refund_generation_credits",
-    responses=error_responses(403, 404, 422),
+    responses={**error_responses(403, 404, 422), **NOT_CONFIGURED_RESPONSE},
     include_in_schema=False,
 )
 async def fail_generation_callback(

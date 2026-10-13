@@ -152,6 +152,9 @@ async def check_db_migrations():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Refuses to boot with APP_ENV=production and a critical setting wrong.
+    from app.config_production import run_startup_checks
+    run_startup_checks()
     await check_db_migrations()
     # Startup
     from app.services.sso_verification import log_mock_mode_status

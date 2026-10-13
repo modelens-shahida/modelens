@@ -131,6 +131,16 @@ def error_responses(*status_codes: int) -> dict[int, dict[str, Any]]:
     return {code: ERROR_RESPONSES[code] for code in status_codes}
 
 
+# 503 for endpoints that refuse to run until a production secret is configured.
+NOT_CONFIGURED_RESPONSE: dict[int, dict[str, Any]] = {
+    503: {
+        "model": ErrorResponse,
+        "description": "A required production secret is unset or the repository default; nothing was changed.",
+        "content": _example("Internal callbacks are not configured."),
+    },
+}
+
+
 # ========================== Pagination Params =====================
 # These keep each endpoint's existing default and bounds; only the docs differ.
 

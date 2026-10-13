@@ -11,12 +11,10 @@ from app.models.db import get_db, User, CatalogJob
 from app.middleware.auth import get_current_user
 from app.services.fashn_service import fashn_service
 from app.services.credits_sync_service import credits_sync_service
-from app.config import settings
-from app.api_docs import error_responses
+from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
+from app.services.internal_auth import check_internal_secret
 
 router = APIRouter(prefix="/api/v1/fashn", tags=["FASHN Workflow Integration"])
-
-INTERNAL_SECRET = getattr(settings, "INTERNAL_CALLBACK_SECRET", "modelens-internal-secret")
 
 # ========================== Credit Rates =========================
 
@@ -455,7 +453,7 @@ async def get_fashn_job(
     ),
     response_description="Result of finalizing or refunding the job's credits.",
     operation_id="receive_fashn_webhook",
-    responses=error_responses(403, 404, 422),
+    responses={**error_responses(403, 404, 422), **NOT_CONFIGURED_RESPONSE},
 )
 async def fashn_webhook(
     payload: FashnWebhookPayload,
@@ -463,8 +461,7 @@ async def fashn_webhook(
     db: AsyncSession = Depends(get_db),
 ):
     """FASHN webhook callback for job completion/failure."""
-    if x_internal_secret != INTERNAL_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid secret.")
+    check_internal_secret(x_internal_secret, "Invalid secret.")
 
     result = await db.execute(
         select(CatalogJob).where(CatalogJob.job_id == payload.job_id)

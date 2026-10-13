@@ -6,9 +6,15 @@ from typing import Optional
 # Resolve the absolute path of the .env file in the same directory as config.py
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 
+# Repository defaults that must never be used in production.
+DEFAULT_INTERNAL_CALLBACK_SECRET = "modelens-internal-secret"
+DEFAULT_SECRET_KEY = "generate-a-secure-secret-key-for-production-here"
+DEFAULT_STRIPE_SECRET_KEY = "sk_test_mock_key"
+DEFAULT_STRIPE_WEBHOOK_SECRET = "whsec_mock_secret"
+
 class Settings(BaseSettings):
     TEMPLATES_BACKEND_URL: str = "http://localhost:4000"
-    INTERNAL_CALLBACK_SECRET: str = "modelens-internal-secret"
+    INTERNAL_CALLBACK_SECRET: str = DEFAULT_INTERNAL_CALLBACK_SECRET
     # Database
     POSTGRES_URL: str = Field(
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/modelens"
@@ -18,7 +24,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
     # Security
-    SECRET_KEY: str = Field(default="generate-a-secure-secret-key-for-production-here")
+    SECRET_KEY: str = Field(default=DEFAULT_SECRET_KEY)
     ALGORITHM: str = Field(default="HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30)
 
@@ -38,8 +44,8 @@ class Settings(BaseSettings):
     MLFLOW_URI: str = Field(default="http://localhost:5000")
 
     # Stripe Billing
-    STRIPE_SECRET_KEY: str = Field(default="sk_test_mock_key")
-    STRIPE_WEBHOOK_SECRET: str = Field(default="whsec_mock_secret")
+    STRIPE_SECRET_KEY: str = Field(default=DEFAULT_STRIPE_SECRET_KEY)
+    STRIPE_WEBHOOK_SECRET: str = Field(default=DEFAULT_STRIPE_WEBHOOK_SECRET)
     STRIPE_MOCK_MODE: bool = Field(default=True)
 
     # Database Connection Pool
@@ -129,3 +135,32 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+
+# ========================== Environment ==========================
+
+PRODUCTION_ENVS = {"production", "prod"}
+# APP_ENV values that are known not to be production.
+NON_PRODUCTION_ENVS = {"development", "dev", "local", "staging", "test", "testing"}
+
+
+def app_env() -> str:
+    return (settings.APP_ENV or "").strip().lower()
+
+
+def is_production() -> bool:
+    """APP_ENV says production."""
+    return app_env() in PRODUCTION_ENVS
+
+
+def production_rules_apply() -> bool:
+    """Fail closed: production, and a missing or unknown APP_ENV outside tests, get production behaviour.
+
+    Only a known non-production APP_ENV (or TESTING=true, unless APP_ENV is
+    production) turns on development conveniences such as mock purchases,
+    unsigned Stripe webhooks or the default internal callback secret.
+    """
+    if is_production():
+        return True
+    return not (app_env() in NON_PRODUCTION_ENVS or settings.TESTING)
+

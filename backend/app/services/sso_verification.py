@@ -12,7 +12,7 @@ from typing import Optional
 
 import httpx
 
-from app.config import settings
+from app.config import app_env, is_production, settings
 
 logger = logging.getLogger("modelens.sso")
 
@@ -30,7 +30,6 @@ GITHUB_HEADERS = {
 HTTP_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
 
 MOCK_TOKEN_PREFIX = "mock:"
-PRODUCTION_ENVS = {"production", "prod"}
 LOCAL_DEV_ENVS = {"development", "dev", "local"}
 
 
@@ -52,12 +51,6 @@ def _make_client() -> httpx.AsyncClient:
 
 # --- Mock mode ---
 
-def _app_env() -> str:
-    return (settings.APP_ENV or "").strip().lower()
-
-
-def is_production() -> bool:
-    return _app_env() in PRODUCTION_ENVS
 
 
 def mock_mode_requested() -> bool:
@@ -70,7 +63,7 @@ def mock_mode_enabled() -> bool:
         return False
     if settings.TESTING:
         return True
-    return settings.SSO_MOCK_MODE and _app_env() in LOCAL_DEV_ENVS
+    return settings.SSO_MOCK_MODE and app_env() in LOCAL_DEV_ENVS
 
 
 def log_mock_mode_status() -> None:
@@ -86,12 +79,12 @@ def log_mock_mode_status() -> None:
         logger.warning(
             "SSO MOCK MODE IS ON (APP_ENV=%s, TESTING=%s): 'mock:<email>' credentials are accepted "
             "without provider verification. Never enable this outside tests/local development.",
-            _app_env() or "unset", settings.TESTING,
+            app_env() or "unset", settings.TESTING,
         )
     else:
         logger.warning(
             "SSO_MOCK_MODE=true is ignored because APP_ENV=%s is not development/local.",
-            _app_env() or "unset",
+            app_env() or "unset",
         )
 
 

@@ -4,18 +4,14 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import get_db, CreditTransaction, Brand
-from app.config import settings
-from app.api_docs import error_responses
+from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
+from app.services.internal_auth import check_internal_secret
 
 router = APIRouter(prefix="/api/v1/internal", tags=["Internal Callbacks"])
 
-INTERNAL_SECRET = getattr(settings, "INTERNAL_CALLBACK_SECRET", "modelens-internal-secret")
-
-
 def verify_internal_secret(x_internal_secret: Optional[str] = Header(None)):
     """Verify internal service secret header."""
-    if x_internal_secret != INTERNAL_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized internal callback")
+    check_internal_secret(x_internal_secret, "Unauthorized internal callback")
     return True
 
 
@@ -40,7 +36,7 @@ class GenerationFailPayload(BaseModel):
     ),
     response_description="Confirmation that the credit deduction was finalized.",
     operation_id="internal_generation_complete",
-    responses=error_responses(403, 404, 422),
+    responses={**error_responses(403, 404, 422), **NOT_CONFIGURED_RESPONSE},
 )
 async def generation_complete_callback(
     generation_id: str,
@@ -102,7 +98,7 @@ async def generation_complete_callback(
     ),
     response_description="Confirmation that reserved credits were refunded.",
     operation_id="internal_generation_fail",
-    responses=error_responses(403, 404, 422),
+    responses={**error_responses(403, 404, 422), **NOT_CONFIGURED_RESPONSE},
 )
 async def generation_fail_callback(
     generation_id: str,
