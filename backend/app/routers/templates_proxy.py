@@ -77,6 +77,28 @@ router = APIRouter(tags=["Templates Proxy"])
 TIMEOUT = 30.0
 
 
+# Headers the templates service trusts as identity. Whatever the client sent
+# under these names is dropped (case-insensitively, every copy); only the
+# values from the authenticated user are attached, once each.
+TRUSTED_HEADER_PREFIXES = ("x-user-", "x-brand-", "x-org-", "x-internal-")
+# Recomputed by the HTTP client for the forwarded request.
+HOP_HEADERS = ("host", "content-length")
+
+
+def forwarded_headers(request: Request, current_user: User) -> dict[str, str]:
+    """The client's headers minus identity/trust headers, plus the verified user context."""
+    headers = {}
+    for name, value in request.headers.items():
+        key = name.lower()
+        if key in HOP_HEADERS or key.startswith(TRUSTED_HEADER_PREFIXES) or key in headers:
+            continue
+        headers[key] = value
+    headers["X-User-Id"] = str(current_user.id)
+    headers["X-User-Email"] = current_user.email or ""
+    headers["X-User-Role"] = getattr(current_user, "role", "user")
+    return headers
+
+
 async def _proxy_request(
     request: Request,
     path: str,
@@ -91,15 +113,7 @@ async def _proxy_request(
     if query_string:
         target_url = f"{target_url}?{query_string}"
 
-    # Forward headers
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    headers.pop("content-length", None)
-
-    # Inject user context
-    headers["X-User-Id"] = str(current_user.id)
-    headers["X-User-Email"] = current_user.email or ""
-    headers["X-User-Role"] = getattr(current_user, "role", "user")
+    headers = forwarded_headers(request, current_user)
 
     # Read body
     body = await request.body()
