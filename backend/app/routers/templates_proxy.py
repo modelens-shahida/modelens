@@ -1,76 +1,11 @@
-from typing import TYPE_CHECKING
-
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.db import get_db
-import json
 import re
-import uuid
 from fastapi.responses import JSONResponse
 from httpx import AsyncClient, ConnectError, TimeoutException
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import User
 from app.config import settings
-from app.api_docs import error_responses
-
-if TYPE_CHECKING:
-    from app.models.db import CreditTransaction
-
-
-
-# ========================== Credit Cost Estimation ===============
-
-RESOLUTION_CREDIT_COST = {
-    "1K": 1, "2K": 2, "4K": 5, "8K": 10, "14K": 20,
-}
-
-def estimate_credits(payload: dict) -> int:
-    """Estimate credit cost based on outputCount and resolution."""
-    output_count = payload.get("outputCount", payload.get("output_count", 1))
-    resolution = payload.get("resolution", "2K").upper()
-    cost_per_output = RESOLUTION_CREDIT_COST.get(resolution, 2)
-    return max(1, int(output_count) * cost_per_output)
-
-
-async def check_and_reserve_credits(
-    db: AsyncSession,
-    brand_id: int,
-    user_id: int,
-    credits_needed: int,
-    generation_id: str,
-) -> "CreditTransaction":
-    """Check brand credits and create a pending reservation."""
-    from sqlalchemy import select
-    from app.models.db import Brand, CreditTransaction
-
-    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
-    brand = brand_result.scalars().first()
-
-    if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
-
-    if (brand.credits or 0) < credits_needed:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Insufficient credits. Need {credits_needed}, have {brand.credits or 0}."
-        )
-
-    # Reserve credits
-    brand.credits = (brand.credits or 0) - credits_needed
-
-    txn = CreditTransaction(
-        user_id=user_id,
-        brand_id=brand_id,
-        transaction_type="reserved",
-        amount=-credits_needed,
-        description=f"Template generation reservation - {generation_id}",
-        reference_id=generation_id,
-        status="pending",
-    )
-    db.add(txn)
-    await db.commit()
-    await db.refresh(txn)
-    return txn
+from app.api_docs import ErrorResponse, error_responses
 
 router = APIRouter(tags=["Templates Proxy"])
 
@@ -653,42 +588,30 @@ async def proxy_shoots(
     """Proxy all shoots requests to NestJS templates service."""
     return await _proxy_request(request, f"v1/shoots/{path}", current_user)
 
+TEMPLATE_GENERATIONS_DISABLED = (
+    "Template generations are disabled: POST /api/v1/template-generations is not available. "
+    "Use POST /api/v1/productions/dispatch instead."
+)
+
+
 @router.post(
     "/api/v1/template-generations",
-    summary="Create a template generation",
+    status_code=501,
+    summary="Create a template generation (disabled)",
     description=(
-        "Intercept template generation POST to validate and reserve credits.\n"
+        "Disabled: always answers 501 Not Implemented, before any credit reservation or database write.\n"
         "\n"
-        "Upstream status codes and bodies are passed through unchanged."
+        "It used to reserve credits from any brand named in the body without checking membership, then "
+        "fail before forwarding, leaving the credits reserved. Use `POST /api/v1/productions/dispatch`."
     ),
-    response_description="Response forwarded from the templates service after credits were reserved.",
+    response_description="Never returned: the endpoint is disabled.",
     operation_id="create_template_generation",
-    responses=error_responses(400, 401, 402, 404, 500, 502, 504),
+    responses={
+        **error_responses(401),
+        501: {"model": ErrorResponse, "description": "Template generations are disabled; nothing was charged."},
+    },
 )
-async def proxy_template_generations_with_credit_check(
-    request: Request,
-    current_user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Intercept template generation POST to validate and reserve credits."""
-    body = await request.body()
-    try:
-        payload = json.loads(body) if body else {}
-    except Exception:
-        payload = {}
-
-    # Estimate credits
-    credits_needed = estimate_credits(payload)
-    generation_id = payload.get("generationId", str(uuid.uuid4()))
-
-    # Get brand_id from payload or user context
-    brand_id = payload.get("brandId") or payload.get("brand_id")
-    if not brand_id:
-        raise HTTPException(status_code=400, detail="brandId is required")
-
-    # Check and reserve credits
-    await check_and_reserve_credits(db, int(brand_id), current_user.id, credits_needed, generation_id)
-
-    # Forward to NestJS
-    return await _proxy_request(request, "v1/template-generations", current_user, body=body)
+async def template_generations_disabled(current_user: User = Depends(get_current_user)):
+    """Disabled; see TEMPLATE_GENERATIONS_DISABLED."""
+    raise HTTPException(status_code=501, detail=TEMPLATE_GENERATIONS_DISABLED)
 

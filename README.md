@@ -95,6 +95,7 @@ ModelLens enforces immutable character identity DNA alongside versioned capabili
 ### Presets Registry & Production Dispatch
 * **Presets Registry**: Database-backed endpoints for Location, Lighting, and Campaign presets (`/api/v1/presets/*`).
 * **Unified Production Dispatch**: `POST /api/v1/production/dispatch` validates character capability packs, applies pose and lighting resolvers, and coordinates generation workflows.
+* **Template Generations (disabled)**: `POST /api/v1/template-generations` always answers `501 Not Implemented`, before any credit reservation or database write. Use `POST /api/v1/productions/dispatch`.
 
 ### Automated Asset Processing Pipeline
 When an asset is uploaded, it automatically undergoes background processing via Celery:
