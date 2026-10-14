@@ -1,14 +1,19 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.db import get_db, User, CreditTransaction
 from app.middleware.auth import get_current_user
 from app.config import settings
 from app.api_docs import PAYMENTS_NOT_CONFIGURED_RESPONSE, error_responses
 from app.services.stripe_client import get_stripe, provider_error, stripe_mock_mode
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/billing",
@@ -67,10 +72,26 @@ def credits_for(package: Optional[str], frequency: Optional[str]) -> Optional[in
     return CREDIT_PACKAGES[package][frequency]
 
 
-def _find_customer_id(stripe, user: User) -> Optional[str]:
-    """The newest Stripe customer created by checkout for this user's email, if any."""
+async def _customer_id(stripe, db: AsyncSession, user: User) -> Optional[str]:
+    """The user's Stripe customer: the saved users.stripe_customer_id, else found by email and saved.
+
+    The email lookup covers customers created before the id was stored; a new
+    customer's id is saved by the checkout.session.completed webhook.
+    """
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
     customers = stripe.Customer.list(email=user.email, limit=1)
-    return customers.data[0].id if customers.data else None
+    if not customers.data:
+        return None
+    customer_id, user_id = customers.data[0].id, user.id
+    user.stripe_customer_id = customer_id
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        logger.warning("Stripe customer %s is already linked to another user; not linking it to user %s.",
+                       customer_id, user_id)
+    return customer_id
 
 
 @router.post(
@@ -112,15 +133,17 @@ async def create_checkout_session(
         }
 
     stripe = get_stripe()
+    # Read before _customer_id, which may commit or roll back and expire current_user.
+    user_id, email = current_user.id, current_user.email
     # Read by the Stripe webhook: on the session for checkout.session.completed,
     # and on the subscription for the renewal invoices.
     metadata = {
-        "user_id": str(current_user.id),
+        "user_id": str(user_id),
         "package": payload.package,
         "frequency": payload.frequency,
     }
     try:
-        customer_id = _find_customer_id(stripe, current_user)
+        customer_id = await _customer_id(stripe, db, current_user)
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
@@ -128,8 +151,8 @@ async def create_checkout_session(
                 "price": get_stripe_price_id(payload.package, payload.frequency),
                 "quantity": 1,
             }],
-            client_reference_id=str(current_user.id),
-            **({"customer": customer_id} if customer_id else {"customer_email": current_user.email}),
+            client_reference_id=str(user_id),
+            **({"customer": customer_id} if customer_id else {"customer_email": email}),
             metadata=metadata,
             subscription_data={"metadata": metadata},
             success_url=settings.STRIPE_SUCCESS_URL,
@@ -145,7 +168,8 @@ async def create_checkout_session(
     summary="Create a Stripe billing portal session",
     description=(
         "Generate a Stripe Billing Customer Portal link for the caller's own Stripe customer "
-        "(the one their checkout created, found by their email). 404 if they have never checked out. "
+        "(saved on the user by their first checkout; customers from before that are found by email once and "
+        "saved). 404 if they have never checked out. "
         "Mock links are returned only in mock mode outside production."
     ),
     response_description="Stripe Billing Portal URL.",
@@ -165,7 +189,7 @@ async def create_portal_session(
 
     stripe = get_stripe()
     try:
-        customer_id = _find_customer_id(stripe, current_user)
+        customer_id = await _customer_id(stripe, db, current_user)
         if not customer_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No billing account found. Buy a plan first.")
         portal = stripe.billing_portal.Session.create(

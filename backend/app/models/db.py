@@ -41,6 +41,8 @@ class User(Base):
     last_low_credit_warning_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
     notify_on_job_complete: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_on_training_complete: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Stripe customer created by this user's first checkout; used by the billing portal.
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -463,6 +465,9 @@ class CreditTransaction(Base):
     transaction_type: Mapped[str] = mapped_column(String(50), index=True)
     reference_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     reference_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Stripe checkout session / invoice id that granted these credits; unique, so
+    # each one grants at most once. NULL for every non-Stripe row.
+    stripe_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
     balance_after: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="completed")
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

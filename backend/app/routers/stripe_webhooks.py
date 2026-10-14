@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.models.db import get_db, User, CreditTransaction
 from app.config import DEFAULT_STRIPE_WEBHOOK_SECRET, production_rules_apply, settings
 from app.routers.billing import credits_for
@@ -21,8 +22,9 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
                              reference_id: str | None = None):
     """Add credits to user and log CreditTransaction.
 
-    reference_id is the Stripe checkout session or invoice id; Stripe retries
-    deliveries, so an id that already granted credits is skipped.
+    reference_id is the Stripe checkout session or invoice id. It is stored in
+    the unique credit_transactions.stripe_reference column, so an id grants
+    credits at most once even if Stripe retries or delivers concurrently.
     """
     # Lock the user row so two deliveries of the same event cannot both pass the check below.
     result = await db.execute(select(User).where(User.id == user_id).with_for_update())
@@ -32,8 +34,7 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
         return
     if reference_id:
         already = await db.execute(select(CreditTransaction.id).where(
-            CreditTransaction.reference_type == reference_type,
-            CreditTransaction.reference_id == reference_id,
+            CreditTransaction.stripe_reference == reference_id,
         ).limit(1))
         if already.first():
             # Nothing was changed; closing the request session releases the row lock.
@@ -47,16 +48,44 @@ async def _provision_credits(db: AsyncSession, user_id: int, credits: int, refer
         transaction_type="top_up",
         reference_type=reference_type,
         reference_id=reference_id,
+        stripe_reference=reference_id,
         balance_after=user.credits,
         description=description,
     )
     db.add(txn)
+    try:
+        # Insert now so a concurrent grant of the same id fails here, before any side effects.
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        logger.info("Stripe %s was granted by a concurrent delivery; skipping.", reference_id)
+        return
 
     from app.routers.credits import _trigger_low_credit_warning_if_needed
     await _trigger_low_credit_warning_if_needed(db, user)
 
     await db.commit()
     print(f"[Stripe] Provisioned {credits} credits to user {user_id}. New balance: {user.credits}")
+
+
+async def _save_customer_id(db: AsyncSession, user_id, customer_id: str | None):
+    """Remember the Stripe customer a checkout created, without overwriting a different one."""
+    if not customer_id or not user_id:
+        return
+    user = (await db.execute(select(User).where(User.id == int(user_id)))).scalars().first()
+    if not user or user.stripe_customer_id == customer_id:
+        return
+    if user.stripe_customer_id:
+        logger.warning("Stripe checkout for user %s used customer %s, but the user is linked to %s; keeping %s.",
+                       user.id, customer_id, user.stripe_customer_id, user.stripe_customer_id)
+        return
+    user.stripe_customer_id = customer_id
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        logger.warning("Stripe customer %s is already linked to another user; not linking it to user %s.",
+                       customer_id, user_id)
 
 
 def _invoice_metadata(invoice: dict) -> dict:
@@ -149,6 +178,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             logger.info("Stripe checkout %s completed unpaid; no credits yet.", data.get("id"))
         else:
             await _grant_for_metadata(db, metadata, data.get("id"), "Stripe checkout completed")
+        await _save_customer_id(db, metadata.get("user_id"), data.get("customer"))
 
     elif event_type == "invoice.payment_succeeded":
         # Recurring billing - renew credits. The first invoice of a subscription is
