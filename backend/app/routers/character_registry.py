@@ -13,7 +13,7 @@ from app.models.db import (
     CharacterHairProfile,
     CharacterRuntimeProfile,
 )
-from app.middleware.auth import get_current_user, require_platform_admin
+from app.middleware.auth import PLATFORM_ADMIN_ROLES, get_current_user, require_platform_admin
 from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1/characters", tags=["Character Registry"])
@@ -98,13 +98,34 @@ class CharacterRuntimeCreate(BaseModel):
     strength_overrides: Optional[Dict[str, float]] = {}
 
 
+class CharacterPublic(BaseModel):
+    """What non-admins see of a released (customer_visible) character.
+
+    No internal_name, workspace, identity/face DNA, or body/skin/hair/runtime
+    profiles: those are registry internals only platform admins read.
+    """
+    character_id: str
+    display_name: Optional[str] = None
+    status: Optional[str] = None
+    production_enabled: Optional[bool] = None
+    golden_character_version: Optional[str] = None
+
+
+def _public(c: CharacterIdentityProfile) -> dict:
+    return CharacterPublic.model_validate(c, from_attributes=True).model_dump()
+
+
 # ========================== Endpoints ============================
 
 @router.get(
     "",
     summary="List characters",
-    description="List all characters.",
-    response_description="All characters in the registry.",
+    description=(
+        "List characters. Platform admins (users.role admin/owner) see every character with its registry "
+        "fields. Everyone else sees only released characters (customer_visible) with public fields: "
+        "character_id, display_name, status, production_enabled, golden_character_version."
+    ),
+    response_description="Characters the caller may see, and their count.",
     operation_id="list_registry_characters",
     responses=error_responses(401, 422),
 )
@@ -114,11 +135,16 @@ async def list_characters(
     db: AsyncSession = Depends(get_db),
 ):
     """List all characters."""
-    query = select(CharacterIdentityProfile)
+    is_admin = current_user.role in PLATFORM_ADMIN_ROLES
+    query = select(CharacterIdentityProfile).order_by(CharacterIdentityProfile.id)
     if workspace_id:
         query = query.where(CharacterIdentityProfile.workspace_id == workspace_id)
+    if not is_admin:
+        query = query.where(CharacterIdentityProfile.customer_visible == True)  # noqa: E712
     result = await db.execute(query)
     characters = result.scalars().all()
+    if not is_admin:
+        return {"characters": [_public(c) for c in characters], "total": len(characters)}
     return {"characters": [
         {
             "character_id": c.character_id,
@@ -130,7 +156,7 @@ async def list_characters(
             "golden_character_version": c.golden_character_version,
         }
         for c in characters
-    ]}
+    ], "total": len(characters)}
 
 
 @router.post(
@@ -166,8 +192,12 @@ async def create_character_identity(
 @router.get(
     "/{character_id}",
     summary="Get a character",
-    description="Get full character profile.",
-    response_description="Full character profile.",
+    description=(
+        "Get a character. Platform admins get the full profile (identity, body, skin, hair, runtime). "
+        "Everyone else gets only the public fields of a released (customer_visible) character; an "
+        "unreleased character is 404, the same as one that does not exist."
+    ),
+    response_description="Full character profile for platform admins; public fields otherwise.",
     operation_id="get_registry_character",
     responses=error_responses(401, 404, 422),
 )
@@ -183,8 +213,12 @@ async def get_character(
         )
     )
     identity = identity.scalars().first()
-    if not identity:
+    is_admin = current_user.role in PLATFORM_ADMIN_ROLES
+    # Unreleased characters are hidden from non-admins as if they did not exist.
+    if not identity or not (is_admin or identity.customer_visible):
         raise HTTPException(status_code=404, detail=f"Character {character_id} not found.")
+    if not is_admin:
+        return _public(identity)
 
     body = await db.execute(
         select(CharacterBodyProfile).where(CharacterBodyProfile.character_id == character_id)

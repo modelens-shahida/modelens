@@ -93,7 +93,7 @@ READS = {
     "campaign_template_list": ("GET", "/api/v1/campaign-templates", None),
     "campaign_template_get": ("GET", "/api/v1/campaign-templates/{tmpl}", None),
     "character_list": ("GET", "/api/v1/characters", None),
-    "character_get": ("GET", "/api/v1/characters/{char}", None),
+    "character_get": ("GET", "/api/v1/characters/{released_char}", None),
 }
 
 
@@ -116,12 +116,15 @@ async def catalog(db_session):
     prompt = PromptTemplate(name="Base", prompt_text="Soft light")
     tmpl = CampaignTemplate(name="Base", default_config={"shots": 4})
     char = CharacterIdentityProfile(character_id="EE-F-900", display_name="Nine Hundred")
-    db_session.add_all([shot, tax, prompt, tmpl, char])
+    # Non-admins can read only released characters (see test_character_registry_read_scope.py).
+    released = CharacterIdentityProfile(character_id="EE-F-910", display_name="Nine Ten", customer_visible=True)
+    db_session.add_all([shot, tax, prompt, tmpl, char, released])
     await db_session.flush()
     db_session.add(AngleShotVersion(angle_shot_id=shot.id, version=1, configuration={"framing": "UPPER_BODY"},
                                     change_note="Initial version"))
     await db_session.commit()
-    return {"shot": shot.id, "tax": tax.id, "prompt": prompt.id, "tmpl": tmpl.id, "char": char.character_id}
+    return {"shot": shot.id, "tax": tax.id, "prompt": prompt.id, "tmpl": tmpl.id, "char": char.character_id,
+            "released_char": released.character_id}
 
 
 async def _snapshot(db_session):

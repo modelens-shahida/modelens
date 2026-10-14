@@ -91,6 +91,7 @@ ModelLens enforces immutable character identity DNA alongside versioned capabili
 * **Capability Packs**: Modular packs defining allowed pose ranges, lighting rigs, styling options, and camera perspectives.
 * **Model Promotion Guards**: `PATCH /api/v1/models/{model_id}/promote` is restricted to platform administrators.
 * **Shared Catalogs**: Creating, changing, reordering or deleting angle shots (`/api/v1/angle-shots`, also through the templates proxy), taxonomy items (`/api/v1/taxonomy`), prompt templates (`/api/v1/prompts`), campaign templates (`/api/v1/campaign-templates`) and character registry entries (`/api/v1/characters` identity, body, skin, hair, runtime and status) is restricted to platform administrators (`users.role` admin or owner). Brand owners and admins get `403`. Every logged-in user can still read them.
+* **Character Registry Reads**: `GET /api/v1/characters` and `GET /api/v1/characters/{character_id}` return every character with its registry fields and body/skin/hair/runtime profiles only to platform administrators. Everyone else (brand owners and admins included) sees only released characters (`customer_visible`) with `character_id`, `display_name`, `status`, `production_enabled` and `golden_character_version`; an unreleased character is `404` and is left out of the list and its `total`.
 
 ### Presets Registry & Production Dispatch
 * **Presets Registry**: Database-backed endpoints for Location, Lighting, and Campaign presets (`/api/v1/presets/*`).
