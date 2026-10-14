@@ -6,6 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.middleware.auth import create_access_token, hash_password
 from app.models.db import User
 
+
+@pytest.fixture(autouse=True)
+def ghost_batches_enabled(monkeypatch):
+    """These tests cover batch behaviour when enabled; it is off by default (see test_ghost_batch_disabled.py)."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "GHOST_BATCH_ENABLED", True)
+
+
 @pytest.mark.asyncio
 async def test_ghost_batch_rates(client: AsyncClient, test_data: dict):
     owner_headers = test_data["get_headers"]("owner")

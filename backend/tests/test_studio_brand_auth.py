@@ -20,6 +20,14 @@ from app.models.db import (
 )
 from app.services.storage import storage_service
 
+
+@pytest.fixture(autouse=True)
+def ghost_batches_enabled(monkeypatch):
+    """These tests cover batch behaviour when enabled; it is off by default (see test_ghost_batch_disabled.py)."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "GHOST_BATCH_ENABLED", True)
+
+
 ROW_MODELS = (GhostJob, GhostJobAsset, SketchJob, SketchJobReference, CatalogJob, CatalogJobItem, Asset,
               CreditTransaction, AIJob)
 

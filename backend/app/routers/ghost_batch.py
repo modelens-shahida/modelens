@@ -6,10 +6,11 @@ from sqlalchemy import select
 from datetime import datetime
 import uuid
 
-from app.models.db import get_db, User, GhostJob
+from app.config import settings
+from app.models.db import get_db, User, GhostJob, CreditTransaction
 from app.middleware.auth import check_brand_role, get_current_user, require_platform_admin
 from app.services.credits_sync_service import credits_sync_service, estimate_credits
-from app.api_docs import error_responses
+from app.api_docs import ErrorResponse, error_responses
 
 router = APIRouter(prefix="/api/v1/ghost", tags=["Ghost Studio Batch"])
 
@@ -68,6 +69,27 @@ class GhostCreditCheckRequest(GhostCreditEstimateRequest):
 
 # Reserving brand credits needs the owner or a member with editor+.
 GHOST_BATCH_ROLE = "editor"
+
+GHOST_BATCH_DISABLED = (
+    "Batch processing is temporarily unavailable. Please submit items as individual ghost jobs."
+)
+GHOST_BATCH_DISABLED_RESPONSE = {
+    503: {
+        "model": ErrorResponse,
+        "description": "Ghost batches are disabled (GHOST_BATCH_ENABLED is off); nothing was reserved or created.",
+        "content": {"application/json": {"example": {"detail": GHOST_BATCH_DISABLED}}},
+    },
+}
+
+
+async def require_ghost_batch_enabled(current_user: User = Depends(get_current_user)) -> User:
+    """503 unless GHOST_BATCH_ENABLED: no worker processes ghost batches, so a new
+    batch would hold the brand's reserved credits indefinitely. Runs after login and
+    before the body is read, so nothing is validated, reserved or written. Platform
+    admins are not exempt: their batches would be stranded the same way."""
+    if not settings.GHOST_BATCH_ENABLED:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=GHOST_BATCH_DISABLED)
+    return current_user
 
 
 async def _get_batch_job(job_id: str, user: User, db: AsyncSession, minimum_role: str) -> GhostJob:
@@ -187,15 +209,19 @@ async def check_ghost_batch_credits(
     description=(
         "Create multi-garment ghost batch job with credit reservation on `brand_id`. The caller must own the "
         "brand or be a member with at least the editor role (else 403); an unknown brand returns 404. Nothing "
-        "is created or reserved when the request is rejected."
+        "is created or reserved when the request is rejected.\n"
+        "\n"
+        "**Currently disabled**: answers 503 for every caller, platform admins included, unless "
+        "`GHOST_BATCH_ENABLED` is on, because no worker processes these batches yet. Submit items as "
+        "individual ghost jobs (`POST /api/v1/ghost-jobs`) instead."
     ),
     response_description="The created batch job with reserved credits.",
     operation_id="create_ghost_batch_job",
-    responses=error_responses(401, 402, 403, 404, 422),
+    responses={**error_responses(401, 402, 403, 404, 422), **GHOST_BATCH_DISABLED_RESPONSE},
 )
 async def create_ghost_batch(
     payload: GhostBatchRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ghost_batch_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multi-garment ghost batch job with credit reservation."""
@@ -262,6 +288,54 @@ async def create_ghost_batch(
         "quality_mode": payload.quality_mode,
         "websocket_url": f"/api/v1/ws/ghost/{job_id}",
         "created_at": str(datetime.utcnow()),
+    }
+
+
+@router.get(
+    "/batches/stuck",
+    summary="List ghost batches holding reserved credits",
+    description=(
+        "Read-only. Every ghost batch (`POST /api/v1/ghost/batch`) whose credit reservation is still pending, "
+        "oldest first, across all brands. Nothing is changed: refund one with "
+        "`POST /api/v1/ghost/batch/{job_id}/fail` (or finalize with `/complete`). Platform admins/owners only "
+        "(`users.role`); everyone else gets 403."
+    ),
+    response_description="Ghost batches with a pending credit reservation.",
+    operation_id="list_stuck_ghost_batches",
+    responses=error_responses(401, 403),
+)
+async def list_stuck_ghost_batches(
+    _admin: User = Depends(require_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ghost batches whose reserved credits were never finalized or refunded."""
+    rows = (await db.execute(
+        select(GhostJob, CreditTransaction)
+        .join(CreditTransaction, CreditTransaction.reference_id == GhostJob.job_id)
+        .where(
+            GhostJob.job_id.is_not(None),
+            CreditTransaction.transaction_type == "reserved",
+            CreditTransaction.status == "pending",
+        )
+        .order_by(GhostJob.created_at, GhostJob.id)
+    )).all()
+    batches = [
+        {
+            "job_id": job.job_id,
+            "brand_id": job.brand_id,
+            "user_id": job.user_id,
+            "status": job.status,
+            "total_items": job.total_skus,
+            "credits_reserved": -txn.amount,
+            "created_at": str(job.created_at),
+            "refund_url": f"/api/v1/ghost/batch/{job.job_id}/fail",
+        }
+        for job, txn in rows
+    ]
+    return {
+        "batches": batches,
+        "total": len(batches),
+        "total_credits_reserved": sum(b["credits_reserved"] for b in batches),
     }
 
 

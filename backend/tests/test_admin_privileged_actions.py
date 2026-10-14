@@ -18,6 +18,14 @@ from app.middleware import rate_limit
 from app.middleware.auth import create_access_token, hash_password
 from app.models.db import Brand, CreditTransaction, GhostJob, Production, User
 
+
+@pytest.fixture(autouse=True)
+def ghost_batches_enabled(monkeypatch):
+    """These tests cover batch behaviour when enabled; it is off by default (see test_ghost_batch_disabled.py)."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "GHOST_BATCH_ENABLED", True)
+
+
 SETTINGS = "/api/v1/admin/settings"
 GHOST_BATCH = "/api/v1/ghost/batch"
 PRODUCTION_FIELDS = {"productions_total", "productions_success", "productions_failed", "productions_retries",

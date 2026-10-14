@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = Field(default=DEFAULT_STRIPE_WEBHOOK_SECRET)
     STRIPE_MOCK_MODE: bool = Field(default=True)
 
+    # Ghost Studio batches (POST /api/v1/ghost/batch). Off: creation answers 503 before
+    # reserving credits, because no worker processes these batches yet. Turn on only
+    # once a batch worker exists; single ghost jobs are not affected either way.
+    GHOST_BATCH_ENABLED: bool = Field(default=False)
+
     # Database Connection Pool
     DB_POOL_SIZE: int = Field(default=10)
     DB_MAX_OVERFLOW: int = Field(default=20)

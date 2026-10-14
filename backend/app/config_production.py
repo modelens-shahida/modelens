@@ -80,6 +80,8 @@ def check_config() -> List[Issue]:
         add("STRIPE_SECRET_KEY", "is a Stripe test-mode key", False)
     if settings.SSO_MOCK_MODE:
         add("SSO_MOCK_MODE", "is on (mock SSO credentials are still refused in production)", False)
+    if settings.GHOST_BATCH_ENABLED:
+        add("GHOST_BATCH_ENABLED", "is on; no worker processes ghost batches, so their credits stay reserved", False)
     if settings.COMFYUI_MOCK_MODE:
         add("COMFYUI_MOCK_MODE", "is on; ComfyUI generation is mocked", False)
     if (settings.STORAGE_BACKEND or "").lower() != "s3":
