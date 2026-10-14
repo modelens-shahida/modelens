@@ -12,7 +12,7 @@ from app.models.db import (
     CharacterAppearanceProfile, CanonicalAsset,
     CharacterVersionQA, CharacterRuntimeV2,
 )
-from app.middleware.auth import get_current_user, require_platform_admin
+from app.middleware.auth import PLATFORM_ADMIN_ROLES, get_current_user, require_platform_admin
 from app.services import character_versions as version_service
 from app.api_docs import error_responses
 
@@ -219,13 +219,62 @@ class VersionQAUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class CharacterV2Public(BaseModel):
+    """What non-admins see of a released (customer_visible) character.
+
+    Same fields as the customer-safe current-version view: no internal_name,
+    workspace, storage paths, identity/body/appearance DNA, QA or runtime data.
+    """
+    character_id: str
+    display_name: Optional[str] = None
+    status: Optional[str] = None
+    current_version: Optional[str] = None
+    production_enabled: Optional[bool] = None
+    canonical_height_cm: Optional[float] = None
+    stature_class: Optional[str] = None
+    body_archetype: Optional[str] = None
+
+
+def _is_platform_admin(user: User) -> bool:
+    return user.role in PLATFORM_ADMIN_ROLES
+
+
+async def _current_body(db: AsyncSession, char: CharacterV2):
+    return (await db.execute(
+        select(CharacterBodyDNA).where(
+            and_(CharacterBodyDNA.character_id == char.character_id,
+                 CharacterBodyDNA.version == char.current_version)
+        )
+    )).scalars().first()
+
+
+def _public(char: CharacterV2, body) -> dict:
+    return CharacterV2Public(
+        character_id=char.character_id,
+        display_name=char.display_name,
+        status=char.status,
+        current_version=char.current_version,
+        production_enabled=char.production_enabled,
+        canonical_height_cm=body.canonical_height_cm if body else None,
+        stature_class=body.stature_class if body else None,
+        body_archetype=body.body_archetype if body else None,
+    ).model_dump()
+
+
 # ========================== Endpoints ============================
+
+_ADMIN_NOTE = "\n\nRequires a platform admin (`User.role` admin/owner)."
 
 @router.get(
     "",
     summary="List characters (v2)",
-    description="List all characters — Character Library API.",
-    response_description="Characters in the Character Library.",
+    description=(
+        "List characters — Character Library API. Platform admins (users.role admin/owner) see every "
+        "character with all fields. Everyone else sees only released characters (customer_visible) with "
+        "public fields: character_id, display_name, status, current_version, production_enabled, "
+        "canonical_height_cm, stature_class, body_archetype."
+    ),
+    response_description="Characters the caller may see, and their count.",
     operation_id="list_characters_v2",
     responses=error_responses(401, 422),
 )
@@ -241,19 +290,19 @@ async def list_characters(
         query = query.where(CharacterV2.workspace_id == workspace_id)
     if status_filter:
         query = query.where(CharacterV2.status == status_filter)
+    is_admin = _is_platform_admin(current_user)
+    if not is_admin:
+        query = query.where(CharacterV2.customer_visible == True)  # noqa: E712
 
     result = await db.execute(query)
     characters = result.scalars().all()
 
     char_list = []
     for c in characters:
-        body = await db.execute(
-            select(CharacterBodyDNA).where(
-                and_(CharacterBodyDNA.character_id == c.character_id,
-                     CharacterBodyDNA.version == c.current_version)
-            )
-        )
-        body = body.scalars().first()
+        body = await _current_body(db, c)
+        if not is_admin:
+            char_list.append(_public(c, body))
+            continue
 
         golden = await db.execute(
             select(CanonicalAsset).where(
@@ -284,14 +333,14 @@ async def list_characters(
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Create a character (v2)",
-    description="Create a new character.",
+    description="Create a new character." + _ADMIN_NOTE,
     response_description="The created character.",
     operation_id="create_character_v2",
-    responses=error_responses(401, 409, 422),
+    responses=error_responses(401, 403, 409, 422),
 )
 async def create_character(
     payload: CharacterCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new character."""
@@ -310,8 +359,12 @@ async def create_character(
 @router.get(
     "/{character_id}",
     summary="Get a character (v2)",
-    description="Get full character profile.",
-    response_description="Full character profile.",
+    description=(
+        "Get a character. Platform admins get the full profile (identity/body DNA, appearance, QA gates, "
+        "runtime profile, canonical assets). Everyone else gets only the public fields of a released "
+        "(customer_visible) character; an unreleased character is 404, the same as one that does not exist."
+    ),
+    response_description="Full character profile for platform admins; public fields otherwise.",
     operation_id="get_character_v2",
     responses=error_responses(401, 404, 422),
 )
@@ -325,8 +378,12 @@ async def get_character(
         select(CharacterV2).where(CharacterV2.character_id == character_id)
     )
     char = char.scalars().first()
-    if not char:
+    is_admin = _is_platform_admin(current_user)
+    # Unreleased characters are hidden from non-admins as if they did not exist.
+    if not char or not (is_admin or char.customer_visible):
         raise HTTPException(status_code=404, detail=f"Character {character_id} not found.")
+    if not is_admin:
+        return _public(char, await _current_body(db, char))
 
     version = char.current_version
 
@@ -410,7 +467,6 @@ async def get_character(
 # in app.services.character_versions and by ORM guards); changes go into a new
 # DRAFT version. All writes and the full record are platform-admin only.
 
-_ADMIN_NOTE = "\n\nRequires a platform admin (`User.role` admin/owner)."
 
 
 def _version_out(v: CharacterRegistryVersion) -> CharacterVersionAdmin:
@@ -663,15 +719,15 @@ async def lock_character_version_by_path(
     "/{character_id}/identity-dna",
     status_code=status.HTTP_201_CREATED,
     summary="Create character identity DNA",
-    description="Create Identity DNA.",
+    description="Create Identity DNA." + _ADMIN_NOTE,
     response_description="The created identity DNA record.",
     operation_id="create_identity_dna",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_identity_dna(
     character_id: str,
     payload: IdentityDNACreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create Identity DNA."""
@@ -685,15 +741,15 @@ async def create_identity_dna(
     "/{character_id}/body-dna",
     status_code=status.HTTP_201_CREATED,
     summary="Create character body DNA",
-    description="Create Body DNA.",
+    description="Create Body DNA." + _ADMIN_NOTE,
     response_description="The created body DNA record.",
     operation_id="create_body_dna",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_body_dna(
     character_id: str,
     payload: BodyDNACreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create Body DNA."""
@@ -707,15 +763,15 @@ async def create_body_dna(
     "/{character_id}/appearance",
     status_code=status.HTTP_201_CREATED,
     summary="Create a character appearance profile",
-    description="Create Appearance Profile.",
+    description="Create Appearance Profile." + _ADMIN_NOTE,
     response_description="The created appearance profile.",
     operation_id="create_appearance",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def create_appearance(
     character_id: str,
     payload: AppearanceCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create Appearance Profile."""
@@ -729,15 +785,15 @@ async def create_appearance(
     "/{character_id}/canonical-assets",
     status_code=status.HTTP_201_CREATED,
     summary="Register a canonical asset",
-    description="Register a canonical asset.",
+    description="Register a canonical asset." + _ADMIN_NOTE,
     response_description="The registered canonical asset.",
     operation_id="add_canonical_asset",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def add_canonical_asset(
     character_id: str,
     payload: CanonicalAssetCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Register a canonical asset."""
@@ -750,16 +806,16 @@ async def add_canonical_asset(
 @router.get(
     "/{character_id}/canonical-assets",
     summary="List canonical assets",
-    description="Get canonical assets.",
+    description="Get canonical assets." + _ADMIN_NOTE,
     response_description="Canonical assets for the character.",
     operation_id="get_canonical_assets",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def get_canonical_assets(
     character_id: str,
     version: Optional[str] = None,
     framing: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get canonical assets."""
@@ -791,16 +847,16 @@ async def get_canonical_assets(
 @router.patch(
     "/{character_id}/canonical-assets/{asset_id}/qa",
     summary="Update canonical asset QA",
-    description="Update QA status for a canonical asset.",
+    description="Update QA status for a canonical asset." + _ADMIN_NOTE,
     response_description="The canonical asset with its updated QA status.",
     operation_id="update_asset_qa",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def update_asset_qa(
     character_id: str,
     asset_id: str,
     payload: QAUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update QA status for a canonical asset."""
@@ -824,15 +880,15 @@ async def update_asset_qa(
 @router.get(
     "/{character_id}/qa",
     summary="Get character QA gates",
-    description="Get QA gates for a character version.",
+    description="Get QA gates for a character version." + _ADMIN_NOTE,
     response_description="QA gate status for the character version.",
     operation_id="get_character_qa",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def get_character_qa(
     character_id: str,
     version: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get QA gates for a character version."""
@@ -857,16 +913,16 @@ async def get_character_qa(
 @router.patch(
     "/{character_id}/qa",
     summary="Update character QA gates",
-    description="Update QA gates for a character version.",
+    description="Update QA gates for a character version." + _ADMIN_NOTE,
     response_description="The updated QA gates.",
     operation_id="update_version_qa",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 422),
 )
 async def update_version_qa(
     character_id: str,
     version: str,
     payload: VersionQAUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update QA gates for a character version."""
@@ -893,14 +949,14 @@ async def update_version_qa(
 @router.get(
     "/{character_id}/runtime-profile",
     summary="Get character runtime profile",
-    description="Get Character Runtime Profile for Studios.",
-    response_description="Runtime profile consumed by the studios.",
+    description="Get the character runtime profile (models, adapters, workflows)." + _ADMIN_NOTE,
+    response_description="Runtime profile of the current version.",
     operation_id="get_runtime_profile",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def get_runtime_profile(
     character_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get Character Runtime Profile for Studios."""
@@ -1001,15 +1057,15 @@ async def promote_to_production(
 @router.patch(
     "/{character_id}/status",
     summary="Update character status (v2)",
-    description="Update character lifecycle status.",
+    description="Update character lifecycle status." + _ADMIN_NOTE,
     response_description="The character with its updated lifecycle status.",
     operation_id="update_character_status_v2",
-    responses=error_responses(400, 401, 404, 422),
+    responses=error_responses(400, 401, 403, 404, 422),
 )
 async def update_character_status(
     character_id: str,
     new_status: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update character lifecycle status."""
