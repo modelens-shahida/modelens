@@ -7,6 +7,7 @@ import {
   Camera, Search, Filter, Loader2, CheckCircle2, AlertTriangle, 
   ArrowRight, Clock, Plus, Trash2, RotateCcw, Upload, FileText, Check, ShieldAlert
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import toast from "react-hot-toast";
 
 const PRESET_FAMILIES = ["CATALOG_STANDING", "EDITORIAL_STANDING", "MOTION", "SEATED", "LEANING", "CROPPED_DETAIL", "GARMENT_INTERACTION", "ACCESSORY", "KIDS_BABY"];
@@ -14,6 +15,8 @@ const FRAMINGS = ["FULL_BODY", "THREE_QUARTERS", "CLOSE_UP", "UPPER_BODY"];
 const TIERS = ["CORE", "EXPANSION"];
 
 export default function AngleShotsPage() {
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === "admin" || user?.role === "owner";
   const [presets, setPresets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -390,8 +393,8 @@ export default function AngleShotsPage() {
                       <span>v{preset.version}</span>
                     </div>
 
-                    {/* Archive button */}
-                    {isCustom && (
+                    {/* Archive button (Platform Admin only) */}
+                    {isCustom && isPlatformAdmin && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -616,19 +619,26 @@ export default function AngleShotsPage() {
                   )}
                 </div>
 
+                {!isPlatformAdmin && (
+                  <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-800/30 text-purple-300 text-[11px] flex items-center gap-2">
+                    <ShieldAlert size={16} className="shrink-0 text-purple-400" />
+                    <span>Preset authoring is reserved for Platform Admins. Standard users may explore and use existing library presets.</span>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={uploading || !uploadFile || !uploadName}
+                  disabled={!isPlatformAdmin || uploading || !uploadFile || !uploadName}
                   className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all text-white mt-auto"
                 >
-                  {uploading ? (
+                  {!isPlatformAdmin ? (
+                    "Platform Admin Access Required to Register Presets"
+                  ) : uploading ? (
                     <>
                       <Loader2 className="animate-spin w-4 h-4" /> Extracting landmarks...
                     </>
                   ) : (
-                    <>
-                      Create Custom Preset
-                    </>
+                    "Create Custom Preset"
                   )}
                 </button>
               </form>
@@ -674,12 +684,25 @@ export default function AngleShotsPage() {
                   )}
                 </div>
 
+                {!isPlatformAdmin && (
+                  <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-800/30 text-purple-300 text-[11px] flex items-center gap-2">
+                    <ShieldAlert size={16} className="shrink-0 text-purple-400" />
+                    <span>Schema validation endpoint requires Platform Admin access.</span>
+                  </div>
+                )}
+
                 <button
                   onClick={handleValidateSchema}
-                  disabled={validating || !jsonInput}
+                  disabled={!isPlatformAdmin || validating || !jsonInput}
                   className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all text-white"
                 >
-                  {validating ? <Loader2 className="animate-spin w-4 h-4" /> : "Validate Schema Config"}
+                  {!isPlatformAdmin ? (
+                    "Platform Admin Access Required"
+                  ) : validating ? (
+                    <Loader2 className="animate-spin w-4 h-4" />
+                  ) : (
+                    "Validate Schema Config"
+                  )}
                 </button>
               </div>
             )}
@@ -718,13 +741,15 @@ export default function AngleShotsPage() {
                                 <span className="inline-flex items-center gap-1 text-[9px] text-purple-400 uppercase font-bold bg-purple-950/30 border border-purple-800/30 px-2 py-0.5 rounded-full">
                                   <Check size={8} /> Active
                                 </span>
-                              ) : (
+                              ) : isPlatformAdmin ? (
                                 <button
                                   onClick={() => handleRestoreVersion(ver.version)}
                                   className="text-[10px] font-bold text-zinc-400 hover:text-white flex items-center gap-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 px-2.5 py-1 rounded transition-all"
                                 >
                                   <RotateCcw size={10} /> Restore
                                 </button>
+                              ) : (
+                                <span className="text-[9px] text-zinc-600 font-mono">Snapshot locked</span>
                               )}
                             </div>
                             <p className="text-[10px] text-zinc-400 italic">

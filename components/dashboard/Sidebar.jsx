@@ -15,10 +15,9 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Overview", path: "/dashboard", icon: LayoutDashboard },
     { name: "Brands", path: "/dashboard/brands", icon: FolderKanban },
     { name: "Assets", path: "/dashboard/assets", icon: ImageIcon },
-    { name: "Digital Asset Registry", path: "/dashboard/admin/assets", icon: FolderKanban },
-    { name: "Taxonomy & Resolver", path: "/dashboard/admin/taxonomy", icon: Sliders },
-    { name: "Golden Character Hub", path: "/dashboard/characters", icon: User },
-    { name: "QA Review Queue", path: "/dashboard/admin/qa", icon: Award },
+    { name: "Digital Asset Registry", path: "/dashboard/admin/assets", icon: FolderKanban, adminOnly: true },
+    { name: "Taxonomy & Resolver", path: "/dashboard/admin/taxonomy", icon: Sliders, adminOnly: true },
+    { name: "QA Review Queue", path: "/dashboard/admin/qa", icon: Award, adminOnly: true },
     { name: "Templates Studio", path: "/dashboard/templates", icon: Copy },
     { name: "Fluid Studio", path: "/dashboard/fluid", icon: Layers },
     { name: "Move Studio", path: "/dashboard/move", icon: Film },
@@ -26,18 +25,21 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: "Sketch Studio", path: "/dashboard/sketch", icon: PenTool },
     { name: "Catalog Studio", path: "/dashboard/catalog", icon: Shirt },
     { name: "Angle Shots", path: "/dashboard/angle-shots", icon: Camera },
+    { name: "AI Characters", path: "/dashboard/characters", icon: User },
+    { name: "Admin Character Registry", path: "/dashboard/admin/characters", icon: Sliders, adminOnly: true },
+    { name: "Campaigns", path: "/dashboard/campaigns", icon: Megaphone },
+    { name: "AI Generator", path: "/dashboard/jobs", icon: Sparkles },
+    { name: "AI Prompts", path: "/dashboard/prompts", icon: Terminal },
     { name: "Fix Requests", path: "/dashboard/fix-requests", icon: Wrench },
     { name: "Webhooks", path: "/dashboard/webhooks", icon: Webhook },
     { name: "Analytics", path: "/dashboard/analytics", icon: BarChart3 },
-    { name: "Campaigns", path: "/dashboard/campaigns", icon: Megaphone },
-    { name: "AI Generator", path: "/dashboard/jobs", icon: Sparkles },
-    { name: "AI Characters", path: "/dashboard/characters", icon: User },
-    { name: "Admin Character Registry", path: "/dashboard/admin/characters", icon: Sliders },
-    { name: "AI Prompts", path: "/dashboard/prompts", icon: Terminal },
     { name: "API Keys", path: "/dashboard/api-keys", icon: Key },
-    { name: "Admin Stats", path: "/dashboard/admin-stats", icon: BarChart3 },
+    { name: "Admin Stats", path: "/dashboard/admin-stats", icon: BarChart3, adminOnly: true },
     { name: "Billing & Credits", path: "/dashboard/billing", icon: CreditCard },
   ];
+
+  const isPlatformAdmin = user?.role === "admin" || user?.role === "owner";
+  const visibleMenuItems = menuItems.filter((item) => !item.adminOnly || isPlatformAdmin);
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-200 border-r border-zinc-800/80">
@@ -66,8 +68,8 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6 space-y-1">
-        {menuItems.map((item) => {
+      <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
+        {visibleMenuItems.map((item) => {
           const isActive = pathname === item.path || (item.path !== "/dashboard" && pathname?.startsWith(item.path));
           const Icon = item.icon;
 

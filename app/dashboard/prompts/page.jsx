@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Terminal, Plus, Loader2, Play, Save, ChevronRight, FileText } from "lucide-react";
+import { Terminal, Plus, Loader2, Play, Save, ChevronRight, FileText, Copy, ShieldAlert } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 
 export default function PromptsPage() {
   const { user } = useAuth();
+  const isPlatformAdmin = user?.role === "admin" || user?.role === "owner";
 
   // Data states
   const [prompts, setPrompts] = useState([]);
@@ -154,13 +155,15 @@ export default function PromptsPage() {
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
               Templates ({prompts.length})
             </span>
-            <button
-              onClick={handleNewPromptClick}
-              className="flex items-center gap-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all cursor-pointer border border-purple-800/20"
-            >
-              <Plus size={10} />
-              New Prompt
-            </button>
+            {isPlatformAdmin && (
+              <button
+                onClick={handleNewPromptClick}
+                className="flex items-center gap-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all cursor-pointer border border-purple-800/20"
+              >
+                <Plus size={10} />
+                New Prompt
+              </button>
+            )}
           </div>
 
           {/* List items block */}
@@ -211,13 +214,21 @@ export default function PromptsPage() {
               <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
                   <Terminal size={14} className="text-purple-400" />
-                  {isEditing ? `Edit Template: ${selectedPrompt?.name}` : "Create New Prompt"}
+                  {isEditing ? `Template: ${selectedPrompt?.name || ""}` : "Create New Prompt"}
                 </span>
-                {isEditing && (
-                  <span className="text-[9px] text-zinc-550 bg-zinc-900 px-2 py-0.5 rounded font-mono">
-                    ID: {selectedPrompt?.id}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {!isPlatformAdmin && (
+                    <span className="text-[10px] text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 flex items-center gap-1">
+                      <ShieldAlert size={11} className="text-amber-400" />
+                      Read-Only Mode
+                    </span>
+                  )}
+                  {isEditing && (
+                    <span className="text-[9px] text-zinc-550 bg-zinc-900 px-2 py-0.5 rounded font-mono">
+                      ID: {selectedPrompt?.id}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Input: Template title */}
@@ -228,10 +239,13 @@ export default function PromptsPage() {
                 <input
                   type="text"
                   required
+                  readOnly={!isPlatformAdmin}
                   value={promptName}
                   onChange={(e) => setPromptName(e.target.value)}
                   placeholder="e.g. Studio Light Portrait - High Contrast, Mediterranean Vibe Outdoor"
-                  className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-2.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
+                  className={`w-full bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-2.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all ${
+                    isPlatformAdmin ? "focus:border-purple-500" : "cursor-default text-zinc-300"
+                  }`}
                 />
               </div>
 
@@ -243,46 +257,73 @@ export default function PromptsPage() {
                 <textarea
                   rows={12}
                   required
+                  readOnly={!isPlatformAdmin}
                   value={promptText}
                   onChange={(e) => setPromptText(e.target.value)}
-                  placeholder="Write details instructions for the AI generation model. You can specify variables or format (e.g. 'Highly detailed studio photograph of model wearing, shot on 85mm lens, depth of field, warm color grading, soft focus background')..."
-                  className="w-full bg-zinc-950 border border-zinc-850 focus:border-purple-500 rounded-xl px-4 py-3 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all resize-none leading-relaxed font-mono"
+                  placeholder="Write details instructions for the AI generation model..."
+                  className={`w-full bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-3 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all resize-none leading-relaxed font-mono ${
+                    isPlatformAdmin ? "focus:border-purple-500" : "cursor-default text-zinc-300"
+                  }`}
                 />
               </div>
             </div>
 
             {/* Form footer tools */}
-            <div className="flex justify-end gap-3 border-t border-zinc-900 pt-4 mt-6">
-              {isEditing && (
-                <button
-                  type="button"
-                  onClick={handleNewPromptClick}
-                  className="bg-zinc-850 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer border border-zinc-800"
-                >
-                  Create New Instead
-                </button>
-              )}
+            <div className="flex items-center justify-between border-t border-zinc-900 pt-4 mt-6">
               <button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-550 text-white text-xs font-semibold px-5 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-purple-950/20"
+                type="button"
+                onClick={() => {
+                  if (!promptText) return;
+                  navigator.clipboard.writeText(promptText);
+                  toast.success("Prompt copied to clipboard!");
+                }}
+                disabled={!promptText}
+                className="bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-zinc-300 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer border border-zinc-800 flex items-center gap-1.5"
               >
-                {isSubmitting ? (
-                  <Loader2 className="animate-spin" size={14} />
-                ) : (
-                  <Save size={12} />
-                )}
-                {isEditing ? "Save Changes" : "Save Template"}
+                <Copy size={13} />
+                Copy Prompt
               </button>
-              {isEditing && (
-                <button
-                  type="button"
-                  onClick={handleDeletePrompt}
-                  className="px-4 py-2 text-sm font-medium text-red-400 border border-red-800 hover:bg-red-950/30 rounded-xl transition"
-                >
-                  Delete
-                </button>
-              )}
+
+              <div className="flex items-center gap-3">
+                {isPlatformAdmin ? (
+                  <>
+                    {isEditing && (
+                      <button
+                        type="button"
+                        onClick={handleNewPromptClick}
+                        className="bg-zinc-850 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer border border-zinc-800"
+                      >
+                        Create New Instead
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-550 text-white text-xs font-semibold px-5 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-purple-950/20"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="animate-spin" size={14} />
+                      ) : (
+                        <Save size={12} />
+                      )}
+                      {isEditing ? "Save Changes" : "Save Template"}
+                    </button>
+                    {isEditing && (
+                      <button
+                        type="button"
+                        onClick={handleDeletePrompt}
+                        className="px-4 py-2 text-xs font-medium text-red-400 border border-red-800 hover:bg-red-950/30 rounded-xl transition"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-[11px] text-zinc-500">
+                    Platform admin role required to save or edit templates.
+                  </span>
+                )}
+              </div>
             </div>
           </form>
         </div>

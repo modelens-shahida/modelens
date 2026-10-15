@@ -307,44 +307,72 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* Mock Top-Up / Staging Options Card */}
-        <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between">
-          <div className="space-y-1">
-            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
-              Staging & Testing Top-up
-            </span>
-            <p className="text-zinc-500 text-[10px] leading-relaxed">
-              Simulate credits purchasing without entering billing details. Click below to add credits instantly to this account:
-            </p>
-          </div>
+        {/* Mock Top-Up for Admin/Dev OR Enterprise Invoicing Card for Standard Users */}
+        {(process.env.NODE_ENV !== "production" || user?.role === "admin" || user?.role === "owner") ? (
+          <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                  Staging & Testing Top-up
+                </span>
+                <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-950/40 border border-purple-800/30 text-purple-400 font-medium">
+                  Admin & Test Mode
+                </span>
+              </div>
+              <p className="text-zinc-500 text-[10px] leading-relaxed">
+                Simulate credits purchasing without entering billing details. Click below to add credits instantly to this account:
+              </p>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
-            {[
-              { id: "starter", name: "Starter", amt: 100 },
-              { id: "pro", name: "Pro", amt: 500 },
-              { id: "enterprise", name: "Enterprise", amt: 2000 },
-            ].map((pkg) => (
-              <button
-                key={pkg.id}
-                disabled={loadingTopUp !== null}
-                onClick={() => handleMockPurchase(pkg.id)}
-                className="flex flex-col items-center justify-center border border-zinc-800 hover:border-purple-800 bg-zinc-900/40 hover:bg-purple-950/10 p-3 rounded-xl transition-all cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed text-center"
-              >
-                {loadingTopUp === pkg.id ? (
-                  <Loader2 className="animate-spin text-purple-400 mb-1" size={16} />
-                ) : (
-                  <Coins className="text-purple-400 group-hover:scale-110 transition-transform mb-1" size={16} />
-                )}
-                <span className="text-[10px] font-bold text-zinc-200 group-hover:text-purple-300">
-                  {pkg.name}
-                </span>
-                <span className="text-[9px] text-zinc-500 mt-0.5">
-                  +{pkg.amt} Credits
-                </span>
-              </button>
-            ))}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+              {[
+                { id: "starter", name: "Starter", amt: 100 },
+                { id: "pro", name: "Pro", amt: 500 },
+                { id: "enterprise", name: "Enterprise", amt: 2000 },
+              ].map((pkg) => (
+                <button
+                  key={pkg.id}
+                  disabled={loadingTopUp !== null}
+                  onClick={() => handleMockPurchase(pkg.id)}
+                  className="flex flex-col items-center justify-center border border-zinc-800 hover:border-purple-800 bg-zinc-900/40 hover:bg-purple-950/10 p-3 rounded-xl transition-all cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed text-center"
+                >
+                  {loadingTopUp === pkg.id ? (
+                    <Loader2 className="animate-spin text-purple-400 mb-1" size={16} />
+                  ) : (
+                    <Coins className="text-purple-400 group-hover:scale-110 transition-transform mb-1" size={16} />
+                  )}
+                  <span className="text-[10px] font-bold text-zinc-200 group-hover:text-purple-300">
+                    {pkg.name}
+                  </span>
+                  <span className="text-[9px] text-zinc-500 mt-0.5">
+                    +{pkg.amt} Credits
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between">
+            <div className="space-y-2">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                Enterprise & Custom Volume
+              </span>
+              <h4 className="text-sm font-semibold text-white">Need higher generation capacity?</h4>
+              <p className="text-zinc-400 text-xs leading-relaxed">
+                Contact your account team for custom GPU quotas, dedicated LoRA training clusters, and invoicing terms.
+              </p>
+            </div>
+            <div className="mt-6 pt-4 border-t border-zinc-900 flex items-center justify-between">
+              <span className="text-[10px] text-zinc-500">Invoices processed securely via Stripe</span>
+              <a
+                href="mailto:support@modelens.ai?subject=Custom%20Enterprise%20Credit%20Pack"
+                className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 font-medium"
+              >
+                Contact Sales <ArrowRight size={13} />
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Credit Transactions Ledger History */}
