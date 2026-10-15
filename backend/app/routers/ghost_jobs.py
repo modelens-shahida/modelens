@@ -9,6 +9,7 @@ from app.models.db import get_db, Asset, User, GhostJob, GhostJobAsset, GhostOut
 from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.worker import process_ghost_job
 from app.api_docs import error_responses
+from app.services.job_refunds import refund_job
 from app.routers.body_parsing import parse_body
 
 router = APIRouter(prefix="/api/v1/ghost-jobs", tags=["Ghost Studio"])
@@ -252,7 +253,9 @@ async def cancel_ghost_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Cancel an active ghost job."""
-    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id, GhostJob.user_id == current_user.id))
+    # Locked: a second cancel or the worker's failure handler waits, then sees the new status.
+    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id, GhostJob.user_id == current_user.id)
+                              .with_for_update().execution_options(populate_existing=True))
     job = result.scalars().first()
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ghost job not found.")
@@ -260,11 +263,10 @@ async def cancel_ghost_job(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot cancel job with status: {job.status}")
 
     job.status = "cancelled"
-    # Refund credits
-    current_user.credits = (current_user.credits or 0) + job.credits_reserved
+    refunded = await refund_job(db, "ghost_job", job, "cancelled")  # at most once per job
     await db.commit()
 
-    return {"job_id": job.id, "status": "cancelled", "credits_refunded": job.credits_reserved}
+    return {"job_id": job.id, "status": "cancelled", "credits_refunded": refunded}
 
 
 @router.get(

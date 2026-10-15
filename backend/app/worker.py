@@ -72,6 +72,7 @@ from sqlalchemy.orm import selectinload
 from app.models.db import async_session_maker, Asset, AIJob, User, WorkflowTemplate, Character, CharacterVersion, GeneratedVideo, WebhookSubscription, CreditTransaction, WebhookLog, Notification, WebhookDeliveryLog, Brand, Invitation
 from app.middleware.rate_limit import redis_client
 from app.services.storage import storage_service
+from app.services.job_refunds import refund_job
 from app.services.asset_pipeline import process_image
 from app.services.ai_tagging_service import generate_ai_tags
 from app.services.webhook_security import build_webhook_headers, generate_webhook_secret, serialize_payload
@@ -323,6 +324,18 @@ async def _generate_image(prompt: str) -> bytes:
         raise RuntimeError(f"Image generation failed: {str(e)}")
 
 
+# AIJob prices: jobs.py charges 1 credit per generation or workflow job, training 10.
+AI_JOB_CREDITS = 1
+TRAINING_JOB_CREDITS = 10
+# The errors Celery retries for the AIJob tasks below; any other error is final at once.
+JOB_AUTORETRY = (httpx.HTTPError, RuntimeError)
+
+
+def _final_attempt(error: Exception, retries: int, max_retries: int) -> bool:
+    """No Celery retry will follow this failure, so the job fails now (and is refunded once)."""
+    return retries >= max_retries or not isinstance(error, JOB_AUTORETRY)
+
+
 async def _process_generation_job_async(job_id: int, retries: int = 0, max_retries: int = 0):
     async with async_session_maker() as db:
         # Retrieve job
@@ -501,27 +514,12 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
         except Exception as e:
             print(f"[Worker] Job {job_id} execution error: {e}")
 
-            # Only mark as failed and refund credits when all retries are exhausted
-            if retries >= max_retries:
+            # Fail and refund only on the final attempt: the last retry, or an error Celery does
+            # not retry (anything outside JOB_AUTORETRY). The refund is once per job either way.
+            if _final_attempt(e, retries, max_retries):
                 job.status = "failed"
                 job.error_message = str(e)
-
-                # Refund 1 credit to the user since generation permanently failed
-                user_result = await db.execute(select(User).where(User.id == job.user_id))
-                refund_user = user_result.scalars().first()
-                if refund_user:
-                    refund_user.credits += 1
-                    credit_txn = CreditTransaction(
-                        user_id=job.user_id,
-                        amount=1,
-                        transaction_type="refund",
-                        reference_type="job",
-                        reference_id=job.id,
-                        balance_after=refund_user.credits,
-                        description=f"Refund for failed generation job {job.id}",
-                    )
-                    db.add(credit_txn)
-
+                await refund_job(db, "job", job, "generation failed", reserved=AI_JOB_CREDITS)
                 await db.commit()
             else:
                 print(f"[Worker] Job {job_id} will be retried (attempt {retries + 1}/{max_retries})")
@@ -562,7 +560,7 @@ async def _process_generation_job_async(job_id: int, retries: int = 0, max_retri
 @celery_app.task(
     name="app.worker.process_generation_job",
     bind=True,
-    autoretry_for=(httpx.HTTPError, RuntimeError),
+    autoretry_for=JOB_AUTORETRY,
     retry_backoff=True,
     retry_backoff_max=120,
     max_retries=3,
@@ -823,27 +821,11 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
         except Exception as e:
             print(f"[Worker] Workflow job {job_id} execution error: {e}")
 
-            # Only mark as failed and refund credits when all retries are exhausted
-            if retries >= max_retries:
+            # Fail and refund only on the final attempt (see _final_attempt); once per job.
+            if _final_attempt(e, retries, max_retries):
                 job.status = "failed"
                 job.error_message = str(e)
-
-                # Refund 1 credit to the user since generation permanently failed
-                user_result = await db.execute(select(User).where(User.id == job.user_id))
-                refund_user = user_result.scalars().first()
-                if refund_user:
-                    refund_user.credits += 1
-                    credit_txn = CreditTransaction(
-                        user_id=job.user_id,
-                        amount=1,
-                        transaction_type="refund",
-                        reference_type="job",
-                        reference_id=job.id,
-                        balance_after=refund_user.credits,
-                        description=f"Refund for failed workflow job {job.id}",
-                    )
-                    db.add(credit_txn)
-
+                await refund_job(db, "job", job, "workflow failed", reserved=AI_JOB_CREDITS)
                 await db.commit()
             else:
                 print(f"[Worker] Workflow job {job_id} will be retried (attempt {retries + 1}/{max_retries})")
@@ -881,7 +863,7 @@ async def _process_workflow_job_async(job_id: int, retries: int = 0, max_retries
 @celery_app.task(
     name="app.worker.process_workflow_job",
     bind=True,
-    autoretry_for=(httpx.HTTPError, RuntimeError),
+    autoretry_for=JOB_AUTORETRY,
     retry_backoff=True,
     retry_backoff_max=120,
     max_retries=3,
@@ -1264,26 +1246,11 @@ async def _process_training_job_async(job_id: int, retries: int = 0, max_retries
         except Exception as e:
             print(f"[Worker] Training job {job_id} error: {e}")
 
-            if retries >= max_retries:
+            # Fail and refund only on the final attempt (see _final_attempt); once per job.
+            if _final_attempt(e, retries, max_retries):
                 job.status = "failed"
                 job.error_message = str(e)
-
-                # Refund 10 credits on permanent failure
-                user_result = await db.execute(select(User).where(User.id == job.user_id))
-                refund_user = user_result.scalars().first()
-                if refund_user:
-                    refund_user.credits += 10
-                    credit_txn = CreditTransaction(
-                        user_id=job.user_id,
-                        amount=10,
-                        transaction_type="refund",
-                        reference_type="job",
-                        reference_id=job.id,
-                        balance_after=refund_user.credits,
-                        description=f"Refund for failed character training job {job.id}",
-                    )
-                    db.add(credit_txn)
-
+                await refund_job(db, "job", job, "character training failed", reserved=TRAINING_JOB_CREDITS)
                 await db.commit()
             else:
                 print(f"[Worker] Training job {job_id} will be retried (attempt {retries + 1}/{max_retries})")
@@ -1293,7 +1260,7 @@ async def _process_training_job_async(job_id: int, retries: int = 0, max_retries
 @celery_app.task(
     name="app.worker.process_training_job",
     bind=True,
-    autoretry_for=(httpx.HTTPError, RuntimeError),
+    autoretry_for=JOB_AUTORETRY,
     retry_backoff=True,
     retry_backoff_max=120,
     max_retries=3,
@@ -1970,6 +1937,9 @@ async def _process_ghost_job_async(task_self, job_id: int):
         if not job:
             print(f"[GhostJob] Job {job_id} not found.")
             return
+        if job.status == "cancelled":  # cancelled (and refunded) while queued
+            print(f"[GhostJob] Job {job_id} was cancelled; not processing it.")
+            return
 
         try:
             # Step 1: Preprocessing
@@ -2086,20 +2056,11 @@ async def _process_ghost_job_async(task_self, job_id: int):
 
         except Exception as e:
             print(f"[GhostJob] Job {job_id} failed: {e}")
-            job.status = "failed"
-            job.error_message = str(e)[:200]
-            job.progress = 0
-            # Input and Gemini failures are final: no retry (Gemini's transient errors were
-            # already retried inside the request). Every earlier failed attempt of this task
-            # refunded already, so a final failure on a retry must not refund again.
-            final = isinstance(e, (GhostInputError, GeminiError))
-            if not (final and _task_retries(task_self) > 0):
-                from app.models.db import User
-                user_result = await db.execute(select(User).where(User.id == job.user_id))
-                user = user_result.scalars().first()
-                if user:
-                    user.credits = (user.credits or 0) + job.credits_reserved
-            await db.commit()
+            # Input and Gemini failures are final: retrying cannot fix the image, and Gemini's
+            # transient errors were already retried inside the request. Anything else is
+            # retried by Celery until its last attempt.
+            final = isinstance(e, (GhostInputError, GeminiError)) or _last_attempt(task_self)
+            await _fail_or_requeue(db, job, "ghost_job", e, final)
             if final:
                 return
             raise task_self.retry(exc=e, countdown=60)
@@ -2109,6 +2070,35 @@ def _task_retries(task_self) -> int:
     """How many times this Celery task has already been retried (0 on the first attempt)."""
     retries = getattr(getattr(task_self, "request", None), "retries", 0)
     return retries if isinstance(retries, int) else 0
+
+
+def _last_attempt(task_self, default_max_retries: int = 3) -> bool:
+    """No Celery retry is left after this attempt."""
+    max_retries = getattr(task_self, "max_retries", None)
+    if not isinstance(max_retries, int):
+        max_retries = default_max_retries
+    return _task_retries(task_self) >= max_retries
+
+
+async def _fail_or_requeue(db, job, kind: str, error: Exception, final: bool) -> None:
+    """After a failed attempt of a ghost or sketch job. Final: the job fails and its credits are
+    refunded (once per job, however many attempts ran). Otherwise Celery retries it: the job
+    goes back to queued and nothing is refunded, so a retry that succeeds is charged normally.
+    A job cancelled meanwhile stays cancelled (the cancel refunded it)."""
+    job.progress = 0
+    job.error_message = str(error)[:200]
+    await db.flush()
+    # Locked: a cancel of this job waits for this commit, or has committed and is seen here.
+    current = (await db.execute(select(type(job).status).where(type(job).id == job.id)
+                                .with_for_update())).scalar_one()
+    if current == "cancelled":
+        job.status = "cancelled"
+    elif final:
+        job.status = "failed"
+        await refund_job(db, kind, job, "failed")
+    else:
+        job.status = "queued"
+    await db.commit()
 
 
 # ========================== Move Studio Tasks ===================
@@ -2195,11 +2185,8 @@ async def _process_video_generation_async(task_self, project_id: int, provider: 
             except Exception as clip_err:
                 print(f"[VideoGen] Clip {clip.id} failed: {clip_err}")
                 clip.status = "failed"
-                # Refund credits for failed clip
-                user_result = await db.execute(select(User).where(User.id == project.user_id))
-                user = user_result.scalars().first()
-                if user:
-                    user.credits = (user.credits or 0) + 5
+                # Nothing to refund: no route charges for a VideoClip (clip.credits_consumed is
+                # only set on success). If clips are ever charged, refund them with refund_job.
                 await db.commit()
 
         # Check if all clips completed
@@ -2340,6 +2327,9 @@ async def _process_sketch_job_async(task_self, job_id: int):
         if not job:
             print(f"[SketchJob] Job {job_id} not found.")
             return
+        if job.status == "cancelled":  # cancelled (and refunded) while queued
+            print(f"[SketchJob] Job {job_id} was cancelled; not processing it.")
+            return
 
         try:
             # Step 1: Preprocessing
@@ -2458,16 +2448,11 @@ async def _process_sketch_job_async(task_self, job_id: int):
 
         except Exception as e:
             print(f"[SketchJob] Job {job_id} failed: {e}")
-            job.status = "failed"
-            job.error_message = str(e)[:200]
-            job.progress = 0
-            # Refund credits
-            from app.models.db import User
-            user_result = await db.execute(select(User).where(User.id == job.user_id))
-            user = user_result.scalars().first()
-            if user:
-                user.credits = (user.credits or 0) + job.credits_reserved
-            await db.commit()
+            # Retried by Celery until its last attempt; refunded once, only when it finally fails.
+            final = _last_attempt(task_self)
+            await _fail_or_requeue(db, job, "sketch_job", e, final)
+            if final:
+                return
             raise task_self.retry(exc=e, countdown=60)
 
 
@@ -2497,6 +2482,9 @@ async def _process_catalog_job_async(task_self, job_id: int):
         job = result.scalars().first()
         if not job:
             print(f"[CatalogJob] Job {job_id} not found.")
+            return
+        if job.status == "cancelled":  # cancelled (and refunded) while queued
+            print(f"[CatalogJob] Job {job_id} was cancelled; not processing it.")
             return
 
         job.status = "processing"
@@ -2584,6 +2572,13 @@ async def _process_catalog_job_async(task_self, job_id: int):
                 db.add(new_asset)
                 await db.flush()
 
+                # Register asset version and lineage
+                await _register_asset_version(db, new_asset.id, output_url)
+                if item.product_image_path:
+                    await _register_asset_relationship(db, new_asset.id, new_asset.id, "REL-DERIVED-FROM")
+
+                # Counted (and its credits consumed) only once nothing above can fail: a failed
+                # item must not also count as completed, or its refund would be capped away.
                 item.status = "qa_passed"
                 item.output_url = output_url
                 item.quality_score = quality_score
@@ -2592,11 +2587,6 @@ async def _process_catalog_job_async(task_self, job_id: int):
                 job.completed_items += 1
                 job.credits_consumed += 5 if job.generation_mode == "studio_quality" else 2
 
-                # Register asset version and lineage
-                await _register_asset_version(db, new_asset.id, output_url)
-                if item.product_image_path:
-                    await _register_asset_relationship(db, new_asset.id, new_asset.id, "REL-DERIVED-FROM")
-
                 await db.commit()
 
             except Exception as item_err:
@@ -2604,13 +2594,11 @@ async def _process_catalog_job_async(task_self, job_id: int):
                 item.status = "failed"
                 item.error_message = str(item_err)[:200]
                 job.failed_items += 1
-                # Refund credits for failed item
-                from app.models.db import User
-                user_result = await db.execute(select(User).where(User.id == job.user_id))
-                user = user_result.scalars().first()
-                if user:
-                    credits_per = 5 if job.generation_mode == "studio_quality" else 2
-                    user.credits = (user.credits or 0) + credits_per
+                # Refund the failed item's credits: once per item (a re-queued item that fails
+                # again is not refunded twice), and never beyond what the job has left unused.
+                credits_per = 5 if job.generation_mode == "studio_quality" else 2
+                await refund_job(db, "catalog_job", job, f"item {item.id} failed", amount=credits_per,
+                                 part=f"item:{item.id}")
                 await db.commit()
 
         # Update job status

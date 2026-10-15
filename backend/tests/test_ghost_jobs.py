@@ -256,26 +256,33 @@ async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, t
     await db_session.commit()
 
     mock_task_self = MagicMock()
+    mock_task_self.max_retries = 3
     mock_task_self.retry = MagicMock(side_effect=Exception("Task retry invoked"))
 
-    # Force storage_service to throw exception to simulate failure
-    with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
-         patch("app.worker.storage_service.read_file_bytes", return_value=GARMENT_PNG), \
-         patch("app.worker.storage_service.save_file_bytes", side_effect=ValueError("Storage write error")):
-        
-        try:
-            await _process_ghost_job_async(mock_task_self, job.id)
-        except Exception as e:
-            assert "Task retry invoked" in str(e)
+    async def attempt(retries):
+        mock_task_self.request.retries = retries
+        # Force storage_service to throw exception to simulate failure
+        with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+             patch("app.worker.storage_service.read_file_bytes", return_value=GARMENT_PNG), \
+             patch("app.worker.storage_service.save_file_bytes", side_effect=ValueError("Storage write error")):
+            try:
+                await _process_ghost_job_async(mock_task_self, job.id)
+            except Exception as e:
+                assert "Task retry invoked" in str(e)
+        await db_session.refresh(job)
+        user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
+        return user_result.scalars().first().credits
 
-    # Check job status is failed and credits refunded
-    await db_session.refresh(job)
+    # A failed attempt with retries left: re-queued for the Celery retry, nothing refunded yet
+    assert await attempt(0) == starting_credits
+    assert job.status == "queued" and "Storage write error" in job.error_message
+    assert mock_task_self.retry.call_count == 1
+
+    # The last attempt fails too: the job fails and is refunded once
+    assert await attempt(3) == starting_credits + 4
     assert job.status == "failed"
     assert "Storage write error" in job.error_message
-
-    user_result = await db_session.execute(select(User).where(User.id == editor_user.id))
-    user = user_result.scalars().first()
-    assert user.credits == starting_credits + 4
+    assert mock_task_self.retry.call_count == 1
 
 # ========================== Batch Tests ==========================
 

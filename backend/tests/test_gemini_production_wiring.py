@@ -244,19 +244,23 @@ async def test_production_failure_fails_cleanly_and_refunds_once(
 @pytest.mark.parametrize("case", ["server error", "timeout", "text only", "image safety", "no key"])
 async def test_gemini_failure_never_refunds_twice_across_retries(
         db_session, test_data, store, gemini, production, monkeypatch, case):
-    """Attempt 1 fails on something retryable (refund + retry); attempt 2 fails in Gemini: no second refund."""
+    """Attempt 1 fails on something retryable (re-queued for a retry, no refund); attempt 2 fails in
+    Gemini: final, failed and refunded exactly once."""
     start = await _credits(db_session, test_data)
     job_id = await _job(db_session, test_data)
     with patch.object(storage_service, "save_file_bytes", side_effect=OSError("storage blip")):
         job, task = await _run(db_session, job_id, retries=0)
-    assert (job.status, job.error_message) == ("failed", "storage blip") and task.retry.call_count == 1
-    assert await _credits(db_session, test_data) == start + 7
+    assert (job.status, job.error_message) == ("queued", "storage blip") and task.retry.call_count == 1
+    assert await _credits(db_session, test_data) == start
 
     _arrange(gemini, monkeypatch, case)
     job, task = await _run(db_session, job_id, retries=1)
     assert job.status == "failed"
     task.retry.assert_not_called()
-    assert await _credits(db_session, test_data) == start + 7  # still exactly one refund
+    assert await _credits(db_session, test_data) == start + 7  # exactly one refund
+
+    job, task = await _run(db_session, job_id, retries=2)  # a stray redelivery: still one refund
+    assert await _credits(db_session, test_data) == start + 7
 
 
 @pytest.mark.asyncio

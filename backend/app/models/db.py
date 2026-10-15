@@ -468,6 +468,10 @@ class CreditTransaction(Base):
     # Stripe checkout session / invoice id that granted these credits; unique, so
     # each one grants at most once. NULL for every non-Stripe row.
     stripe_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    # What a refund row refunds ("ghost_job:12", "generation:gen_abc"); unique, so each
+    # job (or job part) is refunded at most once. NULL for every non-refund row.
+    # Written only by app/services/job_refunds.py.
+    refund_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
     balance_after: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="completed")
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

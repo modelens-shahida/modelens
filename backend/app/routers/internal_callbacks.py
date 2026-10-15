@@ -2,10 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends, Header, status
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.models.db import get_db, CreditTransaction, Brand
+from app.models.db import get_db
 from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
 from app.services.internal_auth import check_internal_secret
+from app.services.job_refunds import lock_reservation, refund_reservation
 
 router = APIRouter(prefix="/api/v1/internal", tags=["Internal Callbacks"])
 
@@ -48,13 +48,8 @@ async def generation_complete_callback(
     Called by NestJS when generation completes.
     Finalizes credit deduction.
     """
-    result = await db.execute(
-        select(CreditTransaction).where(
-            CreditTransaction.reference_id == generation_id,
-            CreditTransaction.status == "pending",
-        )
-    )
-    txn = result.scalars().first()
+    # Locked: a concurrent complete/fail callback for this generation waits, then finds it settled.
+    txn = await lock_reservation(db, generation_id)
     if not txn:
         raise HTTPException(status_code=404, detail="Pending transaction not found")
 
@@ -62,26 +57,12 @@ async def generation_complete_callback(
     txn.status = "completed"
     txn.description = f"Template generation completed - {generation_id}"
 
-    # If actual credits differ from reserved
+    # If fewer credits were used than reserved, refund the difference (once, at most the reservation)
     if payload.credits_consumed is not None and payload.credits_consumed != abs(txn.amount):
         diff = abs(txn.amount) - payload.credits_consumed
         if diff > 0:
-            # Refund the difference
-            brand_result = await db.execute(select(Brand).where(Brand.id == txn.brand_id))
-            brand = brand_result.scalars().first()
-            if brand:
-                brand.credits = (brand.credits or 0) + diff
-
-            refund_txn = CreditTransaction(
-                user_id=txn.user_id,
-                brand_id=txn.brand_id,
-                transaction_type="refund",
-                amount=diff,
-                description=f"Partial refund for generation {generation_id}",
-                reference_id=generation_id,
-                status="completed",
-            )
-            db.add(refund_txn)
+            await refund_reservation(db, txn, "partial", partial=diff,
+                                     description=f"Partial refund for generation {generation_id}")
 
     await db.commit()
     return {"status": "completed", "generation_id": generation_id}
@@ -110,36 +91,14 @@ async def generation_fail_callback(
     Called by NestJS when generation fails.
     Refunds reserved credits.
     """
-    result = await db.execute(
-        select(CreditTransaction).where(
-            CreditTransaction.reference_id == generation_id,
-            CreditTransaction.status == "pending",
-        )
-    )
-    txn = result.scalars().first()
+    txn = await lock_reservation(db, generation_id)
     if not txn:
         raise HTTPException(status_code=404, detail="Pending transaction not found")
 
-    # Refund credits to brand
-    brand_result = await db.execute(select(Brand).where(Brand.id == txn.brand_id))
-    brand = brand_result.scalars().first()
-    if brand:
-        brand.credits = (brand.credits or 0) + abs(txn.amount)
-
-    # Mark transaction as refunded
-    txn.status = "refunded"
+    # Refund credits to brand, once (app/services/job_refunds.py); marks the reservation refunded
+    refunded = await refund_reservation(db, txn, payload.reason or "unknown", reference_id=generation_id,
+                                        description=f"Generation failed refund - {generation_id}")
     txn.description = f"Refund - generation failed: {payload.reason or 'unknown'} - {generation_id}"
-
-    refund_txn = CreditTransaction(
-        user_id=txn.user_id,
-        brand_id=txn.brand_id,
-        transaction_type="refund",
-        amount=abs(txn.amount),
-        description=f"Generation failed refund - {generation_id}",
-        reference_id=generation_id,
-        status="completed",
-    )
-    db.add(refund_txn)
     await db.commit()
 
-    return {"status": "refunded", "generation_id": generation_id, "credits_refunded": abs(txn.amount)}
+    return {"status": "refunded", "generation_id": generation_id, "credits_refunded": refunded}

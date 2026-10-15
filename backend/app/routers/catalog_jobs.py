@@ -11,6 +11,7 @@ from app.services.storage import storage_service
 import os
 import uuid
 from app.api_docs import error_responses
+from app.services.job_refunds import refund_job
 from app.routers.body_parsing import parse_body
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Studio"])
@@ -244,8 +245,10 @@ async def cancel_catalog_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Cancel catalog job and refund credits."""
+    # Locked: a second cancel or the worker's item refunds wait, then see the new state.
     result = await db.execute(
         select(CatalogJob).where(CatalogJob.id == job_id, CatalogJob.user_id == current_user.id)
+        .with_for_update().execution_options(populate_existing=True)
     )
     job = result.scalars().first()
     if not job:
@@ -254,8 +257,8 @@ async def cancel_catalog_job(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot cancel job with status: {job.status}")
 
     job.status = "cancelled"
-    refund = job.credits_reserved - job.credits_consumed
-    current_user.credits = (current_user.credits or 0) + refund
+    # What is still unused and not refunded already (failed items were refunded one by one)
+    refund = await refund_job(db, "catalog_job", job, "cancelled")
     await db.commit()
 
     return {"job_id": job.id, "status": "cancelled", "credits_refunded": refund}

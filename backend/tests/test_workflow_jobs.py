@@ -475,7 +475,8 @@ async def test_workflow_job_valid_character_and_version_succeeds(client: AsyncCl
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_workflow_job_does_not_fail_on_first_retry(db_session: AsyncSession, test_data: dict):
-    """Workflow job should not mark as failed or refund credits on first retry attempt."""
+    """A retryable failure (RuntimeError, in autoretry_for) on the first attempt neither fails nor refunds the job.
+    (A non-retryable error is final at once: tests/test_idempotent_job_refunds.py.)"""
     brand = test_data["brand"]
     editor_user = test_data["users"]["editor"]
 
@@ -484,14 +485,20 @@ async def test_workflow_job_does_not_fail_on_first_retry(db_session: AsyncSessio
     db_session.add(editor_user)
     await db_session.commit()
 
-    # Create job that will fail (no source asset provided)
+    source_asset = Asset(brand_id=brand.id, name="Source", filename="s.png", storage_path="/uploads/s.png",
+                         asset_type="product_flat")
+    db_session.add(source_asset)
+    await db_session.commit()
+
+    # A job that fails with a transient (retryable) error while processing
     job = AIJob(
         user_id=editor_user.id,
         brand_id=brand.id,
         status="pending",
         job_type="workflow",
         inputs={
-            "workflow_type": "flat_lay_to_model"
+            "workflow_type": "video_generation",
+            "source_asset_id": source_asset.id,
         },
         outputs={}
     )
@@ -500,6 +507,7 @@ async def test_workflow_job_does_not_fail_on_first_retry(db_session: AsyncSessio
 
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
          patch("app.worker.redis_client.set", new_callable=AsyncMock), \
+         patch("app.worker.asyncio.sleep", side_effect=RuntimeError("Transient error")), \
          patch("app.worker.dispatch_webhook.delay"):
 
         try:

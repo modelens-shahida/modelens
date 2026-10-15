@@ -324,8 +324,9 @@ async def test_storage_errors_are_not_copied_into_the_job(db_session, test_data,
 
 
 @pytest.mark.asyncio
-async def test_other_failures_still_refund_and_retry(db_session, test_data, store, gemini):
-    """Unchanged: a failure after the images loaded (here: saving the output) refunds and retries."""
+async def test_other_failures_retry_without_refund(db_session, test_data, store, gemini):
+    """A failure after the images loaded (here: saving the output) is retried by Celery; nothing is
+    refunded until the last attempt fails (tests/test_idempotent_job_refunds.py)."""
     store["ok.png"] = _image_bytes("PNG")
     user_id = test_data["users"]["editor"].id
     start = await _credits(db_session, user_id)
@@ -336,8 +337,8 @@ async def test_other_failures_still_refund_and_retry(db_session, test_data, stor
             pytest.raises(RuntimeError, match="retry scheduled"):
         await _run(db_session, job_id, task)
     job = (await db_session.execute(select(GhostJob).where(GhostJob.id == job_id))).scalar_one()
-    assert (job.status, job.error_message) == ("failed", "disk full")
-    assert await _credits(db_session, user_id) == start + 4
+    assert (job.status, job.error_message) == ("queued", "disk full")
+    assert await _credits(db_session, user_id) == start
     task.retry.assert_called_once()
     gemini.generate_content.assert_called_once()
 

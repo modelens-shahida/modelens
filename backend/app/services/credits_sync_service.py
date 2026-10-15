@@ -189,47 +189,20 @@ class CreditsSyncService:
         reason: str,
         db: AsyncSession,
     ) -> Dict[str, Any]:
-        """Refund credits on generation failure."""
-        result = await db.execute(
-            select(CreditTransaction).where(
-                CreditTransaction.reference_id == generation_id,
-                CreditTransaction.status == "pending",
-            )
-        )
-        txn = result.scalars().first()
-        if not txn:
+        """Refund credits on generation failure, once (see app/services/job_refunds.py).
+        A reservation that is no longer pending (finalized, or refunded already) is a 404."""
+        from app.services.job_refunds import lock_reservation, refund_reservation
+        reservation = await lock_reservation(db, generation_id)
+        if not reservation:
             raise HTTPException(status_code=404, detail="Pending transaction not found.")
-
-        refund_amount = abs(txn.amount)
-
-        # Restore brand credits
-        brand_result = await db.execute(
-            select(Brand).where(Brand.id == txn.brand_id)
-        )
-        brand = brand_result.scalars().first()
-        if brand:
-            brand.credits = (brand.credits or 0) + refund_amount
-
-        # Mark original as refunded
-        txn.status = "refunded"
-
-        # Create refund transaction
-        refund_txn = CreditTransaction(
-            user_id=txn.user_id,
-            brand_id=txn.brand_id,
-            transaction_type="refund",
-            amount=refund_amount,
-            description=f"Auto refund: {reason}",
-            reference_id=f"refund_{generation_id}",
-            status="completed",
-        )
-        db.add(refund_txn)
+        refunded = await refund_reservation(db, reservation, reason)
+        brand = await db.get(Brand, reservation.brand_id) if reservation.brand_id else None
         await db.commit()
 
         return {
             "status": "refunded",
             "generation_id": generation_id,
-            "credits_refunded": refund_amount,
+            "credits_refunded": refunded,
             "reason": reason,
             "new_balance": brand.credits if brand else None,
         }
