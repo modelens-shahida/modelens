@@ -10,7 +10,8 @@ queued (0%) -> preprocessing (15%) -> generating (40%) -> postprocessing (75%) -
 - COMFYUI_HOST: localhost
 - COMFYUI_MOCK_MODE: true
 - FASHN_API_KEY: mock
-- GEMINI_API_KEY: mock
+- GEMINI_API_KEY: required in production (startup fails without it); unset or `mock` uses the mock image only where production rules do not apply (APP_ENV development/local/staging/test, or TESTING).
+- GEMINI_GHOST_MODEL: gemini-3-pro-image (must be an image-output model; see `app/services/gemini_client.GEMINI_IMAGE_MODELS`)
 - INTERNAL_CALLBACK_SECRET: set INTERNAL_CALLBACK_SECRET to a long random value shared with the templates backend and the FASHN webhook proxy, which send it as `X-Internal-Secret`. Never use the repository default: with APP_ENV=production the API refuses to start with it, and wherever production rules apply (APP_ENV production, missing or unknown) the internal callback routes answer 503 until a real secret is set.
 - TEMPLATES_BACKEND_URL: http://localhost:4000
 

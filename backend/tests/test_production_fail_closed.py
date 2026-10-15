@@ -39,6 +39,7 @@ GOOD_CONFIG = {
     "STRIPE_WEBHOOK_SECRET": FAKE_WEBHOOK_SECRET,
     "INTERNAL_CALLBACK_SECRET": FAKE_INTERNAL_SECRET,
     "SECRET_KEY": "fake-jwt-signing-key-for-tests-0123456789abcdef",
+    "GEMINI_API_KEY": "fake-gemini-key-for-tests-only",
     "TESTING": False,
 }
 

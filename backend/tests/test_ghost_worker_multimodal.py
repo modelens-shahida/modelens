@@ -2,22 +2,22 @@
 
 _process_ghost_job_async used to call generate_content([prompt]) with text
 only. Now it loads each of the job's GhostJobAsset images from storage and
-sends [prompt, image, ...] (upload order), as inline {"mime_type", "data"}
-parts of the google.generativeai SDK the worker imports. JPEG/PNG/WebP go as
+sends [prompt, image, ...] (upload order) as inline image parts
+(google-genai types.Part.from_bytes since the production wiring PR). JPEG/PNG/WebP go as
 they are; HEIC/HEIF and other formats are converted, and images over the
 inline limits are downscaled. A job with no usable image fails once with a
 clear error and a refund, without a retry and without calling Gemini.
 
-The Gemini SDK is a fake module (no network, fake key) and storage is an
-in-memory dict.
+The google-genai client is a fake (tests/gemini_fakes.py: no network, fake
+key) and storage is an in-memory dict.
 """
 import base64
 import io
-import sys
 import types
 from unittest.mock import MagicMock, patch
 
 import celery.app.task
+import gemini_fakes
 import pytest
 import pytest_asyncio
 from PIL import Image
@@ -31,9 +31,8 @@ from app.services.ghost_inputs import GhostInputError, load_job_images, prepare_
 from app.services.storage import storage_service
 from app.worker import _process_ghost_job_async
 
-FAKE_KEY = "fake-gemini-key-for-tests"
-OUTPUT_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
+FAKE_KEY = gemini_fakes.FAKE_KEY
+OUTPUT_PNG = gemini_fakes.OUTPUT_PNG
 
 
 def _image_bytes(fmt, size=(64, 48), color=(180, 30, 60), mode="RGB", noise=False, **save):
@@ -72,20 +71,8 @@ def store():
 
 @pytest.fixture
 def gemini(monkeypatch):
-    """A fake google.generativeai module and a configured (fake) key. Returns the model mock."""
-    model = MagicMock()
-    part = types.SimpleNamespace(inline_data=types.SimpleNamespace(data=OUTPUT_PNG))
-    model.generate_content.return_value = MagicMock(candidates=[types.SimpleNamespace(index=0)], parts=[part])
-    fake = types.ModuleType("google.generativeai")
-    fake.configure = MagicMock()
-    fake.GenerativeModel = MagicMock(return_value=model)
-    monkeypatch.setitem(sys.modules, "google.generativeai", fake)
-    import google
-    monkeypatch.setattr(google, "generativeai", fake, raising=False)
-    model.module = fake
-    # GEMINI_API_KEY is not a declared Settings field; the worker reads it with getattr.
-    with patch.dict(settings.__dict__, {"GEMINI_API_KEY": FAKE_KEY}):
-        yield model
+    """A fake google-genai client and a configured (fake) key."""
+    return gemini_fakes.install(monkeypatch)
 
 
 @pytest.fixture
@@ -123,8 +110,8 @@ async def _run(db_session, job_id, task=None):
 
 def _sent(gemini, call=0):
     """(prompt, image parts) of one generate_content call."""
-    (content,), _ = gemini.generate_content.call_args_list[call]
-    return content[0], content[1:]
+    _, prompt, images, _ = gemini.request(call)
+    return prompt, images
 
 
 # ========================== Images sent =========================
@@ -141,7 +128,7 @@ async def test_single_job_sends_prompt_then_its_uploaded_image(client, db_sessio
 
     assert job.status == "completed" and job.credits_consumed == 4
     task.retry.assert_not_called()
-    gemini.module.configure.assert_called_once_with(api_key=FAKE_KEY)
+    assert gemini.client_cls.call_args.kwargs["api_key"] == FAKE_KEY
     gemini.generate_content.assert_called_once()
     prompt, images = _sent(gemini)
     assert isinstance(prompt, str) and "ghost mannequin" in prompt and "dress" in prompt
@@ -305,9 +292,9 @@ FAILURES = {
 @pytest.mark.parametrize("gemini_configured", [True, False], ids=["gemini", "mock-mode"])
 @pytest.mark.parametrize("case", list(FAILURES))
 async def test_unusable_input_fails_once_refunds_and_never_calls_gemini(
-        db_session, test_data, store, gemini, case, gemini_configured):
+        db_session, test_data, store, gemini, monkeypatch, case, gemini_configured):
     if not gemini_configured:
-        settings.__dict__["GEMINI_API_KEY"] = None  # restored by the gemini fixture
+        monkeypatch.setattr(settings, "GEMINI_API_KEY", None)  # non-production (TESTING): mock mode
     store["notes.png"] = b"these are fit notes, not a picture"
     store["truncated.jpg"] = _image_bytes("JPEG", size=(200, 200), noise=True)[:300]
     store["ok.png"] = _image_bytes("PNG")

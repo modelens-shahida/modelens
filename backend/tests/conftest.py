@@ -4,7 +4,7 @@ import shutil
 import pytest
 import pytest_asyncio
 import uuid
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -259,7 +259,7 @@ async def override_db_dependency(db_session: AsyncSession):
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """Provides a configured async test client."""
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 # --- Pre-populated Seed Data Fixture ---

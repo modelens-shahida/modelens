@@ -18,6 +18,7 @@ from app.config import (
     DEFAULT_INTERNAL_CALLBACK_SECRET, DEFAULT_SECRET_KEY, DEFAULT_STRIPE_SECRET_KEY, DEFAULT_STRIPE_WEBHOOK_SECRET,
     app_env, is_production, production_rules_apply, settings,
 )
+from app.services.gemini_client import GEMINI_IMAGE_MODELS, gemini_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,11 @@ def check_config() -> List[Issue]:
         add("SECRET_KEY", "is unset or the repository default (anyone could sign login tokens)", True)
     if settings.TESTING:
         add("TESTING", "is true; test-only routes and shortcuts would be enabled", True)
+    if _unset_or_default(gemini_api_key()):  # None when unset, blank or "mock"
+        add("GEMINI_API_KEY", "is unset or mock; ghost jobs would fail and be refunded", True)
+    if (settings.GEMINI_GHOST_MODEL or "").strip() not in GEMINI_IMAGE_MODELS:
+        add("GEMINI_GHOST_MODEL", f"is empty or not an image-output model (one of: {', '.join(GEMINI_IMAGE_MODELS)})",
+            True)
 
     # --- Warnings: weak or missing, but Railway may not set these ---
     if not _unset_or_default(settings.SECRET_KEY, DEFAULT_SECRET_KEY) \

@@ -1,6 +1,6 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, SecretStr
 from typing import Optional
 
 # Resolve the absolute path of the .env file in the same directory as config.py
@@ -11,6 +11,7 @@ DEFAULT_INTERNAL_CALLBACK_SECRET = "modelens-internal-secret"
 DEFAULT_SECRET_KEY = "generate-a-secure-secret-key-for-production-here"
 DEFAULT_STRIPE_SECRET_KEY = "sk_test_mock_key"
 DEFAULT_STRIPE_WEBHOOK_SECRET = "whsec_mock_secret"
+DEFAULT_GEMINI_GHOST_MODEL = "gemini-3-pro-image"
 
 class Settings(BaseSettings):
     TEMPLATES_BACKEND_URL: str = "http://localhost:4000"
@@ -102,6 +103,11 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str = Field(default="sk.mock")
+
+    # Gemini (google-genai). The key is a secret: SecretStr keeps it out of reprs and logs.
+    # Ghost jobs need an image-output model (app/services/gemini_client.GEMINI_IMAGE_MODELS).
+    GEMINI_API_KEY: Optional[SecretStr] = Field(default=None)
+    GEMINI_GHOST_MODEL: str = Field(default=DEFAULT_GEMINI_GHOST_MODEL)
 
     # Email Provider (for low-credit alerts)
     EMAIL_PROVIDER: str = Field(default="sendgrid")  # 'sendgrid' or 'ses'

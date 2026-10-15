@@ -1956,6 +1956,8 @@ def process_ghost_job(self, job_id: int):
 
 async def _process_ghost_job_async(task_self, job_id: int):
     from app.models.db import GhostJob, GhostOutput, Asset
+    from app.config import production_rules_apply
+    from app.services.gemini_client import GeminiError, gemini_configured, generate_image
     from app.services.ghost_inputs import GhostInputError, load_job_images
     import io
 
@@ -1984,49 +1986,30 @@ async def _process_ghost_job_async(task_self, job_id: int):
             job.progress = 40
             await db.commit()
 
-            image_bytes = None
-            api_interaction_id = None
-            quality_score = 0.0
+            prompt = f"""Remove the model, mannequin, or any background from this garment image.
+            Reconstruct the interior of the garment so it appears as a clean ghost mannequin
+            on a pure white (#FFFFFF) background. Preserve all garment details including:
+            - {job.product_hint or 'the garment'}
+            - Garment type: {job.garment_type or 'dress'}
+            - View: {job.view or 'front'}
+            - Preserve print and patterns: {job.preserve_print}
+            - Preserve construction details: {job.preserve_seams}
+            Output should be {job.resolution or '2K'} resolution, aspect ratio {job.aspect_ratio or '3:4'}."""
 
-            try:
-                import google.generativeai as genai
-                from app.config import settings
-
-                genai_api_key = getattr(settings, "GEMINI_API_KEY", None)
-                if not genai_api_key or genai_api_key == "mock":
-                    raise Exception("Mock mode - Gemini not configured")
-
-                genai.configure(api_key=genai_api_key)
-                model = genai.GenerativeModel("gemini-3-pro-image")
-
-                prompt = f"""Remove the model, mannequin, or any background from this garment image.
-                Reconstruct the interior of the garment so it appears as a clean ghost mannequin
-                on a pure white (#FFFFFF) background. Preserve all garment details including:
-                - {job.product_hint or 'the garment'}
-                - Garment type: {job.garment_type or 'dress'}
-                - View: {job.view or 'front'}
-                - Preserve print and patterns: {job.preserve_print}
-                - Preserve construction details: {job.preserve_seams}
-                Output should be {job.resolution or '2K'} resolution, aspect ratio {job.aspect_ratio or '3:4'}."""
-
-                # Prompt first, then the garment images in upload order.
-                response = model.generate_content([prompt, *image_parts])
-                api_interaction_id = str(response.candidates[0].index) if response.candidates else None
-
-                # Extract image from response
-                for part in response.parts:
-                    if hasattr(part, 'inline_data'):
-                        image_bytes = part.inline_data.data
-                        break
-
-            except Exception as gemini_err:
-                print(f"[GhostJob] Gemini failed (using mock): {gemini_err}")
-                # Mock fallback
-                import base64
+            if not gemini_configured() and not production_rules_apply():
+                # Development/tests only: a placeholder image. Production never takes this path.
+                print(f"[GhostJob] Job {job_id}: Gemini not configured, using the mock image (non-production).")
                 image_bytes = base64.b64decode(
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg=="
                 )
+                image_mime = "image/png"
                 api_interaction_id = f"mock_{job_id}"
+            else:
+                # Prompt first, then the garment images in upload order. Anything but an image
+                # back (no key, API error, timeout, safety block, no image part) raises GeminiError.
+                image_bytes, image_mime, response_id = await asyncio.to_thread(
+                    generate_image, settings.GEMINI_GHOST_MODEL, prompt, image_parts, f"[GhostJob] Job {job_id}:")
+                api_interaction_id = response_id or f"gemini_{job_id}"
 
             # Step 3: QA Check
             job.status = "quality_check"
@@ -2037,7 +2020,8 @@ async def _process_ghost_job_async(task_self, job_id: int):
             fidelity_status = "passed"
 
             # Step 4: Store output
-            output_filename = f"ghost_{job_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+            extension = {"image/jpeg": "jpg", "image/webp": "webp"}.get(image_mime, "png")
+            output_filename = f"ghost_{job_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.{extension}"
             storage_path = storage_service.save_file_bytes(output_filename, image_bytes)
 
             # Register as Asset
@@ -2105,16 +2089,26 @@ async def _process_ghost_job_async(task_self, job_id: int):
             job.status = "failed"
             job.error_message = str(e)[:200]
             job.progress = 0
-            # Refund credits
-            from app.models.db import User
-            user_result = await db.execute(select(User).where(User.id == job.user_id))
-            user = user_result.scalars().first()
-            if user:
-                user.credits = (user.credits or 0) + job.credits_reserved
+            # Input and Gemini failures are final: no retry (Gemini's transient errors were
+            # already retried inside the request). Every earlier failed attempt of this task
+            # refunded already, so a final failure on a retry must not refund again.
+            final = isinstance(e, (GhostInputError, GeminiError))
+            if not (final and _task_retries(task_self) > 0):
+                from app.models.db import User
+                user_result = await db.execute(select(User).where(User.id == job.user_id))
+                user = user_result.scalars().first()
+                if user:
+                    user.credits = (user.credits or 0) + job.credits_reserved
             await db.commit()
-            if isinstance(e, GhostInputError):
-                return  # retrying cannot fix the input, and would refund again
+            if final:
+                return
             raise task_self.retry(exc=e, countdown=60)
+
+
+def _task_retries(task_self) -> int:
+    """How many times this Celery task has already been retried (0 on the first attempt)."""
+    retries = getattr(getattr(task_self, "request", None), "retries", 0)
+    return retries if isinstance(retries, int) else 0
 
 
 # ========================== Move Studio Tasks ===================
@@ -2371,15 +2365,10 @@ async def _process_sketch_job_async(task_self, job_id: int):
             model_name = "gemini-3.1-flash" if job.generation_mode == "fast_draft" else "gemini-3-pro"
 
             try:
-                import google.generativeai as genai
-                from app.config import settings
+                from app.services.gemini_client import gemini_configured, generate_content
 
-                genai_api_key = getattr(settings, "GEMINI_API_KEY", None)
-                if not genai_api_key or genai_api_key == "mock":
+                if not gemini_configured():
                     raise Exception("Mock mode - Gemini not configured")
-
-                genai.configure(api_key=genai_api_key)
-                model = genai.GenerativeModel(model_name)
 
                 prompt = f"""You are a fashion design visualization AI.
                 Convert the provided sketch(es) into a photorealistic fashion render.
@@ -2396,16 +2385,19 @@ async def _process_sketch_job_async(task_self, job_id: int):
                 Render with photorealistic fabric texture and lighting."""
 
                 content_parts = [prompt]
-                response = model.generate_content(content_parts)
+                response = await asyncio.to_thread(generate_content, model_name, content_parts)
                 api_interaction_id = f"gemini_{job_id}"
 
-                for part in response.parts:
-                    if hasattr(part, 'inline_data'):
+                for part in response.parts or []:
+                    if getattr(part, 'inline_data', None) is not None:
                         image_bytes = part.inline_data.data
                         break
+                if not image_bytes:
+                    raise Exception("Gemini returned no image")  # same mock fallback as any other failure
 
             except Exception as gemini_err:
-                print(f"[SketchJob] Gemini failed (mock): {gemini_err}")
+                # The type only: google-genai errors carry the provider's response body.
+                print(f"[SketchJob] Gemini failed (mock): {type(gemini_err).__name__}")
                 import base64
                 image_bytes = base64.b64decode(
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg=="
