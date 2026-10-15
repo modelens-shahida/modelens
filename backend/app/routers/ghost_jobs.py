@@ -2,10 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from datetime import datetime
 
-from app.models.db import get_db, User, GhostJob, GhostJobAsset, GhostOutput
+from app.models.db import get_db, Asset, User, GhostJob, GhostJobAsset, GhostOutput
 from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.worker import process_ghost_job
 from app.api_docs import error_responses
@@ -314,7 +314,63 @@ class GhostJobBatchItem(BaseModel):
     preserve_print: bool = True
     preserve_seams: bool = True
     generation_mode: Optional[str] = "studio"
-    image_key: Optional[str] = None
+    image_key: Optional[str] = Field(
+        None, description="`storage_path` of the item's image, as returned by `POST /api/v1/assets`."
+    )
+    asset_id: Optional[int] = Field(
+        None, description="Id of the item's image asset (`POST /api/v1/assets`); used instead of `image_key` if set."
+    )
+
+
+# Same formats the Ghost Studio uploader accepts.
+BATCH_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif")
+
+
+async def _batch_item_assets(db: AsyncSession, brand_id: int, items) -> List[Asset]:
+    """The uploaded image asset of every batch item, in order; 422 naming every bad item.
+
+    Each item must reference an image asset of ``brand_id`` (not deleted) by
+    ``asset_id`` or ``image_key``. Assets of other brands are reported as not
+    found, so the response never says whether they exist. Read-only.
+    """
+    ids = {item.asset_id for item in items if item.asset_id is not None}
+    keys = {item.image_key for item in items if item.asset_id is None and item.image_key}
+    by_id, by_key = {}, {}
+    if ids or keys:
+        conditions = []
+        if ids:
+            conditions.append(Asset.id.in_(ids))
+        if keys:
+            conditions.append(Asset.storage_path.in_(keys))
+        rows = (await db.execute(
+            select(Asset).where(Asset.brand_id == brand_id, Asset.deleted_at.is_(None), or_(*conditions))
+            .order_by(Asset.id)
+        )).scalars().all()
+        by_id = {a.id: a for a in rows}
+        for a in rows:
+            by_key.setdefault(a.storage_path, a)
+
+    assets, errors = [], []
+    for index, item in enumerate(items):
+        if item.asset_id is not None:
+            asset, ref = by_id.get(item.asset_id), f"asset {item.asset_id}"
+        elif item.image_key:
+            asset, ref = by_key.get(item.image_key), "image_key"
+        else:
+            errors.append(f"jobs[{index}]: an image is required (upload it with POST /api/v1/assets and send "
+                          "its storage_path as image_key).")
+            continue
+        if asset is None:
+            errors.append(f"jobs[{index}]: {ref} was not found in this brand.")
+            continue
+        name = (asset.filename or asset.storage_path or "").lower()
+        if (asset.asset_type or "").lower() != "image" or not name.endswith(BATCH_IMAGE_EXTENSIONS):
+            errors.append(f"jobs[{index}]: {ref} is not a JPEG, PNG, WebP or HEIC image.")
+            continue
+        assets.append(asset)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=" ".join(errors))
+    return assets
 
 
 class GhostJobBatchCreate(BaseModel):
@@ -330,7 +386,13 @@ class GhostJobBatchCreate(BaseModel):
     summary="Create a batch of ghost mannequin jobs",
     description=(
         "Create a batch of ghost mannequin generation jobs atomically. The caller must own `brand_id` or be a "
-        "member with at least the editor role (else 403); an unknown brand returns 404."
+        "member with at least the editor role (else 403); an unknown brand returns 404.\n"
+        "\n"
+        "Every item needs its garment image, uploaded first with `POST /api/v1/assets` to the same brand and "
+        "referenced by `image_key` (the returned `storage_path`) or `asset_id`. It is linked to that item's job "
+        "as a `GhostJobAsset`, like the image of a single ghost job. If any item has no image, or one that is "
+        "not a JPEG/PNG/WebP/HEIC image asset of this brand, the whole request is rejected with 422 naming "
+        "each item, before any credits are charged or jobs created."
     ),
     response_description="The created ghost jobs.",
     operation_id="create_ghost_job_batch",
@@ -346,6 +408,9 @@ async def create_ghost_job_batch(
     if not payload.jobs:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one job is required.")
 
+    # Validate every item's image before charging or writing anything.
+    item_assets = await _batch_item_assets(db, payload.brand_id, payload.jobs)
+
     # Calculate total credits needed
     total_credits = sum(RESOLUTION_CREDITS.get(job.resolution, 4) for job in payload.jobs)
 
@@ -356,33 +421,41 @@ async def create_ghost_job_batch(
             detail=f"Insufficient credits. Need {total_credits}, have {current_user.credits or 0}."
         )
 
-    # Deduct credits atomically
-    current_user.credits = (current_user.credits or 0) - total_credits
+    try:
+        # Deduct credits atomically
+        current_user.credits = (current_user.credits or 0) - total_credits
 
-    # Create all GhostJob records
-    created_jobs = []
-    for job_config in payload.jobs:
-        credits_for_job = RESOLUTION_CREDITS.get(job_config.resolution, 4)
-        job = GhostJob(
-            user_id=current_user.id,
-            brand_id=payload.brand_id,
-            status="queued",
-            product_hint=job_config.product_hint,
-            garment_type=job_config.garment_type,
-            view=job_config.view,
-            aspect_ratio=job_config.aspect_ratio,
-            resolution=job_config.resolution,
-            preserve_print=job_config.preserve_print,
-            preserve_seams=job_config.preserve_seams,
-            generation_mode=job_config.generation_mode,
-            credits_reserved=credits_for_job,
-            credits_consumed=0,
-            progress=0,
-        )
-        db.add(job)
-        created_jobs.append((job, credits_for_job))
+        # Create all GhostJob records, each with its image linked as on a single job.
+        # One commit: if anything fails, no credits are deducted and no rows remain.
+        created_jobs = []
+        for job_config, asset in zip(payload.jobs, item_assets):
+            credits_for_job = RESOLUTION_CREDITS.get(job_config.resolution, 4)
+            job = GhostJob(
+                user_id=current_user.id,
+                brand_id=payload.brand_id,
+                status="queued",
+                product_hint=job_config.product_hint,
+                garment_type=job_config.garment_type,
+                view=job_config.view,
+                aspect_ratio=job_config.aspect_ratio,
+                resolution=job_config.resolution,
+                preserve_print=job_config.preserve_print,
+                preserve_seams=job_config.preserve_seams,
+                generation_mode=job_config.generation_mode,
+                credits_reserved=credits_for_job,
+                credits_consumed=0,
+                progress=0,
+            )
+            db.add(job)
+            await db.flush()
+            db.add(GhostJobAsset(job_id=job.id, asset_id=asset.id, image_path=asset.storage_path))
+            created_jobs.append((job, credits_for_job))
 
-    await db.commit()
+        await db.commit()
+    except Exception:
+        # Nothing is charged and no job or image link is left if any step fails.
+        await db.rollback()
+        raise
 
     # Dispatch Celery tasks in parallel
     queued_job_ids = []

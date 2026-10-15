@@ -1,4 +1,5 @@
 import pytest
+import pytest_asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi import status
 from httpx import AsyncClient
@@ -266,8 +267,21 @@ async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, t
 
 # ========================== Batch Tests ==========================
 
+GARMENT_KEY = "/uploads/batch-garment.png"
+
+
+@pytest_asyncio.fixture
+async def garment(db_session: AsyncSession, test_data: dict):
+    """An uploaded garment image in the test brand; batch items reference it by image_key."""
+    asset = Asset(brand_id=test_data["brand"].id, filename="garment.png", storage_path=GARMENT_KEY,
+                  asset_type="image")
+    db_session.add(asset)
+    await db_session.commit()
+    return asset
+
+
 @pytest.mark.asyncio
-async def test_batch_create_success(client: AsyncClient, test_data: dict, db_session: AsyncSession):
+async def test_batch_create_success(client: AsyncClient, test_data: dict, db_session: AsyncSession, garment):
     """Batch creation should succeed and return list of job IDs."""
     owner_headers = test_data["get_headers"]("owner")
     brand = test_data["brand"]
@@ -282,8 +296,8 @@ async def test_batch_create_success(client: AsyncClient, test_data: dict, db_ses
             json={
                 "brand_id": brand.id,
                 "jobs": [
-                    {"resolution": "2K", "garment_type": "dress", "view": "front"},
-                    {"resolution": "1K", "garment_type": "top", "view": "back"},
+                    {"resolution": "2K", "garment_type": "dress", "view": "front", "image_key": GARMENT_KEY},
+                    {"resolution": "1K", "garment_type": "top", "view": "back", "image_key": GARMENT_KEY},
                 ]
             },
             headers=owner_headers,
@@ -296,7 +310,7 @@ async def test_batch_create_success(client: AsyncClient, test_data: dict, db_ses
 
 
 @pytest.mark.asyncio
-async def test_batch_insufficient_credits(client: AsyncClient, test_data: dict, db_session: AsyncSession):
+async def test_batch_insufficient_credits(client: AsyncClient, test_data: dict, db_session: AsyncSession, garment):
     """Batch should fail with 402 if insufficient credits."""
     owner_headers = test_data["get_headers"]("owner")
     brand = test_data["brand"]
@@ -311,8 +325,8 @@ async def test_batch_insufficient_credits(client: AsyncClient, test_data: dict, 
             json={
                 "brand_id": brand.id,
                 "jobs": [
-                    {"resolution": "4K"},
-                    {"resolution": "4K"},
+                    {"resolution": "4K", "image_key": GARMENT_KEY},
+                    {"resolution": "4K", "image_key": GARMENT_KEY},
                 ]
             },
             headers=owner_headers,
@@ -345,7 +359,7 @@ async def test_batch_auth_required(client: AsyncClient, test_data: dict):
 
 
 @pytest.mark.asyncio
-async def test_batch_credit_deduction(client: AsyncClient, test_data: dict, db_session: AsyncSession):
+async def test_batch_credit_deduction(client: AsyncClient, test_data: dict, db_session: AsyncSession, garment):
     """Credits should be deducted atomically after batch creation."""
     owner_headers = test_data["get_headers"]("owner")
     brand = test_data["brand"]
@@ -359,7 +373,7 @@ async def test_batch_credit_deduction(client: AsyncClient, test_data: dict, db_s
             "/api/v1/ghost-jobs/batch",
             json={
                 "brand_id": brand.id,
-                "jobs": [{"resolution": "2K"}, {"resolution": "2K"}]
+                "jobs": [{"resolution": "2K", "image_key": GARMENT_KEY}, {"resolution": "2K", "image_key": GARMENT_KEY}]
             },
             headers=owner_headers,
         )

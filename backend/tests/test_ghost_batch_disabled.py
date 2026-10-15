@@ -131,10 +131,15 @@ async def test_single_ghost_job_still_reserves_and_queues(client, db_session, te
 
 
 @pytest.mark.asyncio
-async def test_ghost_jobs_batch_of_single_jobs_still_works(client, test_data, queued):
+async def test_ghost_jobs_batch_of_single_jobs_still_works(client, db_session, test_data, queued):
     """/ghost-jobs/batch queues ordinary single jobs that the worker processes, so it stays on."""
+    from app.models.db import Asset
+    db_session.add(Asset(brand_id=test_data["brand"].id, filename="g.png", storage_path="/uploads/g.png",
+                         asset_type="image"))
+    await db_session.commit()
+    jobs = [{"resolution": "1K", "image_key": "/uploads/g.png"}, {"resolution": "2K", "image_key": "/uploads/g.png"}]
     resp = await client.post("/api/v1/ghost-jobs/batch",
-                             json={"brand_id": test_data["brand"].id, "jobs": [{"resolution": "1K"}, {"resolution": "2K"}]},
+                             json={"brand_id": test_data["brand"].id, "jobs": jobs},
                              headers=test_data["get_headers"]("editor"))
     assert resp.status_code == 201, resp.text
     assert resp.json()["total_credits_reserved"] == 6

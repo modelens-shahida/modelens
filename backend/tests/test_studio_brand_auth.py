@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import celery.app.task
 import pytest
+import pytest_asyncio
 from sqlalchemy import func, select
 
 from app.models.db import (
@@ -28,13 +29,25 @@ def ghost_batches_enabled(monkeypatch):
     monkeypatch.setattr(settings, "GHOST_BATCH_ENABLED", True)
 
 
+# Uploaded garment image in the test brand, referenced by the ghost-jobs batch items.
+GARMENT_KEY = "/uploads/brand-auth-garment.png"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def garment(db_session, test_data):
+    db_session.add(Asset(brand_id=test_data["brand"].id, filename="garment.png", storage_path=GARMENT_KEY,
+                         asset_type="image"))
+    await db_session.commit()
+
+
 ROW_MODELS = (GhostJob, GhostJobAsset, SketchJob, SketchJobReference, CatalogJob, CatalogJobItem, Asset,
               CreditTransaction, AIJob)
 
 # name -> (url, JSON body for a brand, status on success)
 ENDPOINTS = {
     "ghost": ("/api/v1/ghost-jobs", lambda b: {"brand_id": b, "resolution": "1K"}, 201),
-    "ghost_jobs_batch": ("/api/v1/ghost-jobs/batch", lambda b: {"brand_id": b, "jobs": [{"resolution": "1K"}]}, 201),
+    "ghost_jobs_batch": ("/api/v1/ghost-jobs/batch",
+                         lambda b: {"brand_id": b, "jobs": [{"resolution": "1K", "image_key": GARMENT_KEY}]}, 201),
     "ghost_volumetric": ("/api/v1/ghost-jobs/volumetric",
                          lambda b: {"brand_id": b, "views": ["FRONT"], "resolution": "1K"}, 202),
     "ghost_batch": ("/api/v1/ghost/batch", lambda b: {"brand_id": b, "items": [{"sku": "SKU-1"}]}, 201),
