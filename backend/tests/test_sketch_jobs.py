@@ -9,6 +9,14 @@ from app.models.db import SketchJob, SketchJobReference, SketchOutput, User, Ass
 from app.worker import _process_sketch_job_async
 
 
+@pytest.fixture(autouse=True)
+def sketch_outside_production(monkeypatch):
+    """Sketch is disabled in production (tests/test_idempotent_job_refunds.py); these tests cover it
+    outside production, where it runs as before."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+
+
 @pytest.mark.asyncio
 async def test_create_sketch_job_insufficient_credits(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     editor_headers = test_data["get_headers"]("editor")

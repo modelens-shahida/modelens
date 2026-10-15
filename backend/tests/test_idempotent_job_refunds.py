@@ -1,10 +1,13 @@
-"""A job's credits are refunded at most once (app/services/job_refunds.py).
+"""A job's credits are refunded at most once (app/services/job_refunds.py), and
+Sketch Studio is disabled in production until its multimodal pipeline lands.
 
-Worker attempts and Celery retries, cancels, admin /fail, internal
+Refunds: worker attempts and Celery retries, cancels, admin /fail, internal
 callbacks and concurrent attempts all refund a job once, by what it was
 charged; a retry that succeeds is not refunded. The credit_transactions
 refund_key unique index (migration job_refund_key_001) backs this up in the
-database.
+database. Sketch: creation routes answer 503 in production for every caller
+before anything is charged, written or queued; reads keep working; a queued
+Sketch job is failed and refunded once without calling Gemini.
 
 Everything is mocked: no network, fake keys only.
 """
@@ -22,12 +25,14 @@ from sqlalchemy.exc import IntegrityError
 
 import app.models.db as models
 from app.config import settings
+from app.config_production import check_config
 from app.models.db import (
     AIJob, Brand, CatalogJob, CatalogJobItem, CreditTransaction, GhostJob, GhostJobAsset, SketchJob, User,
 )
 from app.services import job_refunds
 from app.services.credits_sync_service import credits_sync_service
 from app.services.job_refunds import refund_job
+from app.services.sketch_availability import SKETCH_DISABLED
 from app.services.storage import storage_service
 from app.worker import (
     _fail_or_requeue, _process_catalog_job_async, _process_generation_job_async, _process_ghost_job_async,
@@ -38,6 +43,7 @@ from tests import gemini_fakes
 pytestmark = pytest.mark.integration  # runs worker task bodies and a migration
 
 INTERNAL = {"x-internal-secret": "modelens-internal-secret"}
+MESSAGE = "Sketch Studio is undergoing scheduled multimodal pipeline upgrades. Please check back shortly."
 
 
 @pytest.fixture(autouse=True)
@@ -526,3 +532,138 @@ def test_duplicate_refunds_stop_the_upgrade_without_deleting(migration_db, dupli
     with pytest.raises(RuntimeError, match=listed + r".*nothing was deleted"):
         _run(migration_db, "upgrade")
     assert _state(migration_db) == before
+
+
+# ========================== Sketch disabled in production =======================
+
+@pytest.fixture
+def production(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+
+
+@pytest.fixture
+def sketch_dispatch():
+    with patch("app.routers.sketch_jobs.process_sketch_job") as jobs_task, \
+            patch("app.worker.run_sketch_generation_job") as studio_task, \
+            patch.object(storage_service, "save_file_bytes", return_value="/uploads/s.png") as save:
+        yield jobs_task, studio_task, save
+
+
+def _sketch_requests(brand_id, job_id):
+    return [
+        ("/api/v1/sketch-jobs", {"json": {"brand_id": brand_id, "generation_mode": "fast_draft"}}),
+        ("/api/v1/sketch-jobs", {"data": {"brand_id": str(brand_id)},
+                                 "files": {"sketches": ("s.png", gemini_fakes.OUTPUT_PNG, "image/png")}}),
+        ("/api/v1/sketch/jobs", {"json": {"brand_id": brand_id, "generation_mode": "fast_draft"}}),
+        (f"/api/v1/sketch-jobs/{job_id}/retry", {}),
+    ]
+
+
+@pytest.mark.parametrize("role", ["owner", "admin", "editor", "viewer", "nonmember", "platform_admin"])
+@pytest.mark.asyncio
+async def test_sketch_creation_in_production_is_503_before_anything(
+        client, db_session, test_data, platform_admin_headers, production, sketch_dispatch, role):
+    brand_id = test_data["brand"].id
+    failed_id, _ = await _charged_job(db_session, test_data, SketchJob, reserved=5)
+    failed = await db_session.get(SketchJob, failed_id)
+    failed.status = "failed"
+    await db_session.commit()
+    headers = platform_admin_headers if role == "platform_admin" else test_data["get_headers"](role)
+    credits = {u: await _user_credits(db_session, u) for u in (await db_session.execute(select(User.id))).scalars()}
+    jobs = (await db_session.execute(select(func.count(SketchJob.id)))).scalar()
+    ledger = (await db_session.execute(select(func.count(CreditTransaction.id)))).scalar()
+
+    for url, kwargs in _sketch_requests(brand_id, failed_id):
+        res = await client.post(url, headers=headers, **kwargs)
+        assert (res.status_code, res.json()) == (503, {"detail": MESSAGE}), url
+
+    jobs_task, studio_task, save = sketch_dispatch
+    jobs_task.delay.assert_not_called()
+    studio_task.delay.assert_not_called()
+    save.assert_not_called()
+    assert (await db_session.execute(select(func.count(SketchJob.id)))).scalar() == jobs
+    assert (await db_session.execute(select(func.count(CreditTransaction.id)))).scalar() == ledger
+    assert {u: await _user_credits(db_session, u) for u in credits} == credits
+    assert (await _reload(db_session, SketchJob, failed_id)).status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_sketch_message_is_exact():
+    assert SKETCH_DISABLED == MESSAGE
+
+
+@pytest.mark.parametrize("app_env", ["", "staging-eu"])
+@pytest.mark.asyncio
+async def test_sketch_is_disabled_when_app_env_is_missing_or_unknown(client, test_data, monkeypatch, app_env):
+    monkeypatch.setattr(settings, "APP_ENV", app_env)
+    monkeypatch.setattr(settings, "TESTING", False)
+    res = await client.post("/api/v1/sketch-jobs", json={"brand_id": test_data["brand"].id},
+                            headers=test_data["get_headers"]("owner"))
+    assert res.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_sketch_creation_is_still_401(client, production):
+    assert (await client.post("/api/v1/sketch-jobs", json={})).status_code == 401
+
+
+@pytest.mark.parametrize("app_env,enabled", [("development", False), ("production", True)])
+@pytest.mark.asyncio
+async def test_sketch_creation_works_outside_production_or_when_enabled(
+        client, db_session, test_data, sketch_dispatch, monkeypatch, app_env, enabled):
+    monkeypatch.setattr(settings, "APP_ENV", app_env)
+    monkeypatch.setattr(settings, "SKETCH_JOBS_ENABLED", enabled)
+    owner = test_data["get_headers"]("owner")
+    brand_id = test_data["brand"].id
+    res = await client.post("/api/v1/sketch-jobs", json={"brand_id": brand_id, "generation_mode": "fast_draft"},
+                            headers=owner)
+    assert res.status_code == 201
+    sketch_dispatch[0].delay.assert_called_once()
+    res = await client.post("/api/v1/sketch/jobs", json={"brand_id": brand_id, "generation_mode": "fast_draft"},
+                            headers=owner)
+    assert res.status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_sketch_read_routes_and_cancel_keep_working_in_production(client, db_session, test_data, production):
+    job_id, user_id = await _charged_job(db_session, test_data, SketchJob, reserved=5)
+    start = await _user_credits(db_session, user_id)
+    editor = test_data["get_headers"]("editor")
+    res = await client.get(f"/api/v1/sketch-jobs/{job_id}", headers=editor)
+    assert (res.status_code, res.json()["status"]) == (200, "queued")
+    assert (await client.get("/api/v1/sketch/modes", headers=editor)).status_code == 200
+    res = await client.post(f"/api/v1/sketch-jobs/{job_id}/cancel", headers=editor)
+    assert (res.status_code, res.json()["credits_refunded"]) == (200, 5)
+    assert await _user_credits(db_session, user_id) == start + 5
+
+
+@pytest.mark.asyncio
+async def test_queued_sketch_job_in_production_fails_and_refunds_once_without_gemini(
+        db_session, test_data, production, monkeypatch):
+    gemini = gemini_fakes.install(monkeypatch)
+    job_id, user_id = await _charged_job(db_session, test_data, SketchJob, reserved=5)
+    start = await _user_credits(db_session, user_id)
+    with patch.object(storage_service, "save_file_bytes") as save:
+        for retries in (0, 0, 3):  # picked up, then redelivered twice
+            task = await _attempt(db_session, _process_sketch_job_async, job_id, retries)
+            task.retry.assert_not_called()
+    gemini.client_cls.assert_not_called()
+    gemini.generate_content.assert_not_called()
+    save.assert_not_called()
+    job = await _reload(db_session, SketchJob, job_id)
+    assert (job.status, job.error_message) == ("failed", MESSAGE)
+    assert await _user_credits(db_session, user_id) == start + 5
+    assert len(await _refunds(db_session, reference_type="sketch_job")) == 1
+
+
+def test_startup_warns_but_does_not_fail_when_sketch_is_enabled_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    assert not [i for i in check_config() if i.name == "SKETCH_JOBS_ENABLED"]
+    monkeypatch.setattr(settings, "SKETCH_JOBS_ENABLED", True)
+    [issue] = [i for i in check_config() if i.name == "SKETCH_JOBS_ENABLED"]
+    assert issue.fatal is False
+
+
+def test_sketch_jobs_are_off_by_default():
+    from app.config import Settings
+    assert Settings.model_fields["SKETCH_JOBS_ENABLED"].default is False

@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     # once a batch worker exists; single ghost jobs are not affected either way.
     GHOST_BATCH_ENABLED: bool = Field(default=False)
 
+    # Sketch Studio job creation (POST /api/v1/sketch-jobs, its /retry, POST /api/v1/sketch/jobs).
+    # Off: in production those answer 503 before anything is charged, written or queued, and
+    # the worker fails (and refunds) queued Sketch jobs without calling Gemini, until the
+    # Sketch multimodal pipeline lands. Outside production Sketch works either way.
+    SKETCH_JOBS_ENABLED: bool = Field(default=False)
+
     # Database Connection Pool
     DB_POOL_SIZE: int = Field(default=10)
     DB_MAX_OVERFLOW: int = Field(default=20)

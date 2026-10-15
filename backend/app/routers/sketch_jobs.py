@@ -9,6 +9,7 @@ from app.middleware.auth import check_brand_role, get_current_user
 from app.worker import process_sketch_job
 from app.api_docs import error_responses
 from app.services.job_refunds import refund_job
+from app.services.sketch_availability import SKETCH_DISABLED_RESPONSE, require_sketch_jobs_enabled
 from app.routers.body_parsing import parse_body
 
 router = APIRouter(prefix="/api/v1/sketch-jobs", tags=["Sketch Studio"])
@@ -44,15 +45,18 @@ class SketchJobCreate(BaseModel):
     description=(
         "Create a new sketch-to-image job supporting both JSON and FormData. Without `brand_id` the caller's "
         "first brand is used. The caller must own the brand or be a member with at least the editor role "
-        "(else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected."
+        "(else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected.\n"
+        "\n"
+        "**Disabled in production** while `SKETCH_JOBS_ENABLED` is off: answers 503 for every caller, "
+        "platform admins included, before anything is stored, queued or charged."
     ),
     response_description="The created sketch job with reserved credits.",
     operation_id="create_sketch_job",
-    responses=error_responses(400, 401, 402, 403, 404, 422),
+    responses={**error_responses(400, 401, 402, 403, 404, 422), **SKETCH_DISABLED_RESPONSE},
 )
 async def create_sketch_job(
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_sketch_jobs_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new sketch-to-image job supporting both JSON and FormData."""
@@ -271,14 +275,14 @@ async def cancel_sketch_job(
 @router.post(
     "/{job_id}/retry",
     summary="Retry a sketch job",
-    description="Retry a failed sketch job.",
+    description="Retry a failed sketch job. Disabled in production (503) while `SKETCH_JOBS_ENABLED` is off.",
     response_description="The sketch job re-queued for processing.",
     operation_id="retry_sketch_job",
-    responses=error_responses(401, 404, 409, 422),
+    responses={**error_responses(401, 404, 409, 422), **SKETCH_DISABLED_RESPONSE},
 )
 async def retry_sketch_job(
     job_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_sketch_jobs_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed sketch job."""

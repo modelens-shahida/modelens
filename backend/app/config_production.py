@@ -88,6 +88,9 @@ def check_config() -> List[Issue]:
         add("SSO_MOCK_MODE", "is on (mock SSO credentials are still refused in production)", False)
     if settings.GHOST_BATCH_ENABLED:
         add("GHOST_BATCH_ENABLED", "is on; no worker processes ghost batches, so their credits stay reserved", False)
+    if settings.SKETCH_JOBS_ENABLED:
+        add("SKETCH_JOBS_ENABLED", "is on; Sketch jobs still send a text-only prompt (no sketch images) to Gemini",
+            False)
     if settings.COMFYUI_MOCK_MODE:
         add("COMFYUI_MOCK_MODE", "is on; ComfyUI generation is mocked", False)
     if (settings.STORAGE_BACKEND or "").lower() != "s3":

@@ -29,6 +29,14 @@ def ghost_batches_enabled(monkeypatch):
     monkeypatch.setattr(settings, "GHOST_BATCH_ENABLED", True)
 
 
+@pytest.fixture(autouse=True)
+def sketch_outside_production(monkeypatch):
+    """Sketch creation is disabled in production (tests/test_idempotent_job_refunds.py); these tests
+    cover it where it runs: outside production."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+
+
 # Uploaded garment image in the test brand, referenced by the ghost-jobs batch items.
 GARMENT_KEY = "/uploads/brand-auth-garment.png"
 

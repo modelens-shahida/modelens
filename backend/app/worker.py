@@ -2317,6 +2317,7 @@ def process_sketch_job(self, job_id: int):
 
 async def _process_sketch_job_async(task_self, job_id: int):
     from app.models.db import SketchJob, SketchJobReference, SketchOutput, Asset
+    from app.services.sketch_availability import SKETCH_DISABLED, sketch_jobs_blocked
 
     async with async_session_maker() as db:
         # Eager-load: a lazy load of job.references inside AsyncSession raises MissingGreenlet.
@@ -2329,6 +2330,16 @@ async def _process_sketch_job_async(task_self, job_id: int):
             return
         if job.status == "cancelled":  # cancelled (and refunded) while queued
             print(f"[SketchJob] Job {job_id} was cancelled; not processing it.")
+            return
+        if sketch_jobs_blocked():
+            # Sketch is disabled in production: a job queued before that is failed and refunded
+            # (once) without calling Gemini or retrying.
+            print(f"[SketchJob] Job {job_id}: Sketch is disabled in production; failing and refunding it.")
+            job.status = "failed"
+            job.progress = 0
+            job.error_message = SKETCH_DISABLED
+            await refund_job(db, "sketch_job", job, "Sketch Studio disabled")
+            await db.commit()
             return
 
         try:
