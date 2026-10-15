@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 import pytest_asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
@@ -8,6 +10,10 @@ from sqlalchemy import select
 
 from app.models.db import GhostJob, GhostOutput, GhostJobAsset, User, Asset
 from app.worker import _process_ghost_job_async
+
+# A real 1x1 PNG: the worker reads and decodes each job image before generating.
+GARMENT_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
 
 @pytest.mark.asyncio
 async def test_create_ghost_job_insufficient_credits(client: AsyncClient, db_session: AsyncSession, test_data: dict):
@@ -192,11 +198,14 @@ async def test_process_ghost_job_celery_task(db_session: AsyncSession, test_data
     )
     db_session.add(job)
     await db_session.commit()
+    db_session.add(GhostJobAsset(job_id=job.id, image_path="/uploads/blue_flower_top.png"))
+    await db_session.commit()
 
     # Mock storage and celery self retry
     mock_task_self = MagicMock()
 
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker.storage_service.read_file_bytes", return_value=GARMENT_PNG), \
          patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/ghost_mock.png"):
         
         await _process_ghost_job_async(mock_task_self, job.id)
@@ -243,12 +252,15 @@ async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, t
     )
     db_session.add(job)
     await db_session.commit()
+    db_session.add(GhostJobAsset(job_id=job.id, image_path="/uploads/garment.png"))
+    await db_session.commit()
 
     mock_task_self = MagicMock()
     mock_task_self.retry = MagicMock(side_effect=Exception("Task retry invoked"))
 
     # Force storage_service to throw exception to simulate failure
     with patch("app.worker.async_session_maker", return_value=MockSessionContext(db_session)), \
+         patch("app.worker.storage_service.read_file_bytes", return_value=GARMENT_PNG), \
          patch("app.worker.storage_service.save_file_bytes", side_effect=ValueError("Storage write error")):
         
         try:
@@ -416,6 +428,7 @@ async def test_process_ghost_job_with_source_assets_in_fresh_session(db_session:
 
     mock_task_self = MagicMock()
     with patch("app.worker.async_session_maker", models.async_session_maker), \
+         patch("app.worker.storage_service.read_file_bytes", return_value=GARMENT_PNG), \
          patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/ghost_mock.png"):
         await _process_ghost_job_async(mock_task_self, job_id)
 

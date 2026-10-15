@@ -9,6 +9,7 @@ batch is one transaction, so a failure leaves no credits charged and no rows.
 
 Storage and the Celery dispatch are mocked; nothing reaches the network.
 """
+import base64
 from unittest.mock import MagicMock, patch
 
 import celery.app.task
@@ -138,10 +139,13 @@ async def test_worker_processes_a_batch_job_with_its_image(client, db_session, t
                              headers=test_data["get_headers"]("editor"))
     job_id = resp.json()["job_ids"][0]
     db_session.expunge_all()
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
     with patch("app.worker.async_session_maker", models.async_session_maker), \
+         patch("app.worker.storage_service.read_file_bytes", return_value=png) as read, \
          patch("app.worker.storage_service.save_file_bytes", return_value="/uploads/ghost_out.png"):
         await _process_ghost_job_async(MagicMock(), job_id)
 
+    read.assert_called_once_with("dress.png")  # the item's own upload
     job = (await db_session.execute(select(GhostJob).where(GhostJob.id == job_id))).scalar_one()
     assert job.status == "completed"
     output = (await db_session.execute(select(GhostOutput).where(GhostOutput.job_id == job_id))).scalar_one()

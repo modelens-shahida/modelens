@@ -1956,6 +1956,7 @@ def process_ghost_job(self, job_id: int):
 
 async def _process_ghost_job_async(task_self, job_id: int):
     from app.models.db import GhostJob, GhostOutput, Asset
+    from app.services.ghost_inputs import GhostInputError, load_job_images
     import io
 
     async with async_session_maker() as db:
@@ -1973,6 +1974,10 @@ async def _process_ghost_job_async(task_self, job_id: int):
             job.status = "preprocessing"
             job.progress = 15
             await db.commit()
+
+            # The garment image(s) to send with the prompt. No usable image fails the job:
+            # Gemini is never asked to generate a ghost job from text alone.
+            image_parts = load_job_images(job.assets)
 
             # Step 2: Gemini Generation
             job.status = "generating"
@@ -2004,7 +2009,8 @@ async def _process_ghost_job_async(task_self, job_id: int):
                 - Preserve construction details: {job.preserve_seams}
                 Output should be {job.resolution or '2K'} resolution, aspect ratio {job.aspect_ratio or '3:4'}."""
 
-                response = model.generate_content([prompt])
+                # Prompt first, then the garment images in upload order.
+                response = model.generate_content([prompt, *image_parts])
                 api_interaction_id = str(response.candidates[0].index) if response.candidates else None
 
                 # Extract image from response
@@ -2106,6 +2112,8 @@ async def _process_ghost_job_async(task_self, job_id: int):
             if user:
                 user.credits = (user.credits or 0) + job.credits_reserved
             await db.commit()
+            if isinstance(e, GhostInputError):
+                return  # retrying cannot fix the input, and would refund again
             raise task_self.retry(exc=e, countdown=60)
 
 
