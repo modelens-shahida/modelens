@@ -177,7 +177,15 @@ export default function CatalogStudioPage() {
   };
 
   const handleProductFiles = (newFiles) => {
-    const combined = [...productFiles, ...Array.from(newFiles)].slice(0, 50);
+    const validFiles = [];
+    for (const file of Array.from(newFiles)) {
+      if (file.size > 20 * 1024 * 1024) {
+        toast.error(`"${file.name}" exceeds the 20 MB file size limit.`);
+        continue;
+      }
+      validFiles.push(file);
+    }
+    const combined = [...productFiles, ...validFiles].slice(0, 50);
     setProductFiles(combined);
   };
 
@@ -424,7 +432,7 @@ export default function CatalogStudioPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/heic,.heic"
                   multiple
                   className="hidden"
                   onChange={(e) => handleProductFiles(e.target.files)}

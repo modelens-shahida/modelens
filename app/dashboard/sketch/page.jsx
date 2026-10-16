@@ -56,10 +56,27 @@ const STATUS_STEPS = [
   { status: "failed", label: "Failed", color: "text-red-400 bg-red-900/40 border-red-700", progress: 100 },
 ];
 
-function MultiFileUploader({ label, maxFiles, accept, files, onFilesChange, hint }) {
+const ACCEPTED_IMAGE_FORMATS = "image/jpeg,image/png,image/webp,image/heic,.heic";
+const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
+
+function MultiFileUploader({ label, maxFiles, accept = ACCEPTED_IMAGE_FORMATS, files, onFilesChange, hint, totalSelected = 0, maxTotal = 6 }) {
   const inputRef = useRef(null);
   const handleFiles = (newFiles) => {
-    const combined = [...files, ...Array.from(newFiles)].slice(0, maxFiles);
+    const valid = [];
+    for (const f of Array.from(newFiles)) {
+      if (f.size > MAX_IMAGE_SIZE_BYTES) {
+        toast.error(`"${f.name}" exceeds the 20 MB file size limit.`);
+        continue;
+      }
+      valid.push(f);
+    }
+    const otherSelected = totalSelected - files.length;
+    const remainingSlots = Math.max(0, maxTotal - otherSelected);
+    const allowedForCategory = Math.min(maxFiles, remainingSlots);
+    if (files.length + valid.length > allowedForCategory) {
+      toast.error(`A maximum of ${maxTotal} total images is permitted across all sketch and reference categories.`);
+    }
+    const combined = [...files, ...valid].slice(0, allowedForCategory);
     onFilesChange(combined);
   };
   return (
@@ -78,13 +95,13 @@ function MultiFileUploader({ label, maxFiles, accept, files, onFilesChange, hint
               </button>
             </div>
           ))}
-          {files.length < maxFiles && (
+          {files.length < maxFiles && totalSelected < maxTotal && (
             <div className="w-14 h-14 border border-dashed border-zinc-600 rounded-lg flex items-center justify-center">
               <Plus className="w-5 h-5 text-zinc-600" />
             </div>
           )}
         </div>
-        {files.length === 0 && <p className="text-xs text-zinc-500 mt-2 text-center">Click to upload</p>}
+        {files.length === 0 && <p className="text-xs text-zinc-500 mt-2 text-center">Click to upload (JPEG, PNG, WebP, HEIC up to 20MB)</p>}
       </div>
       <input ref={inputRef} type="file" accept={accept} multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
     </div>
@@ -145,9 +162,27 @@ export default function SketchStudioPage() {
     }).catch(() => {});
   }, []);
 
+  const totalFiles = sketchFiles.length + fabricFiles.length + printFiles.length + constructionFiles.length;
+
   const handleSubmit = async () => {
-    if (sketchFiles.length === 0) { toast.error("Please upload at least one sketch"); return; }
-    if (!productDesc.trim()) { toast.error("Please enter a product description"); return; }
+    if (sketchFiles.length === 0) { 
+      toast.error("Please upload at least one sketch reference"); 
+      return; 
+    }
+    if (totalFiles > 6) {
+      toast.error("A maximum of 6 total images (including the sketch) is allowed per job");
+      return;
+    }
+    for (const f of [...sketchFiles, ...fabricFiles, ...printFiles, ...constructionFiles]) {
+      if (f.size > MAX_IMAGE_SIZE_BYTES) {
+        toast.error(`"${f.name}" exceeds the 20 MB size limit.`);
+        return;
+      }
+    }
+    if (!productDesc.trim()) { 
+      toast.error("Please enter a product description"); 
+      return; 
+    }
     setSubmitting(true);
     setJobStatus(null);
     try {
@@ -244,10 +279,16 @@ export default function SketchStudioPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: Uploaders */}
             <div className="space-y-5 lg:col-span-1">
-              <MultiFileUploader label="Sketch References *" maxFiles={12} accept="image/*" files={sketchFiles} onFilesChange={setSketchFiles} hint="CAD or lineart sketches" />
-              <MultiFileUploader label="Material / Fabric References" maxFiles={4} accept="image/*" files={fabricFiles} onFilesChange={setFabricFiles} hint="Controls texture, sheen, drape" />
-              <MultiFileUploader label="Print References" maxFiles={4} accept="image/*" files={printFiles} onFilesChange={setPrintFiles} hint="Controls pattern motif & color" />
-              <MultiFileUploader label="Construction Details" maxFiles={8} accept="image/*" files={constructionFiles} onFilesChange={setConstructionFiles} hint="Collar, sleeve, hem references" />
+              <div className="flex items-center justify-between text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800 p-2.5 rounded-xl">
+                <span>Total Attached Images:</span>
+                <span className={`font-mono font-bold ${totalFiles > 6 ? "text-rose-400" : totalFiles >= 1 ? "text-purple-300" : "text-zinc-500"}`}>
+                  {totalFiles}/6 {totalFiles > 6 ? "(Exceeded)" : totalFiles >= 1 ? "(Ready)" : "(Sketch required)"}
+                </span>
+              </div>
+              <MultiFileUploader label="Sketch References *" maxFiles={6} files={sketchFiles} onFilesChange={setSketchFiles} hint="CAD or lineart (min 1)" totalSelected={totalFiles} maxTotal={6} />
+              <MultiFileUploader label="Material / Fabric References" maxFiles={5} files={fabricFiles} onFilesChange={setFabricFiles} hint="Texture, sheen, drape" totalSelected={totalFiles} maxTotal={6} />
+              <MultiFileUploader label="Print References" maxFiles={5} files={printFiles} onFilesChange={setPrintFiles} hint="Pattern motif & color" totalSelected={totalFiles} maxTotal={6} />
+              <MultiFileUploader label="Construction Details" maxFiles={5} files={constructionFiles} onFilesChange={setConstructionFiles} hint="Collar, sleeve, hem" totalSelected={totalFiles} maxTotal={6} />
             </div>
 
             {/* Middle: Controls & Briefs */}
