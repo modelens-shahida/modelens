@@ -77,7 +77,7 @@ def check_config() -> List[Issue]:
         add("TESTING", "is true; test-only routes and shortcuts would be enabled", True)
     if _unset_or_default(gemini_api_key()):  # None when unset, blank or "mock"
         add("GEMINI_API_KEY", "is unset or mock; ghost jobs would fail and be refunded", True)
-    for name in ("GEMINI_GHOST_MODEL", "GEMINI_SKETCH_MODEL"):
+    for name in ("GEMINI_GHOST_MODEL", "GEMINI_SKETCH_MODEL", "GEMINI_SKETCH_FAST_MODEL"):
         if not _image_model(getattr(settings, name)):
             add(name, f"is empty or not an image-output model (one of: {', '.join(GEMINI_IMAGE_MODELS)})", True)
 
@@ -93,8 +93,10 @@ def check_config() -> List[Issue]:
     if settings.GHOST_BATCH_ENABLED:
         add("GHOST_BATCH_ENABLED", "is on; no worker processes ghost batches, so their credits stay reserved", False)
     if settings.SKETCH_JOBS_ENABLED and (_unset_or_default(gemini_api_key())
-                                         or not _image_model(settings.GEMINI_SKETCH_MODEL)):
-        add("SKETCH_JOBS_ENABLED", "is on, but GEMINI_API_KEY or GEMINI_SKETCH_MODEL is not usable; "
+                                         or not _image_model(settings.GEMINI_SKETCH_MODEL)
+                                         or not _image_model(settings.GEMINI_SKETCH_FAST_MODEL)):
+        add("SKETCH_JOBS_ENABLED", "is on, but GEMINI_API_KEY, GEMINI_SKETCH_MODEL or GEMINI_SKETCH_FAST_MODEL "
+            "is not usable; "
             "Sketch jobs would fail and be refunded", False)
     if settings.COMFYUI_MOCK_MODE:
         add("COMFYUI_MOCK_MODE", "is on; ComfyUI generation is mocked", False)

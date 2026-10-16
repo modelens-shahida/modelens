@@ -13,6 +13,8 @@ DEFAULT_STRIPE_SECRET_KEY = "sk_test_mock_key"
 DEFAULT_STRIPE_WEBHOOK_SECRET = "whsec_mock_secret"
 DEFAULT_GEMINI_GHOST_MODEL = "gemini-3-pro-image"
 DEFAULT_GEMINI_SKETCH_MODEL = DEFAULT_GEMINI_GHOST_MODEL
+# Sketch fast_draft (1 credit): Nano Banana 2.1, Google's high-efficiency image model.
+DEFAULT_GEMINI_SKETCH_FAST_MODEL = "gemini-nano-banana-2.1"
 
 class Settings(BaseSettings):
     TEMPLATES_BACKEND_URL: str = "http://localhost:4000"
@@ -117,7 +119,8 @@ class Settings(BaseSettings):
     # Ghost and Sketch jobs need an image-output model (app/services/gemini_client.GEMINI_IMAGE_MODELS).
     GEMINI_API_KEY: Optional[SecretStr] = Field(default=None)
     GEMINI_GHOST_MODEL: str = Field(default=DEFAULT_GEMINI_GHOST_MODEL)
-    GEMINI_SKETCH_MODEL: str = Field(default=DEFAULT_GEMINI_SKETCH_MODEL)
+    GEMINI_SKETCH_MODEL: str = Field(default=DEFAULT_GEMINI_SKETCH_MODEL)  # studio_quality
+    GEMINI_SKETCH_FAST_MODEL: str = Field(default=DEFAULT_GEMINI_SKETCH_FAST_MODEL)  # fast_draft
 
     # Email Provider (for low-credit alerts)
     EMAIL_PROVIDER: str = Field(default="sendgrid")  # 'sendgrid' or 'ses'

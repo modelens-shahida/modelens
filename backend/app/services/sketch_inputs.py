@@ -28,6 +28,7 @@ from typing import List, Sequence, Tuple
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.models.db import Asset, SketchJob, SketchJobReference
 from app.services.input_paths import path_problem
 from app.services.job_images import InputImageError, load_images
@@ -65,6 +66,14 @@ async def load_sketch_images(db, job: SketchJob, references: Sequence[SketchJobR
         ).order_by(Asset.id))).scalars().all()
     parts = load_images([r.image_path for r in references], LABEL, read)
     return parts, list(dict.fromkeys(asset_ids))
+
+
+def sketch_model(job: SketchJob) -> str:
+    """GEMINI_SKETCH_FAST_MODEL for fast_draft jobs (1 credit), else GEMINI_SKETCH_MODEL
+    (studio_quality, 5 credits, and any other mode, which is charged like it)."""
+    if (job.generation_mode or "") == "fast_draft":
+        return settings.GEMINI_SKETCH_FAST_MODEL
+    return settings.GEMINI_SKETCH_MODEL
 
 
 def build_prompt(job: SketchJob, references: Sequence[SketchJobReference]) -> str:

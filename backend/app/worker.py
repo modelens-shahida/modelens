@@ -2321,7 +2321,7 @@ async def _process_sketch_job_async(task_self, job_id: int):
     from app.services.gemini_client import GeminiError, gemini_configured, generate_image
     from app.services.job_images import InputImageError
     from app.services.sketch_availability import SKETCH_DISABLED, sketch_jobs_blocked
-    from app.services.sketch_inputs import build_prompt, load_sketch_images, ordered_references
+    from app.services.sketch_inputs import build_prompt, load_sketch_images, ordered_references, sketch_model
 
     async with async_session_maker() as db:
         # Eager-load: a lazy load of job.references inside AsyncSession raises MissingGreenlet.
@@ -2363,7 +2363,7 @@ async def _process_sketch_job_async(task_self, job_id: int):
             await db.commit()
 
             prompt = build_prompt(job, references)
-            model_name = settings.GEMINI_SKETCH_MODEL
+            model_name = sketch_model(job)  # fast_draft: GEMINI_SKETCH_FAST_MODEL; else GEMINI_SKETCH_MODEL
             if not gemini_configured() and not production_rules_apply():
                 # Development/tests only: a placeholder image. Production never takes this path.
                 print(f"[SketchJob] Job {job_id}: Gemini not configured, using the mock image (non-production).")

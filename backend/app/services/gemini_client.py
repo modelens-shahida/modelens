@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # models such as gemini-2.5-flash return no image and cannot run ghost jobs.
 GEMINI_IMAGE_MODELS = (
     "gemini-3-pro-image",          # Nano Banana Pro, GA 2026-05-28: the default
-    "gemini-nano-banana-2.1",
+    "gemini-nano-banana-2.1",      # Nano Banana 2.1, stable: the Sketch fast_draft default
     "gemini-3.1-flash-image",      # deprecated 2026-10-06, no shutdown date yet
     "gemini-3.1-flash-lite-image",
     "gemini-2.5-flash-image",      # shuts down 2027-03-15

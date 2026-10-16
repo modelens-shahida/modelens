@@ -478,3 +478,83 @@ async def test_the_sketch_worker_still_rejects_bad_paths(db_session, setup, case
         "is not stored in this brand's ModeLens storage"
     assert str(err.value) == f"Sketch input image 2 {expected}."
     read.assert_not_called()
+
+
+# ========================== Sketch model per mode ================
+
+@pytest.fixture
+def gemini(monkeypatch):
+    import gemini_fakes
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "SKETCH_JOBS_ENABLED", True)
+    return gemini_fakes.install(monkeypatch)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration  # runs the Celery task body
+@pytest.mark.parametrize("mode,setting,credits", [("fast_draft", "GEMINI_SKETCH_FAST_MODEL", 1),
+                                                  ("studio_quality", "GEMINI_SKETCH_MODEL", 5)])
+async def test_each_mode_calls_its_own_model(client, db_session, setup, queued, gemini, monkeypatch, mode, setting,
+                                             credits):
+    import app.models.db as models
+    from app.worker import _process_sketch_job_async
+    # Two different image models, so each mode's call shows which setting it read
+    monkeypatch.setattr(settings, "GEMINI_SKETCH_FAST_MODEL", "gemini-3.1-flash-lite-image")
+    monkeypatch.setattr(settings, "GEMINI_SKETCH_MODEL", "gemini-3-pro-image")
+    res = await client.post(SKETCH_URL, headers=_headers(setup), json={
+        "brand_id": setup["brand"].id, "generation_mode": mode, "reference_image_paths": [MINE]})
+    assert res.status_code == 201 and res.json()["credits_reserved"] == credits
+
+    db_session.expunge_all()
+    with patch("app.worker.async_session_maker", models.async_session_maker), \
+            patch.object(storage_service, "read_file_bytes", return_value=PNG), \
+            patch.object(storage_service, "save_file_bytes", return_value="/uploads/out.png"):
+        await _process_sketch_job_async(MagicMock(), res.json()["job_id"])
+    job = (await db_session.execute(select(SketchJob).execution_options(populate_existing=True))).scalar_one()
+    assert job.status == "completed", job.error_message
+    assert gemini.request()[0] == getattr(settings, setting)
+    gemini.generate_content.assert_called_once()
+
+
+def test_fast_model_setting_defaults_to_nano_banana_2_1():
+    from app.config import DEFAULT_GEMINI_SKETCH_FAST_MODEL, Settings
+    from app.services.gemini_client import GEMINI_IMAGE_MODELS
+    field = Settings.model_fields["GEMINI_SKETCH_FAST_MODEL"]
+    assert field.default == DEFAULT_GEMINI_SKETCH_FAST_MODEL == "gemini-nano-banana-2.1"
+    assert field.default in GEMINI_IMAGE_MODELS
+    assert Settings.model_fields["GEMINI_SKETCH_MODEL"].default == "gemini-3-pro-image"
+
+
+def test_fast_model_is_read_from_the_environment(monkeypatch):
+    from app.config import Settings
+    monkeypatch.setenv("GEMINI_SKETCH_FAST_MODEL", "gemini-3.1-flash-lite-image")
+    assert Settings().GEMINI_SKETCH_FAST_MODEL == "gemini-3.1-flash-lite-image"
+
+
+def _startup_issues(name):
+    from app.config_production import check_config
+    return [i for i in check_config() if i.name == name]
+
+
+@pytest.mark.parametrize("model", ["gemini-3-pro", "gemini-2.5-flash", "", "  "])
+def test_startup_rejects_a_text_only_or_empty_fast_model(monkeypatch, model):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "GEMINI_SKETCH_FAST_MODEL", model)
+    [issue] = _startup_issues("GEMINI_SKETCH_FAST_MODEL")
+    assert issue.fatal is True
+
+
+def test_startup_accepts_the_default_fast_model(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    assert _startup_issues("GEMINI_SKETCH_FAST_MODEL") == []
+
+
+def test_startup_warns_if_sketch_is_on_with_an_unusable_fast_model(monkeypatch):
+    from gemini_fakes import FAKE_KEY
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "SKETCH_JOBS_ENABLED", True)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", FAKE_KEY)
+    assert _startup_issues("SKETCH_JOBS_ENABLED") == []
+    monkeypatch.setattr(settings, "GEMINI_SKETCH_FAST_MODEL", "gemini-2.5-flash")
+    [issue] = _startup_issues("SKETCH_JOBS_ENABLED")
+    assert issue.fatal is False and "GEMINI_SKETCH_FAST_MODEL" in issue.problem
