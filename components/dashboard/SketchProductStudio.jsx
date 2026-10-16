@@ -165,7 +165,7 @@ export default function SketchProductStudio() {
     } catch (err) {
       setIsSubmitting(false);
       setActiveStage(null);
-      const errMsg = err?.response?.data?.detail || "Generation failed. Check your credit balance.";
+      const errMsg = err?.response?.data?.detail || err?.message || "Generation failed. Check your credit balance.";
       toast.error(errMsg);
     }
   };
