@@ -92,7 +92,7 @@ function MultiFileUploader({ label, maxFiles, accept, files, onFilesChange, hint
 }
 
 export default function SketchStudioPage() {
-  const [activeMainTab, setActiveMainTab] = useState("studio"); // 'studio' | 'legacy'
+  const [activeMainTab, setActiveMainTab] = useState("multimodal"); // 'multimodal' | 'cad_colorways'
   const [sketchFiles, setSketchFiles] = useState([]);
   const [fabricFiles, setFabricFiles] = useState([]);
   const [printFiles, setPrintFiles] = useState([]);
@@ -200,33 +200,45 @@ export default function SketchStudioPage() {
 
           <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1 gap-1 self-start sm:self-auto">
             <button
-              onClick={() => setActiveMainTab("studio")}
+              onClick={() => setActiveMainTab("multimodal")}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "studio"
+                activeMainTab === "multimodal"
                   ? "bg-purple-600 text-white shadow-md"
                   : "text-zinc-400 hover:text-white"
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              CAD Generative Studio
+              Multimodal Studio
             </button>
             <button
-              onClick={() => setActiveMainTab("legacy")}
+              onClick={() => setActiveMainTab("cad_colorways")}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "legacy"
+                activeMainTab === "cad_colorways"
                   ? "bg-purple-600 text-white shadow-md"
                   : "text-zinc-400 hover:text-white"
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              Multi-Reference Briefs
+              CAD Colorway Matrix
+              <span className="text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-full font-mono">Preview</span>
             </button>
           </div>
         </div>
 
-        {/* Tab 1: State-of-the-Art CAD Generative Studio */}
-        {activeMainTab === "studio" ? (
-          <SketchProductStudio />
+        {/* Tab Selection */}
+        {activeMainTab === "cad_colorways" ? (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-800/40 text-purple-300 text-xs flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-purple-400 shrink-0" />
+              <div>
+                <strong className="block font-semibold">CAD Colorway Pipeline Upgrade in Progress</strong>
+                <span className="text-zinc-400">
+                  Automated colorway batch variants are undergoing scheduled multimodal pipeline upgrades. Please use the Multimodal Studio tab for live generations.
+                </span>
+              </div>
+            </div>
+            <SketchProductStudio />
+          </div>
         ) : (
           /* Tab 2: Legacy Multi-Reference Form */
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
