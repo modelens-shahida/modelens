@@ -1,17 +1,27 @@
 import pytest
+import pytest_asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.db import CatalogJob, CatalogJobItem, CatalogOutput
+from app.models.db import Asset, CatalogJob, CatalogJobItem, CatalogOutput
 
 
 # ========================== Helper ===============================
 
 def make_products(n=3):
     return [{"sku_tag": f"SKU-{i+1}", "image_path": f"/uploads/product_{i+1}.jpg"} for i in range(n)]
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def product_assets(db_session: AsyncSession, test_data: dict):
+    """The product images are uploaded image assets of the test brand (create checks image_path)."""
+    for i in range(3):
+        db_session.add(Asset(brand_id=test_data["brand"].id, filename=f"product_{i+1}.jpg",
+                             storage_path=f"/uploads/product_{i+1}.jpg", asset_type="image"))
+    await db_session.commit()
 
 
 # ========================== Auth Tests ===========================

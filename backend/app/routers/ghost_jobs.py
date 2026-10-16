@@ -11,7 +11,7 @@ from app.worker import process_ghost_job
 from app.api_docs import error_responses
 from app.services.job_images import is_image
 from app.services.job_refunds import refund_job
-from app.routers.body_parsing import parse_body
+from app.routers.body_parsing import parse_body, read_form_or_json
 
 router = APIRouter(prefix="/api/v1/ghost-jobs", tags=["Ghost Studio"])
 
@@ -115,12 +115,11 @@ async def create_ghost_job(
     import uuid
     from app.services.storage import storage_service
 
-    content_type = request.headers.get("content-type", "")
     image_path = None
     file = None
 
-    if "multipart/form-data" in content_type:
-        form = await request.form()
+    form, json_data = await read_form_or_json(request)
+    if form is not None:
         brand_field = form.get("brand_id")
         payload = parse_body(GhostJobCreate, {"brand_id": brand_field} if brand_field not in (None, "") else {})
         brand_id = payload.brand_id
@@ -139,7 +138,6 @@ async def create_ghost_job(
         asset_id = parse_body(GhostJobCreate, {"brand_id": brand_id, "asset_id": asset_field}).asset_id \
             if asset_field not in (None, "") else None
     else:
-        json_data = await request.json()
         payload = parse_body(GhostJobCreate, json_data)
         brand_id = payload.brand_id
         product_hint = payload.product_hint

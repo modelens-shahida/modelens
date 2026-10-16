@@ -8,11 +8,12 @@ from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Brand, Brand
 from app.middleware.auth import check_brand_role, get_current_user
 from app.worker import process_catalog_job, process_catalog_item
 from app.services.storage import storage_service
-import os
 import uuid
 from app.api_docs import error_responses
 from app.services.job_refunds import refund_job
-from app.routers.body_parsing import parse_body
+from app.routers.body_parsing import parse_body, read_form_or_json
+from app.services.input_paths import check_request_paths
+from app.services.job_images import MAX_UPLOAD_BYTES, UPLOAD_TYPES, check_upload
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Studio"])
 
@@ -30,7 +31,15 @@ class CatalogJobCreate(BaseModel):
     background: Optional[str] = "Soft Front Studio"
     aspect_ratio: Optional[str] = "4:5"
     resolution: Optional[str] = "2K"
-    products: List[dict] = Field(default_factory=list)
+    products: List[dict] = Field(
+        default_factory=list,
+        description="`{sku_tag, image_path}` per product; `image_path` is the `storage_path` of an image asset "
+                    "of the same brand (`POST /api/v1/assets`).",
+    )
+
+
+class CatalogJobForm(BaseModel):
+    brand_id: Optional[int] = None
 
 
 @router.get(
@@ -56,7 +65,13 @@ async def get_marketplaces():
     description=(
         "Create a new catalog batch job supporting both JSON and FormData. Without `brand_id` (FormData) the "
         "caller's first brand is used. The caller must own the brand or be a member with at least the editor "
-        "role (else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected."
+        "role (else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected.\n"
+        "\n"
+        f"Product images: multipart `products` files must each be {UPLOAD_TYPES} (decoded, not judged by name "
+        f"or content type) of at most {MAX_UPLOAD_BYTES // (1024 * 1024)} MB. JSON `products[].image_path` must "
+        "be the `storage_path` of an image asset of the same brand; anything else (missing, external URLs, other "
+        "buckets, `..`, another brand's file) is reported as not found. Any bad image is a 422 naming the "
+        "product index, before anything is charged, stored, written or queued."
     ),
     response_description="The created catalog job with reserved credits.",
     operation_id="create_catalog_job",
@@ -68,11 +83,10 @@ async def create_catalog_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new catalog batch job supporting both JSON and FormData."""
-    content_type = request.headers.get("content-type", "")
-    if "multipart/form-data" in content_type:
-        form = await request.form()
+    form, json_data = await read_form_or_json(request)
+    if form is not None:
         brand_id_val = form.get("brand_id")
-        brand_id = int(brand_id_val) if brand_id_val else None
+        brand_id = parse_body(CatalogJobForm, {"brand_id": brand_id_val}).brand_id if brand_id_val else None
         engine_mode = form.get("fashn_mode") or form.get("engine_mode") or "product_to_model"
         generation_mode = form.get("generation_mode") or "studio_quality"
         model_identity = form.get("model_identity") or "Maya"
@@ -86,7 +100,6 @@ async def create_catalog_job(
         files_to_save = [(form.get(f"sku_{i}") or f"SKU-{i+1}", file)
                          for i, file in enumerate(form.getlist("products"))]
     else:
-        json_data = await request.json()
         payload = parse_body(CatalogJobCreate, json_data)
         brand_id = payload.brand_id
         engine_mode = payload.engine_mode
@@ -118,6 +131,19 @@ async def create_catalog_job(
     if not products and not files_to_save:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one product is required.")
 
+    # Every product image, checked before any credits are charged or anything is stored, written or
+    # queued: JSON image_paths must be image assets of this brand, uploads real images (422 otherwise).
+    await check_request_paths(db, brand_id, [(f"products[{i}].image_path", p.get("image_path"))
+                                             for i, p in enumerate(products)])
+    extensions, errors = [], []
+    for index, (_, file) in enumerate(files_to_save):
+        extension, problem = (None, "is not a file") if isinstance(file, str) else await check_upload(file)
+        extensions.append(extension)
+        if problem:
+            errors.append(f"products[{index}] {problem}.")
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=" ".join(errors))
+
     credits_per_sku = CREDITS_PER_SKU.get(generation_mode, 5)
     credits_needed = (len(products) + len(files_to_save)) * credits_per_sku
 
@@ -127,9 +153,8 @@ async def create_catalog_job(
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
 
-    for sku_tag, file in files_to_save:
-        file_ext = os.path.splitext(file.filename or "file.png")[1]
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
+    for (sku_tag, file), extension in zip(files_to_save, extensions):
+        unique_filename = f"{uuid.uuid4()}{extension}"
         file_bytes = await file.read()
         storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
         products.append({

@@ -1,4 +1,5 @@
 import pytest
+import pytest_asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi import status
 from httpx import AsyncClient
@@ -29,6 +30,15 @@ def stored_sketches():
         yield read
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def sketch_assets(db_session, test_data):
+    """The sketches are uploaded image assets of the test brand (create checks reference_image_paths)."""
+    for name in ("sketch1.png", "sketch2.png", "sketch3.png"):
+        db_session.add(Asset(brand_id=test_data["brand"].id, filename=name, storage_path=f"/uploads/{name}",
+                             asset_type="image"))
+    await db_session.commit()
+
+
 @pytest.mark.asyncio
 async def test_create_sketch_job_insufficient_credits(client: AsyncClient, db_session: AsyncSession, test_data: dict):
     editor_headers = test_data["get_headers"]("editor")
@@ -46,6 +56,7 @@ async def test_create_sketch_job_insufficient_credits(client: AsyncClient, db_se
         "brand_id": brand_id,
         "product_hint": "denim jacket",
         "generation_mode": "fast_draft",
+        "reference_image_paths": ["/uploads/sketch1.png"],
     }, headers=editor_headers)
 
     assert res.status_code == status.HTTP_402_PAYMENT_REQUIRED

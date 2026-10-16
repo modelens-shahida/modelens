@@ -27,7 +27,7 @@ import app.models.db as models
 from app.config import settings
 from app.config_production import check_config
 from app.models.db import (
-    AIJob, Brand, CatalogJob, CatalogJobItem, CreditTransaction, GhostJob, GhostJobAsset, SketchJob,
+    AIJob, Asset, Brand, CatalogJob, CatalogJobItem, CreditTransaction, GhostJob, GhostJobAsset, SketchJob,
     SketchJobReference, User,
 )
 from app.services import job_refunds
@@ -619,9 +619,11 @@ async def test_sketch_creation_works_outside_production_or_when_enabled(
     monkeypatch.setattr(settings, "SKETCH_JOBS_ENABLED", enabled)
     owner = test_data["get_headers"]("owner")
     brand_id = test_data["brand"].id
-    res = await client.post("/api/v1/sketch-jobs", json={"brand_id": brand_id, "generation_mode": "fast_draft"},
-                            headers=owner)
-    assert res.status_code == 201
+    db_session.add(Asset(brand_id=brand_id, filename="s.png", storage_path="/uploads/s.png", asset_type="image"))
+    await db_session.commit()
+    res = await client.post("/api/v1/sketch-jobs", headers=owner, json={
+        "brand_id": brand_id, "generation_mode": "fast_draft", "reference_image_paths": ["/uploads/s.png"]})
+    assert res.status_code == 201, res.text
     sketch_dispatch[0].delay.assert_called_once()
     res = await client.post("/api/v1/sketch/jobs", json={"brand_id": brand_id, "generation_mode": "fast_draft"},
                             headers=owner)

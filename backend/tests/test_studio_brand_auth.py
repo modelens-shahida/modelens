@@ -63,11 +63,12 @@ ENDPOINTS = {
                          lambda b: {"brand_id": b, "views": ["FRONT"], "resolution": "1K"}, 202),
     "ghost_batch": ("/api/v1/ghost/batch", lambda b: {"brand_id": b, "items": [{"sku": "SKU-1"}]}, 201),
     "ghost_batch_check": ("/api/v1/ghost/batch/check", lambda b: {"brand_id": b, "items": [{"sku": "SKU-1"}]}, 200),
-    "sketch_jobs": ("/api/v1/sketch-jobs", lambda b: {"brand_id": b, "generation_mode": "fast_draft"}, 201),
+    "sketch_jobs": ("/api/v1/sketch-jobs", lambda b: {"brand_id": b, "generation_mode": "fast_draft",
+                                                       "reference_image_paths": [GARMENT_KEY]}, 201),
     "sketch_studio": ("/api/v1/sketch/jobs", lambda b: {"brand_id": b, "generation_mode": "fast_draft"}, 202),
     "catalog_jobs": ("/api/v1/catalog-jobs", lambda b: {
         "brand_id": b, "generation_mode": "fast_draft",
-        "products": [{"sku_tag": "SKU-1", "image_path": "/uploads/sku-1.png"}]}, 201),
+        "products": [{"sku_tag": "SKU-1", "image_path": GARMENT_KEY}]}, 201),
 }
 ALL = sorted(ENDPOINTS)
 REQUIRED_BRAND = ["ghost", "ghost_jobs_batch", "ghost_volumetric", "ghost_batch", "ghost_batch_check",
@@ -237,7 +238,7 @@ async def test_rejected_upload_is_not_stored(client, db_session, test_data, queu
 @pytest.mark.parametrize("url,file_field", [("/api/v1/sketch-jobs", "sketches"), ("/api/v1/catalog-jobs", "products")])
 async def test_default_brand_still_needs_editor(client, db_session, test_data, queued, stored, url, file_field):
     """Sketch and catalog jobs fall back to the caller's first brand; the role check applies to it too."""
-    files = {file_field: ("front.png", b"img", "image/png")}
+    files = {file_field: ("front.png", PNG, "image/png")}
     before = await _snapshot(db_session)
     resp = await _form_post(client, test_data, "viewer", url, {}, files)  # viewer's only brand
     assert resp.status_code == 403

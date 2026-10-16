@@ -16,7 +16,7 @@ the customer: the job fails and is refunded once, without a retry, since
 retrying cannot fix the image.
 """
 import io
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 from PIL import Image, ImageOps
 
@@ -101,6 +101,44 @@ def is_image(data: bytes) -> bool:
         return True
     except Exception:  # unidentified, truncated, decompression bomb, ...
         return False
+
+
+# Uploaded job input files (Sketch and Catalog create routes): decoded, never trusted by name or
+# content type. 20 MB covers full-resolution phone photos (12-48 MP JPEG/HEIC, ~3-15 MB) and
+# high-resolution PNG scans of sketches; the worker downscales to MAX_DIMENSION/MAX_IMAGE_BYTES
+# anyway, so anything bigger only costs memory and storage.
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+# Decoded format -> file extension it is saved with. MPO is how Pillow reads many camera JPEGs.
+UPLOAD_FORMATS = {"JPEG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp", "HEIF": ".heic"}
+UPLOAD_TYPES = "a JPEG, PNG, WebP or HEIC image"
+
+
+def inspect_upload(data: bytes) -> Tuple[Optional[str], Optional[str]]:
+    """(extension to save it with, None) for uploaded bytes that decode as one of UPLOAD_FORMATS
+    within MAX_UPLOAD_BYTES and Pillow's decompression-bomb pixel limit; else (None, why not:
+    "is empty", "is larger than 20 MB", "is not a JPEG, PNG, WebP or HEIC image")."""
+    if not data:
+        return None, "is empty"
+    if len(data) > MAX_UPLOAD_BYTES:
+        return None, f"is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB"
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            extension = UPLOAD_FORMATS.get(img.format)
+            if extension and img.width * img.height <= Image.MAX_IMAGE_PIXELS:
+                img.load()
+                return extension, None
+    except Exception:  # unidentified, truncated, decompression bomb, ...
+        pass
+    return None, f"is not {UPLOAD_TYPES}"
+
+
+async def check_upload(file) -> Tuple[Optional[str], Optional[str]]:
+    """inspect_upload() of an UploadFile, which is rewound for saving. Reads at most
+    MAX_UPLOAD_BYTES + 1 bytes and keeps none of them, so a request's files are never
+    all held in memory at once. The extension comes from the decoded image, never the filename."""
+    result = inspect_upload(await file.read(MAX_UPLOAD_BYTES + 1))
+    await file.seek(0)
+    return result
 
 
 def load_images(paths: List[str], label: str, read=None) -> List[dict]:

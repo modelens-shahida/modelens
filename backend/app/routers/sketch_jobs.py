@@ -10,7 +10,10 @@ from app.worker import process_sketch_job
 from app.api_docs import error_responses
 from app.services.job_refunds import refund_job
 from app.services.sketch_availability import SKETCH_DISABLED_RESPONSE, require_sketch_jobs_enabled
-from app.routers.body_parsing import parse_body
+from app.routers.body_parsing import parse_body, read_form_or_json
+from app.services.input_paths import check_request_paths
+from app.services.job_images import MAX_UPLOAD_BYTES, UPLOAD_TYPES, check_upload
+from app.services.sketch_inputs import MAX_INPUT_IMAGES
 
 router = APIRouter(prefix="/api/v1/sketch-jobs", tags=["Sketch Studio"])
 
@@ -20,6 +23,12 @@ MODE_CREDITS = {
     "fast_draft": 1,
     "studio_quality": 5,
 }
+
+# Form file fields -> reference type
+UPLOAD_FIELDS = {"sketches": "sketch", "fabric_refs": "fabric", "print_refs": "print",
+                 "construction_refs": "construction"}
+SKETCH_REQUIRED = ("At least one sketch image is required: upload it as a `sketches` file (multipart), or "
+                   "upload it with POST /api/v1/assets and send its storage_path in reference_image_paths.")
 
 # ========================== Schemas ==============================
 
@@ -33,7 +42,10 @@ class SketchJobCreate(BaseModel):
     resolution: Optional[str] = "2K"
     aspect_ratio: Optional[str] = "3:4"
     generation_mode: Optional[str] = "studio_quality"
-    reference_image_paths: Optional[List[str]] = []
+    reference_image_paths: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Sketch images: `storage_path`s of image assets of the same brand (`POST /api/v1/assets`).",
+    )
 
 
 # ========================== Endpoints ============================
@@ -46,6 +58,14 @@ class SketchJobCreate(BaseModel):
         "Create a new sketch-to-image job supporting both JSON and FormData. Without `brand_id` the caller's "
         "first brand is used. The caller must own the brand or be a member with at least the editor role "
         "(else 403); an unknown brand returns 404. Nothing is stored, queued or charged when rejected.\n"
+        "\n"
+        f"Images: at least one sketch, and at most {MAX_INPUT_IMAGES} images in all (sketches and references "
+        "together). Multipart files (`sketches`, `fabric_refs`, `print_refs`, `construction_refs`) must each be "
+        f"{UPLOAD_TYPES} (decoded, not judged by name or content type) of at most "
+        f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB. JSON `reference_image_paths` must be `storage_path`s of image "
+        "assets of the same brand; anything else (external URLs, other buckets, `..`, another brand's file) is "
+        "reported as not found. Any bad image is a 422 naming the field and index, before anything is charged, "
+        "stored, written or queued.\n"
         "\n"
         "**Disabled in production** while `SKETCH_JOBS_ENABLED` is off: answers 503 for every caller, "
         "platform admins included, before anything is stored, queued or charged."
@@ -60,18 +80,16 @@ async def create_sketch_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new sketch-to-image job supporting both JSON and FormData."""
-    import os
     import uuid
     from app.services.storage import storage_service
 
-    content_type = request.headers.get("content-type", "")
-    references_to_create = []
-    files_to_save = []
+    form, json_data = await read_form_or_json(request)
+    uploads = []  # (label, reference type, uploaded file)
+    paths = []    # storage paths of brand assets (JSON)
 
-    if "multipart/form-data" in content_type:
-        form = await request.form()
+    if form is not None:
         brand_id_val = form.get("brand_id")
-        brand_id = int(brand_id_val) if brand_id_val else None
+        brand_id = parse_body(SketchJobCreate, {"brand_id": brand_id_val}).brand_id if brand_id_val else None
         product_hint = form.get("product_description") or form.get("product_hint")
         material_description = form.get("material_description")
         model_brief = form.get("model_brief")
@@ -81,23 +99,12 @@ async def create_sketch_job(
         aspect_ratio = form.get("aspect_ratio") or "3:4"
         generation_mode = form.get("model_tier") or form.get("generation_mode") or "studio_quality"
 
-        # Parse files; they are saved once the brand is authorized
-        for key in ["sketches", "fabric_refs", "print_refs", "construction_refs"]:
-            # Map frontend keys to DB reference types
-            ref_type = "sketch"
-            if key == "fabric_refs":
-                ref_type = "fabric"
-            elif key == "print_refs":
-                ref_type = "print"
-            elif key == "construction_refs":
-                ref_type = "construction"
-
-            uploaded_files = form.getlist(key)
-            for file in uploaded_files:
-                if file and file.filename:
-                    files_to_save.append((ref_type, file))
+        # Files are checked once the brand is authorized, and saved once everything is checked
+        for key, ref_type in UPLOAD_FIELDS.items():
+            for index, file in enumerate(form.getlist(key)):
+                if isinstance(file, str) or file.filename:  # an empty file input sends a nameless part
+                    uploads.append((f"{key}[{index}]", ref_type, file))
     else:
-        json_data = await request.json()
         payload = parse_body(SketchJobCreate, json_data)
         brand_id = payload.brand_id
         product_hint = payload.product_hint
@@ -108,12 +115,7 @@ async def create_sketch_job(
         resolution = payload.resolution
         aspect_ratio = payload.aspect_ratio
         generation_mode = payload.generation_mode
-
-        for ref_path in (payload.reference_image_paths or []):
-            references_to_create.append({
-                "reference_type": "sketch",
-                "image_path": ref_path,
-            })
+        paths = payload.reference_image_paths or []
 
     # Fallback to user's first brand if brand_id is missing or None
     if not brand_id:
@@ -131,6 +133,25 @@ async def create_sketch_job(
             )
     await check_brand_role(brand_id, current_user, db, minimum_role="editor")
 
+    # The images: counted, then each checked (ours and this brand's, or a real image upload),
+    # all before any credits are charged or anything is stored, written or queued.
+    count = len(uploads) + len(paths)
+    if count > MAX_INPUT_IMAGES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"A sketch job takes at most {MAX_INPUT_IMAGES} images (sketches and "
+                                   f"references together); this request has {count}.")
+    if not paths and not any(ref_type == "sketch" for _, ref_type, _ in uploads):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=SKETCH_REQUIRED)
+    await check_request_paths(db, brand_id, [(f"reference_image_paths[{i}]", p) for i, p in enumerate(paths)])
+    extensions, errors = [], []
+    for label, _, file in uploads:
+        extension, problem = (None, "is not a file") if isinstance(file, str) else await check_upload(file)
+        extensions.append(extension)
+        if problem:
+            errors.append(f"{label} {problem}.")
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=" ".join(errors))
+
     credits_needed = MODE_CREDITS.get(generation_mode, 5)
 
     if (current_user.credits or 0) < credits_needed:
@@ -139,9 +160,9 @@ async def create_sketch_job(
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
 
-    for ref_type, file in files_to_save:
-        file_ext = os.path.splitext(file.filename)[1]
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
+    references_to_create = [{"reference_type": "sketch", "image_path": p} for p in paths]
+    for (_, ref_type, file), extension in zip(uploads, extensions):
+        unique_filename = f"{uuid.uuid4()}{extension}"
         file_bytes = await file.read()
         storage_path = storage_service.save_file_bytes(unique_filename, file_bytes)
         references_to_create.append({
