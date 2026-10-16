@@ -27,13 +27,13 @@ from sqlalchemy import func, select
 import app.models.db as models
 from app.config import DEFAULT_GEMINI_GHOST_MODEL, Settings, settings
 from app.config_production import check_config
-from app.models.db import Asset, GhostJob, GhostJobAsset, GhostOutput, SketchJob, User
+from app.models.db import Asset, GhostJob, GhostJobAsset, GhostOutput, User
 from app.services import gemini_client
 from app.services.storage import storage_service
-from app.worker import _process_ghost_job_async, _process_sketch_job_async
+from app.worker import _process_ghost_job_async
 
 FAKE_KEY = gemini_fakes.FAKE_KEY
-PROVIDER_BODY = "quota exceeded for project 1234567890, key AIzaFAKEFAKEFAKE"
+PROVIDER_BODY = gemini_fakes.PROVIDER_BODY
 
 
 def _png():
@@ -182,40 +182,8 @@ async def test_returned_image_is_saved_and_job_completed(
 
 # ========================== Production failures =================
 
-FAILURES = {
-    "no key": (None, "Image generation is not configured."),
-    "mock key": ("mock", "Image generation is not configured."),
-    "server error": (errors.ServerError(500, {"error": {"message": PROVIDER_BODY}}),
-                     "The image service returned an error."),
-    "bad request": (errors.ClientError(400, {"error": {"message": PROVIDER_BODY}}),
-                    "The image service returned an error."),
-    "rate limited": (errors.ClientError(429, {"error": {"message": PROVIDER_BODY}}),
-                     "The image service is busy. Please try again shortly."),
-    "timeout": (httpx.ReadTimeout(PROVIDER_BODY), "The image service timed out."),
-    "sdk error": (ValueError(PROVIDER_BODY), "The image service request failed."),
-    "text only": (gemini_fakes.image_response(data=None, text="I can't draw that."),
-                  "The image service returned no image."),
-    "no candidates": (types.GenerateContentResponse(candidates=[]), "The image service returned no image."),
-    "prompt blocked": (types.GenerateContentResponse(prompt_feedback=types.GenerateContentResponsePromptFeedback(
-        block_reason=types.BlockedReason.SAFETY)),
-        "The image request was blocked by the image service's safety filters."),
-    "image safety": (types.GenerateContentResponse(candidates=[types.Candidate(
-        content=types.Content(role="model", parts=[]), finish_reason=types.FinishReason.IMAGE_SAFETY)]),
-        "The image was blocked by the image service's safety filters."),
-    "non-image blob": (gemini_fakes.image_response(data=b"%PDF", mime="application/pdf"),
-                       "The image service returned no image."),
-}
-
-
-def _arrange(gemini, monkeypatch, case):
-    outcome, message = FAILURES[case]
-    if case in ("no key", "mock key"):
-        monkeypatch.setattr(settings, "GEMINI_API_KEY", outcome)
-    elif isinstance(outcome, BaseException):
-        gemini.generate_content.side_effect = outcome
-    else:
-        gemini.generate_content.return_value = outcome
-    return message
+FAILURES = gemini_fakes.FAILURES
+_arrange = gemini_fakes.arrange_failure
 
 
 @pytest.mark.asyncio
@@ -353,28 +321,3 @@ def test_production_refuses_to_boot_without_the_key_and_never_logs_it(monkeypatc
         run_startup_checks()  # other repository defaults are still fatal here
     assert "GEMINI_API_KEY" not in str(err.value)
     assert FAKE_KEY not in caplog.text and FAKE_KEY not in str(err.value)
-
-
-# ========================== Sketch ==============================
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("returns_image", [True, False])
-async def test_sketch_uses_the_shared_client_and_keeps_its_behaviour(
-        db_session, test_data, store, gemini, monkeypatch, returns_image):
-    gemini.generate_content.return_value = gemini_fakes.image_response(
-        data=b"sketch-render" if returns_image else None, text=None if returns_image else "text only")
-    job = SketchJob(user_id=test_data["users"]["editor"].id, brand_id=test_data["brand"].id, credits_reserved=5)
-    db_session.add(job)
-    await db_session.commit()
-    job_id = job.id
-    db_session.expunge_all()
-    with patch("app.worker.async_session_maker", models.async_session_maker):
-        await _process_sketch_job_async(MagicMock(), job_id)
-
-    job = (await db_session.execute(select(SketchJob).where(SketchJob.id == job_id))).scalar_one()
-    assert job.status == "completed"
-    assert gemini.client_cls.call_args.kwargs["api_key"] == FAKE_KEY
-    kwargs = gemini.generate_content.call_args.kwargs
-    assert kwargs["model"] == "gemini-3-pro" and len(kwargs["contents"]) == 1  # text only, as before
-    # An image is saved; without one, Sketch keeps its mock fallback (the 1x1 placeholder).
-    assert store.call_args.args[1] == (b"sketch-render" if returns_image else gemini_fakes.OUTPUT_PNG)

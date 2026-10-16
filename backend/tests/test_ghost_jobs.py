@@ -15,8 +15,22 @@ from app.worker import _process_ghost_job_async
 GARMENT_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
 
+
+GARMENT_KEY = "/uploads/batch-garment.png"
+
+
+@pytest_asyncio.fixture
+async def garment(db_session: AsyncSession, test_data: dict):
+    """An uploaded garment image in the test brand; batch items reference it by image_key."""
+    asset = Asset(brand_id=test_data["brand"].id, filename="garment.png", storage_path=GARMENT_KEY,
+                  asset_type="image")
+    db_session.add(asset)
+    await db_session.commit()
+    return asset
+
 @pytest.mark.asyncio
-async def test_create_ghost_job_insufficient_credits(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+async def test_create_ghost_job_insufficient_credits(client: AsyncClient, db_session: AsyncSession, test_data: dict,
+                                                     garment):
     editor_headers = test_data["get_headers"]("editor")
     editor_user = test_data["users"]["editor"]
     brand_id = test_data["brand"].id
@@ -34,6 +48,7 @@ async def test_create_ghost_job_insufficient_credits(client: AsyncClient, db_ses
         "view": "front",
         "aspect_ratio": "3:4",
         "resolution": "2K",
+        "image_key": GARMENT_KEY,
     }, headers=editor_headers)
 
     assert res.status_code == status.HTTP_402_PAYMENT_REQUIRED
@@ -41,7 +56,7 @@ async def test_create_ghost_job_insufficient_credits(client: AsyncClient, db_ses
 
 
 @pytest.mark.asyncio
-async def test_create_ghost_job_success(client: AsyncClient, db_session: AsyncSession, test_data: dict):
+async def test_create_ghost_job_success(client: AsyncClient, db_session: AsyncSession, test_data: dict, garment):
     editor_headers = test_data["get_headers"]("editor")
     editor_user = test_data["users"]["editor"]
     brand_id = test_data["brand"].id
@@ -61,6 +76,7 @@ async def test_create_ghost_job_success(client: AsyncClient, db_session: AsyncSe
             "view": "front",
             "aspect_ratio": "3:4",
             "resolution": "2K", # costs 4 credits
+            "image_key": GARMENT_KEY,
         }, headers=editor_headers)
 
         assert res.status_code == status.HTTP_201_CREATED
@@ -286,17 +302,6 @@ async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, t
 
 # ========================== Batch Tests ==========================
 
-GARMENT_KEY = "/uploads/batch-garment.png"
-
-
-@pytest_asyncio.fixture
-async def garment(db_session: AsyncSession, test_data: dict):
-    """An uploaded garment image in the test brand; batch items reference it by image_key."""
-    asset = Asset(brand_id=test_data["brand"].id, filename="garment.png", storage_path=GARMENT_KEY,
-                  asset_type="image")
-    db_session.add(asset)
-    await db_session.commit()
-    return asset
 
 
 @pytest.mark.asyncio
@@ -453,3 +458,129 @@ async def test_process_ghost_job_with_source_assets_in_fresh_session(db_session:
     assert sorted((r.source_asset_id, r.relationship_type) for r in rels) == sorted(
         (s.id, "REL-DERIVED-FROM") for s in sources
     )
+
+
+# ========================== Single job: the image is required ====
+
+SINGLE_ROUTE = "/api/v1/ghost-jobs"
+
+
+@pytest_asyncio.fixture
+async def nothing_written(db_session: AsyncSession, test_data: dict):
+    """Asserts afterwards that a rejected request reserved, stored, wrote and queued nothing."""
+    from sqlalchemy import func
+    from app.models.db import CreditTransaction
+    from app.services.storage import storage_service
+
+    async def snapshot():
+        user_credits = (await db_session.execute(select(User.credits).where(
+            User.id == test_data["users"]["editor"].id).execution_options(populate_existing=True))).scalar_one()
+        counts = [(await db_session.execute(select(func.count()).select_from(m))).scalar()
+                  for m in (GhostJob, GhostJobAsset, CreditTransaction)]
+        return user_credits, counts
+
+    before = await snapshot()
+    with patch.object(storage_service, "save_file_bytes") as save, \
+            patch("app.routers.ghost_jobs.process_ghost_job.delay") as queue:
+        yield
+    save.assert_not_called()
+    queue.assert_not_called()
+    assert await snapshot() == before
+
+
+async def _other_brand_image(db_session, test_data):
+    from app.models.db import Brand
+    brand = Brand(name="Other Brand", owner_id=test_data["users"]["nonmember"].id)
+    db_session.add(brand)
+    await db_session.commit()
+    asset = Asset(brand_id=brand.id, filename="o.png", storage_path="/uploads/other-brand.png", asset_type="image")
+    db_session.add(asset)
+    await db_session.commit()
+    return asset
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", [
+    "json without image", "form without image", "image sent as text", "empty file", "not an image",
+    "unsupported type", "unknown image_key", "unknown asset_id", "other brand's image_key",
+    "other brand's asset_id", "asset that is not an image",
+])
+async def test_single_job_without_a_usable_image_is_422(client, db_session, test_data, nothing_written, case):
+    brand_id = test_data["brand"].id
+    headers = test_data["get_headers"]("editor")
+    fields = {"brand_id": brand_id, "resolution": "2K"}
+    if case == "json without image":
+        res = await client.post(SINGLE_ROUTE, json=fields, headers=headers)
+    elif case == "form without image":  # multipart, with some other file but no `image`
+        res = await client.post(SINGLE_ROUTE, data={"brand_id": str(brand_id)},
+                                files={"notes": ("n.txt", b"hi", "text/plain")}, headers=headers)
+    elif case == "image sent as text":
+        res = await client.post(SINGLE_ROUTE, data={"brand_id": str(brand_id), "image": "dress.png"},
+                                files={"notes": ("n.txt", b"hi", "text/plain")}, headers=headers)
+    elif case in ("empty file", "not an image", "unsupported type"):
+        upload = {"empty file": ("dress.png", b""), "not an image": ("dress.png", b"<html>not a png</html>"),
+                  "unsupported type": ("dress.gif", b"GIF89a\x01\x00\x01\x00\x00\x00\x00;")}[case]
+        res = await client.post(SINGLE_ROUTE, data={"brand_id": str(brand_id)},
+                                files={"image": (*upload, "image/png")}, headers=headers)
+    else:
+        if case.startswith("other brand"):
+            other = await _other_brand_image(db_session, test_data)
+            ref = {"image_key": other.storage_path} if "image_key" in case else {"asset_id": other.id}
+        elif case == "asset that is not an image":
+            doc = Asset(brand_id=brand_id, filename="spec.pdf", storage_path="/uploads/spec.pdf", asset_type="document")
+            db_session.add(doc)
+            await db_session.commit()
+            ref = {"asset_id": doc.id}
+        else:
+            ref = {"image_key": "/uploads/nope.png"} if case == "unknown image_key" else {"asset_id": 999_999}
+        res = await client.post(SINGLE_ROUTE, json={**fields, **ref}, headers=headers)
+    assert res.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, res.text
+    detail = res.json()["detail"]
+    assert isinstance(detail, str) and detail
+    assert "other-brand" not in detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("filename", ["dress.png", "dress.JPG", "dress.webp"])
+async def test_single_job_with_an_uploaded_image_is_unchanged(client, db_session, test_data, filename):
+    from io import BytesIO
+    from PIL import Image as PILImage
+    fmt = {"png": "PNG", "jpg": "JPEG", "webp": "WEBP"}[filename.rsplit(".", 1)[1].lower()]
+    out = BytesIO()
+    PILImage.new("RGB", (4, 4)).save(out, format=fmt)
+    from app.services.storage import storage_service
+    with patch.object(storage_service, "save_file_bytes", return_value="/uploads/u.png") as save, \
+            patch("app.routers.ghost_jobs.process_ghost_job.delay") as queue:
+        res = await client.post(SINGLE_ROUTE, data={"brand_id": str(test_data["brand"].id), "resolution": "1K"},
+                                files={"image": (filename, out.getvalue(), "image/png")},
+                                headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 201, res.text
+    assert save.call_args.args[1] == out.getvalue()
+    queue.assert_called_once_with(res.json()["job_id"])
+    link = (await db_session.execute(select(GhostJobAsset).where(GhostJobAsset.job_id == res.json()["job_id"])))
+    assert [(l.asset_id, l.image_path) for l in link.scalars()] == [(None, "/uploads/u.png")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("by", ["image_key", "asset_id", "form asset_id"])
+async def test_single_job_can_reference_an_uploaded_image_asset(client, db_session, test_data, garment, by):
+    with patch("app.routers.ghost_jobs.process_ghost_job.delay"):
+        if by == "form asset_id":
+            res = await client.post(SINGLE_ROUTE, data={"brand_id": str(test_data["brand"].id),
+                                                        "asset_id": str(garment.id)},
+                                    files={"notes": ("n.txt", b"hi", "text/plain")},  # multipart
+                                    headers=test_data["get_headers"]("editor"))
+        else:
+            ref = garment.storage_path if by == "image_key" else garment.id
+            res = await client.post(SINGLE_ROUTE, json={"brand_id": test_data["brand"].id, by: ref},
+                                    headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 201, res.text
+    link = (await db_session.execute(select(GhostJobAsset).where(GhostJobAsset.job_id == res.json()["job_id"])))
+    assert [(l.asset_id, l.image_path) for l in link.scalars()] == [(garment.id, GARMENT_KEY)]
+
+
+@pytest.mark.asyncio
+async def test_single_job_role_check_still_comes_first(client, test_data):
+    res = await client.post(SINGLE_ROUTE, json={"brand_id": test_data["brand"].id},
+                            headers=test_data["get_headers"]("viewer"))
+    assert res.status_code == 403

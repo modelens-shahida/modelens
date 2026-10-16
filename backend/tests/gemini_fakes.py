@@ -7,8 +7,10 @@ google.genai.types objects, so the worker parses exactly what the SDK returns.
 import base64
 from unittest.mock import MagicMock
 
+import httpx
+
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from app.config import settings
 
@@ -45,3 +47,46 @@ def install(monkeypatch, key=FAKE_KEY):
     monkeypatch.setattr(genai, "Client", fake.client_cls)
     monkeypatch.setattr(settings, "GEMINI_API_KEY", key)
     return fake
+
+
+# ========================== Production failures =================
+# Every way a request can fail, and the safe message the job gets. PROVIDER_BODY stands in for a
+# provider error body (with a key-like string) that must never reach logs or the job.
+
+PROVIDER_BODY = "quota exceeded for project 1234567890, key AIzaFAKEFAKEFAKE"
+
+FAILURES = {
+    "no key": (None, "Image generation is not configured."),
+    "mock key": ("mock", "Image generation is not configured."),
+    "server error": (errors.ServerError(500, {"error": {"message": PROVIDER_BODY}}),
+                     "The image service returned an error."),
+    "bad request": (errors.ClientError(400, {"error": {"message": PROVIDER_BODY}}),
+                    "The image service returned an error."),
+    "rate limited": (errors.ClientError(429, {"error": {"message": PROVIDER_BODY}}),
+                     "The image service is busy. Please try again shortly."),
+    "timeout": (httpx.ReadTimeout(PROVIDER_BODY), "The image service timed out."),
+    "sdk error": (ValueError(PROVIDER_BODY), "The image service request failed."),
+    "text only": (image_response(data=None, text="I can't draw that."),
+                  "The image service returned no image."),
+    "no candidates": (types.GenerateContentResponse(candidates=[]), "The image service returned no image."),
+    "prompt blocked": (types.GenerateContentResponse(prompt_feedback=types.GenerateContentResponsePromptFeedback(
+        block_reason=types.BlockedReason.SAFETY)),
+        "The image request was blocked by the image service's safety filters."),
+    "image safety": (types.GenerateContentResponse(candidates=[types.Candidate(
+        content=types.Content(role="model", parts=[]), finish_reason=types.FinishReason.IMAGE_SAFETY)]),
+        "The image was blocked by the image service's safety filters."),
+    "non-image blob": (image_response(data=b"%PDF", mime="application/pdf"),
+                       "The image service returned no image."),
+}
+
+
+def arrange_failure(gemini, monkeypatch, case):
+    """Make the next Gemini request fail as FAILURES[case] says; returns the job's expected message."""
+    outcome, message = FAILURES[case]
+    if case in ("no key", "mock key"):
+        monkeypatch.setattr(settings, "GEMINI_API_KEY", outcome)
+    elif isinstance(outcome, BaseException):
+        gemini.generate_content.side_effect = outcome
+    else:
+        gemini.generate_content.return_value = outcome
+    return message

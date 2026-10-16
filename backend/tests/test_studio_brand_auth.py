@@ -7,6 +7,7 @@ it or be a member with the editor role or higher (viewer -> 403, non-member ->
 upload, creates no job, asset or ledger row, queues nothing and charges no
 credits.
 """
+import base64
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -39,6 +40,8 @@ def sketch_outside_production(monkeypatch):
 
 # Uploaded garment image in the test brand, referenced by the ghost-jobs batch items.
 GARMENT_KEY = "/uploads/brand-auth-garment.png"
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -53,7 +56,7 @@ ROW_MODELS = (GhostJob, GhostJobAsset, SketchJob, SketchJobReference, CatalogJob
 
 # name -> (url, JSON body for a brand, status on success)
 ENDPOINTS = {
-    "ghost": ("/api/v1/ghost-jobs", lambda b: {"brand_id": b, "resolution": "1K"}, 201),
+    "ghost": ("/api/v1/ghost-jobs", lambda b: {"brand_id": b, "resolution": "1K", "image_key": GARMENT_KEY}, 201),
     "ghost_jobs_batch": ("/api/v1/ghost-jobs/batch",
                          lambda b: {"brand_id": b, "jobs": [{"resolution": "1K", "image_key": GARMENT_KEY}]}, 201),
     "ghost_volumetric": ("/api/v1/ghost-jobs/volumetric",
@@ -215,7 +218,7 @@ async def test_ghost_form_requires_brand_id(client, db_session, test_data, queue
 @pytest.mark.parametrize("url,file_field", [("/api/v1/ghost-jobs", "image"), ("/api/v1/sketch-jobs", "sketches"),
                                             ("/api/v1/catalog-jobs", "products")])
 async def test_rejected_upload_is_not_stored(client, db_session, test_data, queued, stored, url, file_field):
-    files = {file_field: ("front.png", b"img", "image/png")}
+    files = {file_field: ("front.png", PNG, "image/png")}
     before = await _snapshot(db_session)
     for role, brand_id, code in (("viewer", test_data["brand"].id, 403), ("nonmember", test_data["brand"].id, 403),
                                  ("owner", 999_999, 404)):

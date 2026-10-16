@@ -9,6 +9,7 @@ from app.models.db import get_db, Asset, User, GhostJob, GhostJobAsset, GhostOut
 from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.worker import process_ghost_job
 from app.api_docs import error_responses
+from app.services.job_images import is_image
 from app.services.job_refunds import refund_job
 from app.routers.body_parsing import parse_body
 
@@ -37,6 +38,37 @@ class GhostJobCreate(BaseModel):
     preserve_print: bool = True
     preserve_seams: bool = True
     generation_mode: Optional[str] = "studio"
+    image_key: Optional[str] = Field(
+        None, description="`storage_path` of the garment image, as returned by `POST /api/v1/assets`."
+    )
+    asset_id: Optional[int] = Field(
+        None, description="Id of the garment image asset (`POST /api/v1/assets`); used instead of `image_key` if set."
+    )
+
+
+SINGLE_IMAGE_REQUIRED = (
+    "A garment image is required: upload it as the `image` file (multipart), or upload it with "
+    "POST /api/v1/assets and send its storage_path as image_key (or its asset_id)."
+)
+SINGLE_IMAGE_INVALID = "The `image` file is not a JPEG, PNG, WebP or HEIC image."
+
+
+async def _single_job_image(db: AsyncSession, brand_id: int, file, image_key: Optional[str],
+                            asset_id: Optional[int]):
+    """(uploaded bytes, uploaded filename, brand asset): the single job's garment image, validated
+    before anything is charged or written. 422 when there is none or it is not a usable image;
+    an `image_key`/`asset_id` follows the batch route's rules (an image asset of this brand)."""
+    if file is not None and not isinstance(file, str):
+        filename = file.filename or ""
+        data = await file.read()
+        if not filename.lower().endswith(BATCH_IMAGE_EXTENSIONS) or not data or not is_image(data):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=SINGLE_IMAGE_INVALID)
+        return data, filename, None
+    if file is not None or (asset_id is None and not image_key):  # a text field named image is not a file
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=SINGLE_IMAGE_REQUIRED)
+    item = GhostJobBatchItem(image_key=image_key, asset_id=asset_id)
+    [asset] = await _batch_item_assets(db, brand_id, [item], label=lambda index: "")
+    return None, None, asset
 
 
 @router.get(
@@ -62,7 +94,12 @@ async def get_ghost_views():
     description=(
         "Create a new ghost mannequin generation job supporting both JSON and FormData. `brand_id` is required "
         "(else 422); the caller must own the brand or be a member with at least the editor role (else 403), "
-        "and an unknown brand returns 404. Nothing is stored, queued or charged when the request is rejected."
+        "and an unknown brand returns 404. Nothing is stored, queued or charged when the request is rejected.\n"
+        "\n"
+        "The garment image is required: the `image` file (multipart; JPEG, PNG, WebP or HEIC), or an image "
+        "asset of the same brand uploaded first with `POST /api/v1/assets` and referenced by `image_key` (its "
+        "`storage_path`) or `asset_id`, as in the batch route. No image, or one that is not such an image, is a "
+        "422 before any credits are charged or anything is written."
     ),
     response_description="The created ghost job with reserved credits.",
     operation_id="create_ghost_job",
@@ -97,6 +134,10 @@ async def create_ghost_job(
         generation_mode = form.get("generation_mode", "studio")
 
         file = form.get("image")
+        image_key = form.get("image_key") or None
+        asset_field = form.get("asset_id")
+        asset_id = parse_body(GhostJobCreate, {"brand_id": brand_id, "asset_id": asset_field}).asset_id \
+            if asset_field not in (None, "") else None
     else:
         json_data = await request.json()
         payload = parse_body(GhostJobCreate, json_data)
@@ -109,8 +150,12 @@ async def create_ghost_job(
         preserve_print = payload.preserve_print
         preserve_seams = payload.preserve_seams
         generation_mode = payload.generation_mode
+        image_key, asset_id = payload.image_key, payload.asset_id
 
     await check_brand_role(brand_id, current_user, db, minimum_role=GHOST_ROLE)
+
+    # The garment image: required and validated before any charge or write (422 otherwise).
+    file_bytes, filename, image_asset = await _single_job_image(db, brand_id, file, image_key, asset_id)
 
     # Check credits
     credits_needed = RESOLUTION_CREDITS.get(resolution, 4)
@@ -120,12 +165,12 @@ async def create_ghost_job(
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
 
-    if file:
-        filename = file.filename or "file.png"
+    if file_bytes is not None:
         file_ext = os.path.splitext(filename)[1]
         unique_filename = f"{uuid.uuid4()}{file_ext}"
-        file_bytes = await file.read()
         image_path = storage_service.save_file_bytes(unique_filename, file_bytes)
+    else:
+        image_path = image_asset.storage_path
 
     # Deduct credits
     current_user.credits = (current_user.credits or 0) - credits_needed
@@ -150,13 +195,8 @@ async def create_ghost_job(
     db.add(job)
     await db.flush()
 
-    if image_path:
-        # Create GhostJobAsset record for the uploaded image
-        job_asset = GhostJobAsset(
-            job_id=job.id,
-            image_path=image_path,
-        )
-        db.add(job_asset)
+    # The garment image: the upload, or the brand asset it references (linked like a batch item's)
+    db.add(GhostJobAsset(job_id=job.id, asset_id=image_asset.id if image_asset else None, image_path=image_path))
 
     await db.commit()
     await db.refresh(job)
@@ -328,7 +368,8 @@ class GhostJobBatchItem(BaseModel):
 BATCH_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif")
 
 
-async def _batch_item_assets(db: AsyncSession, brand_id: int, items) -> List[Asset]:
+async def _batch_item_assets(db: AsyncSession, brand_id: int, items,
+                             label=lambda index: f"jobs[{index}]: ") -> List[Asset]:
     """The uploaded image asset of every batch item, in order; 422 naming every bad item.
 
     Each item must reference an image asset of ``brand_id`` (not deleted) by
@@ -359,15 +400,15 @@ async def _batch_item_assets(db: AsyncSession, brand_id: int, items) -> List[Ass
         elif item.image_key:
             asset, ref = by_key.get(item.image_key), "image_key"
         else:
-            errors.append(f"jobs[{index}]: an image is required (upload it with POST /api/v1/assets and send "
+            errors.append(label(index) + f"an image is required (upload it with POST /api/v1/assets and send "
                           "its storage_path as image_key).")
             continue
         if asset is None:
-            errors.append(f"jobs[{index}]: {ref} was not found in this brand.")
+            errors.append(label(index) + f"{ref} was not found in this brand.")
             continue
         name = (asset.filename or asset.storage_path or "").lower()
         if (asset.asset_type or "").lower() != "image" or not name.endswith(BATCH_IMAGE_EXTENSIONS):
-            errors.append(f"jobs[{index}]: {ref} is not a JPEG, PNG, WebP or HEIC image.")
+            errors.append(label(index) + f"{ref} is not a JPEG, PNG, WebP or HEIC image.")
             continue
         assets.append(asset)
     if errors:

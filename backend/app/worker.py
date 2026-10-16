@@ -1925,7 +1925,7 @@ async def _process_ghost_job_async(task_self, job_id: int):
     from app.models.db import GhostJob, GhostOutput, Asset
     from app.config import production_rules_apply
     from app.services.gemini_client import GeminiError, gemini_configured, generate_image
-    from app.services.ghost_inputs import GhostInputError, load_job_images
+    from app.services.job_images import InputImageError, load_job_images
     import io
 
     async with async_session_maker() as db:
@@ -2059,7 +2059,7 @@ async def _process_ghost_job_async(task_self, job_id: int):
             # Input and Gemini failures are final: retrying cannot fix the image, and Gemini's
             # transient errors were already retried inside the request. Anything else is
             # retried by Celery until its last attempt.
-            final = isinstance(e, (GhostInputError, GeminiError)) or _last_attempt(task_self)
+            final = isinstance(e, (InputImageError, GeminiError)) or _last_attempt(task_self)
             await _fail_or_requeue(db, job, "ghost_job", e, final)
             if final:
                 return
@@ -2316,8 +2316,12 @@ def process_sketch_job(self, job_id: int):
 
 
 async def _process_sketch_job_async(task_self, job_id: int):
-    from app.models.db import SketchJob, SketchJobReference, SketchOutput, Asset
+    from app.models.db import SketchJob, SketchOutput, Asset
+    from app.config import production_rules_apply
+    from app.services.gemini_client import GeminiError, gemini_configured, generate_image
+    from app.services.job_images import InputImageError
     from app.services.sketch_availability import SKETCH_DISABLED, sketch_jobs_blocked
+    from app.services.sketch_inputs import build_prompt, load_sketch_images, ordered_references
 
     async with async_session_maker() as db:
         # Eager-load: a lazy load of job.references inside AsyncSession raises MissingGreenlet.
@@ -2348,62 +2352,33 @@ async def _process_sketch_job_async(task_self, job_id: int):
             job.progress = 15
             await db.commit()
 
-            # Get reference images
-            refs_result = await db.execute(
-                select(SketchJobReference).where(SketchJobReference.job_id == job_id)
-            )
-            refs = refs_result.scalars().all()
+            # The sketch and reference images, in the documented order (app/services/sketch_inputs.py),
+            # each checked to be ours and this brand's before it is read. No usable sketch fails the job.
+            references = ordered_references(job.references)
+            image_parts, source_asset_ids = await load_sketch_images(db, job, references)
 
             # Step 2: Generate
             job.status = "generating"
             job.progress = 40
             await db.commit()
 
-            image_bytes = None
-            api_interaction_id = None
-
-            # Select model based on generation mode
-            model_name = "gemini-3.1-flash" if job.generation_mode == "fast_draft" else "gemini-3-pro"
-
-            try:
-                from app.services.gemini_client import gemini_configured, generate_content
-
-                if not gemini_configured():
-                    raise Exception("Mock mode - Gemini not configured")
-
-                prompt = f"""You are a fashion design visualization AI.
-                Convert the provided sketch(es) into a photorealistic fashion render.
-
-                Product: {job.product_hint or 'fashion garment'}
-                Output mode: {job.output_mode or 'ON_MODEL'}
-                Material: {job.material_description or 'as shown in sketch'}
-                Model brief: {job.model_brief or 'standard catalog pose'}
-                Background: {job.background_brief or 'clean studio white'}
-                Resolution: {job.resolution or '2K'}
-                Aspect ratio: {job.aspect_ratio or '3:4'}
-
-                Preserve all construction details from the sketch.
-                Render with photorealistic fabric texture and lighting."""
-
-                content_parts = [prompt]
-                response = await asyncio.to_thread(generate_content, model_name, content_parts)
-                api_interaction_id = f"gemini_{job_id}"
-
-                for part in response.parts or []:
-                    if getattr(part, 'inline_data', None) is not None:
-                        image_bytes = part.inline_data.data
-                        break
-                if not image_bytes:
-                    raise Exception("Gemini returned no image")  # same mock fallback as any other failure
-
-            except Exception as gemini_err:
-                # The type only: google-genai errors carry the provider's response body.
-                print(f"[SketchJob] Gemini failed (mock): {type(gemini_err).__name__}")
-                import base64
+            prompt = build_prompt(job, references)
+            model_name = settings.GEMINI_SKETCH_MODEL
+            if not gemini_configured() and not production_rules_apply():
+                # Development/tests only: a placeholder image. Production never takes this path.
+                print(f"[SketchJob] Job {job_id}: Gemini not configured, using the mock image (non-production).")
                 image_bytes = base64.b64decode(
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg=="
                 )
+                image_mime = "image/png"
                 api_interaction_id = f"mock_{job_id}"
+                model_name = "mock"
+            else:
+                # Prompt first, then the images. Anything but an image back (no key, unknown model,
+                # API error, timeout, safety block, no image part) raises GeminiError.
+                image_bytes, image_mime, response_id = await asyncio.to_thread(
+                    generate_image, model_name, prompt, image_parts, f"[SketchJob] Job {job_id}:")
+                api_interaction_id = response_id or f"gemini_{job_id}"
 
             # Step 3: Quality check
             job.status = "quality_check"
@@ -2413,7 +2388,8 @@ async def _process_sketch_job_async(task_self, job_id: int):
             quality_score = 0.91
 
             # Step 4: Store output
-            output_filename = f"sketch_{job_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
+            extension = {"image/jpeg": "jpg", "image/webp": "webp"}.get(image_mime, "png")
+            output_filename = f"sketch_{job_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.{extension}"
             storage_path = storage_service.save_file_bytes(output_filename, image_bytes)
 
             # Register as Asset
@@ -2443,12 +2419,11 @@ async def _process_sketch_job_async(task_self, job_id: int):
             )
             db.add(sketch_output)
 
-            # Register asset version and lineage
+            # Register asset version and lineage: the output derives from each input image that is a
+            # registered asset of this brand (uploads made with the job itself have no asset).
             await _register_asset_version(db, new_asset.id, storage_path)
-            if job.references:
-                for ref in job.references:
-                    if ref.image_path:
-                        await _register_asset_relationship(db, new_asset.id, new_asset.id, "REL-DERIVED-FROM")
+            for source_asset_id in source_asset_ids:
+                await _register_asset_relationship(db, source_asset_id, new_asset.id, "REL-DERIVED-FROM")
 
             job.status = "completed"
             job.progress = 100
@@ -2459,8 +2434,10 @@ async def _process_sketch_job_async(task_self, job_id: int):
 
         except Exception as e:
             print(f"[SketchJob] Job {job_id} failed: {e}")
-            # Retried by Celery until its last attempt; refunded once, only when it finally fails.
-            final = _last_attempt(task_self)
+            # Input and Gemini failures are final (retrying cannot fix them; Gemini's transient
+            # errors were retried inside the request). Anything else is retried by Celery until
+            # its last attempt. Refunded once, only when it finally fails.
+            final = isinstance(e, (InputImageError, GeminiError)) or _last_attempt(task_self)
             await _fail_or_requeue(db, job, "sketch_job", e, final)
             if final:
                 return

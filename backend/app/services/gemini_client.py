@@ -115,12 +115,3 @@ def generate_image(model: str, prompt: str, image_parts: Sequence[dict],
         raise GeminiError("The image was blocked by the image service's safety filters.")
     logger.warning("%s %s returned no image (finish reason %s)", log_prefix, model, finish or "none")
     raise GeminiError("The image service returned no image.")
-
-
-def generate_content(model: str, contents: Sequence) -> object:
-    """A plain generate_content call (Sketch Studio). Raises GeminiError if not configured;
-    SDK errors propagate unchanged so the caller keeps its own handling."""
-    api_key = gemini_api_key()
-    if not api_key:
-        raise GeminiError("Image generation is not configured.")
-    return _client(api_key).models.generate_content(model=model, contents=list(contents))

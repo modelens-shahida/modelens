@@ -15,6 +15,18 @@ def sketch_outside_production(monkeypatch):
     outside production, where it runs as before."""
     from app.config import settings
     monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)  # the worker uses its mock image
+
+
+@pytest.fixture(autouse=True)
+def stored_sketches():
+    """Every sketch/reference image the worker reads is a small PNG."""
+    import base64
+    from app.services.storage import storage_service
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
+    with patch.object(storage_service, "read_file_bytes", return_value=png) as read:
+        yield read
 
 
 @pytest.mark.asyncio
@@ -234,6 +246,8 @@ async def test_process_sketch_job_celery_task_success(db_session: AsyncSession, 
     )
     db_session.add(job)
     await db_session.commit()
+    db_session.add(SketchJobReference(job_id=job.id, reference_type="sketch", image_path="/uploads/handbag.png"))
+    await db_session.commit()
 
     mock_task_self = MagicMock()
 
@@ -283,6 +297,8 @@ async def test_process_sketch_job_celery_task_failure(db_session: AsyncSession, 
     )
     db_session.add(job)
     await db_session.commit()
+    db_session.add(SketchJobReference(job_id=job.id, reference_type="sketch", image_path="/uploads/s.png"))
+    await db_session.commit()
 
     mock_task_self = MagicMock()
     mock_task_self.max_retries = 3
@@ -325,8 +341,11 @@ async def test_process_sketch_job_with_references_in_fresh_session(db_session: A
     brand_id = test_data["brand"].id
     job = SketchJob(user_id=editor_user.id, brand_id=brand_id, status="queued",
                     generation_mode="studio_quality", credits_reserved=5)
-    db_session.add(job)
+    sketch_asset = Asset(brand_id=brand_id, filename="sketch_front.png", storage_path="/uploads/sketch_front.png",
+                         asset_type="image")
+    db_session.add_all([job, sketch_asset])
     await db_session.commit()
+    sketch_asset_id = sketch_asset.id
     db_session.add_all([
         SketchJobReference(job_id=job.id, reference_type="sketch", image_path="/uploads/sketch_front.png"),
         SketchJobReference(job_id=job.id, reference_type="swatch", image_path="/uploads/swatch.png"),
@@ -352,5 +371,5 @@ async def test_process_sketch_job_with_references_in_fresh_session(db_session: A
     rels = (await db_session.execute(
         select(AssetRelationship).where(AssetRelationship.target_asset_id == output.asset_id)
     )).scalars().all()
-    # One lineage row per reference that has an image (existing behaviour: the row points at the output itself).
-    assert [(r.source_asset_id, r.relationship_type) for r in rels] == [(output.asset_id, "REL-DERIVED-FROM")] * 2
+    # The output derives from the input sketch asset (the swatch is an upload without an asset).
+    assert [(r.source_asset_id, r.relationship_type) for r in rels] == [(sketch_asset_id, "REL-DERIVED-FROM")]

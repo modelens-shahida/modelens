@@ -7,7 +7,7 @@ from app.models.db import get_db, User
 from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.services.sketch_service import sketch_service, SKETCH_MODES, FABRIC_TEXTURES, PANTONE_COLORWAYS
 from app.api_docs import error_responses
-from app.services.sketch_availability import SKETCH_DISABLED_RESPONSE, require_sketch_jobs_enabled
+from app.services.sketch_availability import SKETCH_DISABLED_RESPONSE, require_sketch_product_jobs_available
 
 router = APIRouter(prefix="/api/v1/sketch", tags=["Sketch Studio"])
 
@@ -58,8 +58,9 @@ async def list_sketch_modes(
         "least the editor role (else 403); an unknown brand returns 404. `sketch_asset_id` must be an asset of "
         "that brand (else 404). Nothing is queued or charged when the request is rejected.\n"
         "\n"
-        "**Disabled in production** while `SKETCH_JOBS_ENABLED` is off: answers 503 for every caller, "
-        "platform admins included, before anything is queued or charged."
+        "**Disabled in production**: answers 503 for every caller, platform admins included, before anything "
+        "is queued or charged, whatever `SKETCH_JOBS_ENABLED` says. Its worker is a placeholder that writes no "
+        "image; Sketch jobs go through `POST /api/v1/sketch-jobs`."
     ),
     response_description="The sketch job was accepted and queued.",
     operation_id="create_sketch_studio_job",
@@ -67,7 +68,7 @@ async def list_sketch_modes(
 )
 async def create_sketch_job(
     payload: SketchJobRequest,
-    current_user: User = Depends(require_sketch_jobs_enabled),
+    current_user: User = Depends(require_sketch_product_jobs_available),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a sketch-to-product generation job."""

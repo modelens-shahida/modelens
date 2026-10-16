@@ -22,6 +22,8 @@ from app.services.storage import storage_service
 
 BATCH = "/api/v1/ghost-jobs/batch"
 SINGLE = "/api/v1/ghost-jobs"
+GARMENT_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==")
 # Fields the worker (_process_ghost_job_async) reads from the job.
 WORKER_FIELDS = ("user_id", "brand_id", "status", "garment_type", "view", "aspect_ratio", "resolution",
                  "preserve_print", "preserve_seams", "generation_mode", "credits_reserved", "credits_consumed",
@@ -108,7 +110,7 @@ async def test_batch_job_matches_a_single_job_for_the_worker(client, db_session,
     brand_id = test_data["brand"].id
     common = {"resolution": "2K", "garment_type": "top", "view": "back", "aspect_ratio": "4:5",
               "generation_mode": "studio", "product_hint": "linen shirt"}
-    single = await client.post(SINGLE, headers=headers, files={"image": ("shirt.png", b"png-bytes", "image/png")},
+    single = await client.post(SINGLE, headers=headers, files={"image": ("shirt.png", GARMENT_PNG, "image/png")},
                                data={"brand_id": str(brand_id), **common,
                                      "preserve_print": "true", "preserve_seams": "true"})
     assert single.status_code == 201, single.text
@@ -289,7 +291,7 @@ async def test_login_required(client, test_data, garments):
 @pytest.mark.asyncio
 async def test_single_job_still_saves_its_upload(client, db_session, test_data, queued, stored):
     resp = await client.post(SINGLE, headers=test_data["get_headers"]("editor"),
-                             files={"image": ("dress.png", b"png-bytes", "image/png")},
+                             files={"image": ("dress.png", GARMENT_PNG, "image/png")},
                              data={"brand_id": str(test_data["brand"].id), "resolution": "1K"})
     assert resp.status_code == 201, resp.text
     assert resp.json()["credits_reserved"] == 2
@@ -300,8 +302,16 @@ async def test_single_job_still_saves_its_upload(client, db_session, test_data, 
 
 
 @pytest.mark.asyncio
-async def test_single_job_without_image_still_allowed(client, test_data, queued, stored):
+async def test_single_job_without_image_is_rejected(client, db_session, test_data, queued, stored):
+    """Like a batch item, a single job needs its garment image (tests/test_ghost_jobs.py has the cases)."""
+    user_id = test_data["users"]["editor"].id
+    start = (await db_session.execute(select(User.credits).where(User.id == user_id))).scalar_one()
     resp = await client.post(SINGLE, json={"brand_id": test_data["brand"].id, "resolution": "1K"},
                              headers=test_data["get_headers"]("editor"))
-    assert resp.status_code == 201
+    assert resp.status_code == 422
+    assert "garment image is required" in resp.json()["detail"]
     stored.assert_not_called()
+    queued.assert_not_called()
+    assert (await db_session.execute(select(func.count(GhostJob.id)))).scalar() == 0
+    assert (await db_session.execute(select(User.credits).where(User.id == user_id)
+                                     .execution_options(populate_existing=True))).scalar_one() == start

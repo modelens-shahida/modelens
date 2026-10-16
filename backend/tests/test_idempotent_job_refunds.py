@@ -27,7 +27,8 @@ import app.models.db as models
 from app.config import settings
 from app.config_production import check_config
 from app.models.db import (
-    AIJob, Brand, CatalogJob, CatalogJobItem, CreditTransaction, GhostJob, GhostJobAsset, SketchJob, User,
+    AIJob, Brand, CatalogJob, CatalogJobItem, CreditTransaction, GhostJob, GhostJobAsset, SketchJob,
+    SketchJobReference, User,
 )
 from app.services import job_refunds
 from app.services.credits_sync_service import credits_sync_service
@@ -92,6 +93,9 @@ async def _charged_job(db_session, test_data, model, reserved=7, **fields):
     await db_session.commit()
     if model is GhostJob:
         db_session.add(GhostJobAsset(job_id=job.id, image_path="/uploads/garment.png"))
+        await db_session.commit()
+    if model is SketchJob:
+        db_session.add(SketchJobReference(job_id=job.id, reference_type="sketch", image_path="/uploads/sketch.png"))
         await db_session.commit()
     return job.id, editor.id
 
@@ -621,7 +625,8 @@ async def test_sketch_creation_works_outside_production_or_when_enabled(
     sketch_dispatch[0].delay.assert_called_once()
     res = await client.post("/api/v1/sketch/jobs", json={"brand_id": brand_id, "generation_mode": "fast_draft"},
                             headers=owner)
-    assert res.status_code == 202
+    # The ComfyUI placeholder stays off in production even with the flag (tests/test_sketch_multimodal.py)
+    assert res.status_code == (202 if app_env == "development" else 503)
 
 
 @pytest.mark.asyncio

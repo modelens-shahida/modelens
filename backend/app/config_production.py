@@ -51,6 +51,10 @@ def _setting(name: str) -> Optional[str]:
     return os.getenv(name) if value is None else str(value)
 
 
+def _image_model(value: Optional[str]) -> bool:
+    return (value or "").strip() in GEMINI_IMAGE_MODELS
+
+
 def check_config() -> List[Issue]:
     """Every production problem in the current configuration."""
     issues: List[Issue] = []
@@ -73,9 +77,9 @@ def check_config() -> List[Issue]:
         add("TESTING", "is true; test-only routes and shortcuts would be enabled", True)
     if _unset_or_default(gemini_api_key()):  # None when unset, blank or "mock"
         add("GEMINI_API_KEY", "is unset or mock; ghost jobs would fail and be refunded", True)
-    if (settings.GEMINI_GHOST_MODEL or "").strip() not in GEMINI_IMAGE_MODELS:
-        add("GEMINI_GHOST_MODEL", f"is empty or not an image-output model (one of: {', '.join(GEMINI_IMAGE_MODELS)})",
-            True)
+    for name in ("GEMINI_GHOST_MODEL", "GEMINI_SKETCH_MODEL"):
+        if not _image_model(getattr(settings, name)):
+            add(name, f"is empty or not an image-output model (one of: {', '.join(GEMINI_IMAGE_MODELS)})", True)
 
     # --- Warnings: weak or missing, but Railway may not set these ---
     if not _unset_or_default(settings.SECRET_KEY, DEFAULT_SECRET_KEY) \
@@ -88,9 +92,10 @@ def check_config() -> List[Issue]:
         add("SSO_MOCK_MODE", "is on (mock SSO credentials are still refused in production)", False)
     if settings.GHOST_BATCH_ENABLED:
         add("GHOST_BATCH_ENABLED", "is on; no worker processes ghost batches, so their credits stay reserved", False)
-    if settings.SKETCH_JOBS_ENABLED:
-        add("SKETCH_JOBS_ENABLED", "is on; Sketch jobs still send a text-only prompt (no sketch images) to Gemini",
-            False)
+    if settings.SKETCH_JOBS_ENABLED and (_unset_or_default(gemini_api_key())
+                                         or not _image_model(settings.GEMINI_SKETCH_MODEL)):
+        add("SKETCH_JOBS_ENABLED", "is on, but GEMINI_API_KEY or GEMINI_SKETCH_MODEL is not usable; "
+            "Sketch jobs would fail and be refunded", False)
     if settings.COMFYUI_MOCK_MODE:
         add("COMFYUI_MOCK_MODE", "is on; ComfyUI generation is mocked", False)
     if (settings.STORAGE_BACKEND or "").lower() != "s3":

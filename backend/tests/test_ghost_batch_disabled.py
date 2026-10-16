@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from app.config import settings
 from app.config_production import check_config
 from app.middleware.auth import create_access_token, hash_password
-from app.models.db import Brand, CreditTransaction, GhostJob, User
+from app.models.db import Asset, Brand, CreditTransaction, GhostJob, User
 
 BATCH = "/api/v1/ghost/batch"
 STUCK = "/api/v1/ghost/batches/stuck"
@@ -77,6 +77,14 @@ async def stuck_batch(client, test_data, monkeypatch):
     return resp.json()["job_id"]
 
 
+
+async def _garment(db_session, test_data):
+    """A garment image asset of the test brand (single ghost jobs need one); its image_key."""
+    db_session.add(Asset(brand_id=test_data["brand"].id, filename="garment.png", storage_path="/uploads/g.png",
+                         asset_type="image"))
+    await db_session.commit()
+    return "/uploads/g.png"
+
 # ========================== Disabled ==============================
 
 def test_disabled_by_default():
@@ -120,7 +128,9 @@ async def test_documented_as_disabled(client):
 async def test_single_ghost_job_still_reserves_and_queues(client, db_session, test_data, queued):
     user_id = test_data["users"]["editor"].id
     start = (await db_session.execute(select(User.credits).where(User.id == user_id))).scalar_one()
-    resp = await client.post("/api/v1/ghost-jobs", json={"brand_id": test_data["brand"].id, "resolution": "4K"},
+    garment = await _garment(db_session, test_data)
+    resp = await client.post("/api/v1/ghost-jobs", json={"brand_id": test_data["brand"].id, "resolution": "4K",
+                                                         "image_key": garment},
                              headers=test_data["get_headers"]("editor"))
     assert resp.status_code == 201, resp.text
     assert resp.json()["credits_reserved"] == 7
@@ -193,8 +203,10 @@ async def test_admin_complete_still_finalizes_a_batch(client, db_session, test_d
 async def test_stuck_listing_shows_pending_batches_and_changes_nothing(
         client, db_session, test_data, stuck_batch, platform_admin, queued):
     # A single ghost job is not a batch and must not be listed.
-    await client.post("/api/v1/ghost-jobs", json={"brand_id": test_data["brand"].id},
-                      headers=test_data["get_headers"]("editor"))
+    resp = await client.post("/api/v1/ghost-jobs", json={"brand_id": test_data["brand"].id,
+                                                         "image_key": await _garment(db_session, test_data)},
+                             headers=test_data["get_headers"]("editor"))
+    assert resp.status_code == 201, resp.text
     before = await _snapshot(db_session)
     resp = await client.get(STUCK, headers=platform_admin)
     assert resp.status_code == 200

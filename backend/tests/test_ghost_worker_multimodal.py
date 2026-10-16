@@ -26,8 +26,8 @@ from sqlalchemy import select
 import app.models.db as models
 from app.config import settings
 from app.models.db import Asset, AssetRelationship, GhostJob, GhostJobAsset, GhostOutput, User
-from app.services import ghost_inputs
-from app.services.ghost_inputs import GhostInputError, load_job_images, prepare_image, storage_key
+from app.services import job_images
+from app.services.job_images import InputImageError, load_job_images, prepare_image, storage_key
 from app.services.storage import storage_service
 from app.worker import _process_ghost_job_async
 
@@ -188,7 +188,7 @@ async def test_mime_type_comes_from_the_image_not_the_filename(db_session, test_
 
 @pytest.mark.asyncio
 async def test_s3_paths_are_read_by_key(db_session, test_data, store, gemini, monkeypatch):
-    monkeypatch.setattr(ghost_inputs.settings, "AWS_STORAGE_BUCKET_NAME", "modelens-test-bucket")
+    monkeypatch.setattr(job_images.settings, "AWS_STORAGE_BUCKET_NAME", "modelens-test-bucket")
     store["brand/garment.png"] = _image_bytes("PNG")
     job_id = await _job(db_session, test_data, "s3://modelens-test-bucket/brand/garment.png")
     job, _ = await _run(db_session, job_id)
@@ -230,8 +230,8 @@ async def test_oversized_image_is_downscaled_keeping_aspect_ratio(db_session, te
     job, _ = await _run(db_session, job_id)
     assert job.status == "completed"
     (part,) = _sent(gemini)[1]
-    assert _decode(part["data"]).size == (ghost_inputs.MAX_DIMENSION, 768)
-    assert len(part["data"]) <= ghost_inputs.MAX_IMAGE_BYTES
+    assert _decode(part["data"]).size == (job_images.MAX_DIMENSION, 768)
+    assert len(part["data"]) <= job_images.MAX_IMAGE_BYTES
 
 
 def test_image_over_the_byte_limit_is_re_encoded_smaller():
@@ -244,7 +244,7 @@ def test_image_over_the_byte_limit_is_re_encoded_smaller():
 
 
 def test_a_jobs_images_share_the_request_budget(monkeypatch):
-    monkeypatch.setattr(ghost_inputs, "MAX_REQUEST_IMAGE_BYTES", 60_000)
+    monkeypatch.setattr(job_images, "MAX_REQUEST_IMAGE_BYTES", 60_000)
     noisy = _image_bytes("PNG", size=(400, 400), noise=True)
     links = [types.SimpleNamespace(id=i, image_path=f"/uploads/{i}.png") for i in range(3)]
     parts = load_job_images(links, read=lambda key: noisy)
@@ -254,8 +254,8 @@ def test_a_jobs_images_share_the_request_budget(monkeypatch):
 
 def test_limits_fit_the_gemini_inline_request_limit():
     # Inline bytes are base64-encoded; Gemini caps a whole inline request at 20 MB.
-    assert ghost_inputs.MAX_REQUEST_IMAGE_BYTES * 4 / 3 < 19 * 1024 * 1024
-    assert ghost_inputs.MAX_IMAGE_BYTES <= ghost_inputs.MAX_REQUEST_IMAGE_BYTES
+    assert job_images.MAX_REQUEST_IMAGE_BYTES * 4 / 3 < 19 * 1024 * 1024
+    assert job_images.MAX_IMAGE_BYTES <= job_images.MAX_REQUEST_IMAGE_BYTES
 
 
 def test_rotated_photos_are_sent_upright():
@@ -271,7 +271,7 @@ def test_rotated_photos_are_sent_upright():
 @pytest.mark.parametrize("path", ["https://example.com/garment.png", "s3://someone-elses-bucket/g.png",
                                   "/uploads/../app/config.py", "/uploads/", "garment.png"])
 def test_only_our_own_storage_paths_are_read(path):
-    with pytest.raises(GhostInputError):
+    with pytest.raises(InputImageError):
         storage_key(path)
 
 
