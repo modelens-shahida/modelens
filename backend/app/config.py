@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     # whatever this says: its worker produces no image.
     SKETCH_JOBS_ENABLED: bool = Field(default=False)
 
+    # Catalog Studio jobs (POST /api/v1/catalog-jobs, its /retry and item /retry). Off (default):
+    # in production those answer 503 before anything is reserved, written or queued, and the
+    # worker fails (and refunds) queued Catalog jobs without calling FASHN. Outside production
+    # Catalog works either way (app/services/catalog_availability.py).
+    CATALOG_JOBS_ENABLED: bool = Field(default=False)
+
     # Database Connection Pool
     DB_POOL_SIZE: int = Field(default=10)
     DB_MAX_OVERFLOW: int = Field(default=20)
@@ -175,6 +181,13 @@ def app_env() -> str:
 def is_production() -> bool:
     """APP_ENV says production."""
     return app_env() in PRODUCTION_ENVS
+
+
+def catalog_fashn_key() -> Optional[str]:
+    """The FASHN key the Catalog worker uses: None when unset or "mock". Settings declares no
+    FASHN_API_KEY, so this is None today and the Catalog worker cannot reach FASHN."""
+    key = getattr(settings, "FASHN_API_KEY", None)
+    return None if not key or key == "mock" else key
 
 
 def production_rules_apply() -> bool:

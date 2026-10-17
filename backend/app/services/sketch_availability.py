@@ -13,39 +13,24 @@ would charge for an empty asset.
 
 Outside production (and in tests) Sketch works as before.
 """
-from fastapi import Depends, HTTPException, status
-
-from app.api_docs import ErrorResponse
 from app.config import production_rules_apply, settings
-from app.middleware.auth import get_current_user
-from app.models.db import User
+from app.services.studio_availability import blocked_in_production, require_available, unavailable_response
 
 SKETCH_DISABLED = (
     "Sketch Studio is undergoing scheduled multimodal pipeline upgrades. Please check back shortly."
 )
-SKETCH_DISABLED_RESPONSE = {
-    503: {
-        "model": ErrorResponse,
-        "description": "Sketch Studio is disabled in production (SKETCH_JOBS_ENABLED is off); "
-                       "nothing was charged, created or queued.",
-        "content": {"application/json": {"example": {"detail": SKETCH_DISABLED}}},
-    },
-}
+SKETCH_DISABLED_RESPONSE = unavailable_response(
+    "Sketch Studio is disabled in production (SKETCH_JOBS_ENABLED is off); nothing was charged, created or queued.",
+    SKETCH_DISABLED,
+)
 
 
 def sketch_jobs_blocked() -> bool:
-    return production_rules_apply() and not settings.SKETCH_JOBS_ENABLED
+    return blocked_in_production(settings.SKETCH_JOBS_ENABLED)
 
 
-async def require_sketch_jobs_enabled(current_user: User = Depends(get_current_user)) -> User:
-    """503 while Sketch is disabled. Runs after login and before the body is read."""
-    if sketch_jobs_blocked():
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=SKETCH_DISABLED)
-    return current_user
+# 503 while Sketch is disabled. Runs after login and before the body is read.
+require_sketch_jobs_enabled = require_available(lambda: sketch_jobs_blocked(), SKETCH_DISABLED)
 
-
-async def require_sketch_product_jobs_available(current_user: User = Depends(get_current_user)) -> User:
-    """503 in production for the ComfyUI sketch-to-product placeholder, whatever SKETCH_JOBS_ENABLED says."""
-    if production_rules_apply():
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=SKETCH_DISABLED)
-    return current_user
+# 503 in production for the ComfyUI sketch-to-product placeholder, whatever SKETCH_JOBS_ENABLED says.
+require_sketch_product_jobs_available = require_available(lambda: production_rules_apply(), SKETCH_DISABLED)

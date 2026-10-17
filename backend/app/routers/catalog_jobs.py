@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Brand, BrandMember
 from app.middleware.auth import check_brand_role, get_current_user
+from app.services.catalog_availability import CATALOG_DISABLED_RESPONSE, require_catalog_jobs_enabled
 from app.worker import process_catalog_job, process_catalog_item
 from app.services.storage import storage_service
 import uuid
@@ -71,15 +72,18 @@ async def get_marketplaces():
         f"or content type) of at most {MAX_UPLOAD_BYTES // (1024 * 1024)} MB. JSON `products[].image_path` must "
         "be the `storage_path` of an image asset of the same brand; anything else (missing, external URLs, other "
         "buckets, `..`, another brand's file) is reported as not found. Any bad image is a 422 naming the "
-        "product index, before anything is charged, stored, written or queued."
+        "product index, before anything is charged, stored, written or queued.\n"
+        "\n"
+        "**Disabled in production** while `CATALOG_JOBS_ENABLED` is off: answers 503 for every caller, "
+        "before anything is reserved, written, uploaded or queued."
     ),
     response_description="The created catalog job with reserved credits.",
     operation_id="create_catalog_job",
-    responses=error_responses(400, 401, 402, 403, 404, 422),
+    responses={**error_responses(400, 401, 402, 403, 404, 422), **CATALOG_DISABLED_RESPONSE},
 )
 async def create_catalog_job(
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_catalog_jobs_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new catalog batch job supporting both JSON and FormData."""
@@ -292,14 +296,14 @@ async def cancel_catalog_job(
 @router.post(
     "/{job_id}/retry",
     summary="Retry a catalog job",
-    description="Retry a failed catalog job.",
+    description="Retry a failed catalog job. Disabled in production (503) while `CATALOG_JOBS_ENABLED` is off.",
     response_description="The catalog job re-queued for processing.",
     operation_id="retry_catalog_job",
-    responses=error_responses(401, 404, 409, 422),
+    responses={**error_responses(401, 404, 409, 422), **CATALOG_DISABLED_RESPONSE},
 )
 async def retry_catalog_job(
     job_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_catalog_jobs_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed catalog job."""
@@ -338,15 +342,15 @@ async def retry_catalog_job(
 @router.post(
     "/{job_id}/items/{item_id}/retry",
     summary="Retry a catalog item",
-    description="Retry a failed catalog item.",
+    description="Retry a failed catalog item. Disabled in production (503) while `CATALOG_JOBS_ENABLED` is off.",
     response_description="The catalog item re-queued for processing.",
     operation_id="retry_catalog_item",
-    responses=error_responses(401, 404, 409, 422),
+    responses={**error_responses(401, 404, 409, 422), **CATALOG_DISABLED_RESPONSE},
 )
 async def retry_catalog_item(
     job_id: int,
     item_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_catalog_jobs_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed catalog item."""

@@ -16,7 +16,7 @@ from typing import List, Optional, Tuple
 
 from app.config import (
     DEFAULT_INTERNAL_CALLBACK_SECRET, DEFAULT_SECRET_KEY, DEFAULT_STRIPE_SECRET_KEY, DEFAULT_STRIPE_WEBHOOK_SECRET,
-    app_env, is_production, production_rules_apply, settings,
+    app_env, catalog_fashn_key, is_production, production_rules_apply, settings,
 )
 from app.services.gemini_client import GEMINI_IMAGE_MODELS, gemini_api_key
 
@@ -98,6 +98,9 @@ def check_config() -> List[Issue]:
         add("SKETCH_JOBS_ENABLED", "is on, but GEMINI_API_KEY, GEMINI_SKETCH_MODEL or GEMINI_SKETCH_FAST_MODEL "
             "is not usable; "
             "Sketch jobs would fail and be refunded", False)
+    if settings.CATALOG_JOBS_ENABLED and not catalog_fashn_key():
+        add("CATALOG_JOBS_ENABLED", "is on, but the Catalog worker has no FASHN key (FASHN_API_KEY is not a "
+            "declared setting); Catalog items would fail and be refunded", False)
     if settings.COMFYUI_MOCK_MODE:
         add("COMFYUI_MOCK_MODE", "is on; ComfyUI generation is mocked", False)
     if (settings.STORAGE_BACKEND or "").lower() != "s3":

@@ -258,6 +258,12 @@ class _SettingsWithFashnKey:
         return getattr(settings, name)
 
 
+@pytest.fixture(autouse=True)
+def outside_production(monkeypatch):
+    """Catalog is disabled in production (tests/test_catalog_disabled.py); these cover it elsewhere."""
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+
+
 @pytest.fixture
 def fashn(monkeypatch):
     """A FASHN key and a fake HTTP client: every request is recorded, none is sent."""
