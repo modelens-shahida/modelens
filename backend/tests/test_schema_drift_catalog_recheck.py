@@ -1,26 +1,38 @@
-"""Migration schema_drift_001.
+"""Migration schema_drift_001 and the Catalog worker's path re-check.
 
-On a database built by the migration chain (the model columns it
+Migration: on a database built by the migration chain (the model columns it
 never created are missing) it adds exactly the model's columns and indexes; on
 a database that already has them (production) it changes nothing; downgrade
 removes only what the upgrade added. Runs against SQLite; the same checks were
 run by hand against Postgres 16 (see the PR).
 
-No network: SQLite only.
+Catalog worker: before an item's product_image_path is sent to FASHN (first
+attempts, job retries, item retries, jobs created before the create-time
+checks) it must pass input_paths.path_problem. A bad path fails the item with a
+message that does not contain the path, refunds it once and never calls FASHN.
+
+Everything is mocked: no network, fake keys only.
 """
 import importlib.util
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+import app.models.db as models
+from app.config import settings
 from app.migration_guard import table_differences
-from app.models.db import Base
+from app.models.db import Asset, Base, CatalogJob, CatalogJobItem, CreditTransaction, User
+from app.worker import (
+    _process_catalog_item_retry_async, _process_catalog_job_async, _process_single_catalog_item_async,
+)
 
-pytestmark = pytest.mark.integration  # runs a migration
+pytestmark = pytest.mark.integration  # runs a migration and worker task bodies
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIGRATION = os.path.join(BACKEND, "alembic", "versions", "schema_drift_001.py")
@@ -222,3 +234,193 @@ def test_upgrade_twice_adds_nothing_the_second_time(chain_db):
     once, added = _schema(chain_db), _added(chain_db)
     _run(chain_db, "upgrade")
     assert (_schema(chain_db), _added(chain_db)) == (once, added)
+
+
+# ========================== Catalog worker: path re-check before FASHN =========
+
+MINE = "/uploads/brand/catalog-product.png"
+THEIRS = "/uploads/other/catalog-product.png"
+BAD_PATHS = {
+    "other brand": THEIRS,
+    "external": "https://images.example.net/product.png",
+    "traversal": "/uploads/../etc/passwd",
+    "foreign bucket": "s3://someone-elses-bucket/product.png",
+    "missing": None,
+}
+
+
+class _SettingsWithFashnKey:
+    """The real settings plus a FASHN key. Settings declares no FASHN_API_KEY today, so without
+    this the worker never reaches its FASHN request (it reads the key with getattr)."""
+    FASHN_API_KEY = "fashn-test-key"
+
+    def __getattr__(self, name):
+        return getattr(settings, name)
+
+
+@pytest.fixture
+def fashn(monkeypatch):
+    """A FASHN key and a fake HTTP client: every request is recorded, none is sent."""
+    monkeypatch.setattr("app.config.settings", _SettingsWithFashnKey())
+    response = MagicMock()
+    response.json.return_value = {"id": "fashn-run-1", "output": ["https://cdn.fashn.ai/out/1.png"]}
+    client = MagicMock()
+    client.post = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    with patch("httpx.AsyncClient", return_value=client):
+        yield client.post
+
+
+async def _user_credits(db_session, user_id):
+    return (await db_session.execute(select(User.credits).where(User.id == user_id)
+                                     .execution_options(populate_existing=True))).scalar_one()
+
+
+async def _reload(db_session, model, row_id):
+    return (await db_session.execute(select(model).where(model.id == row_id)
+                                     .execution_options(populate_existing=True))).scalar_one()
+
+
+async def _refunds(db_session):
+    return (await db_session.execute(select(CreditTransaction).where(
+        CreditTransaction.transaction_type == "refund", CreditTransaction.reference_type == "catalog_job",
+    ).execution_options(populate_existing=True))).scalars().all()
+
+
+async def _catalog_job(db_session, test_data, path, item_status="queued", reserved=5):
+    """A charged catalog job with one item, written directly as jobs created before the create-time
+    checks (or with a path changed since) could be. Another brand owns THEIRS; the brand owns MINE."""
+    editor = test_data["users"]["editor"]
+    user = await db_session.get(User, editor.id)
+    user.credits = (user.credits or 0) - reserved
+    db_session.add_all([
+        Asset(brand_id=test_data["brand"].id, filename="mine.png", storage_path=MINE, asset_type="image"),
+        Asset(brand_id=test_data["other_brand"].id, filename="theirs.png", storage_path=THEIRS, asset_type="image"),
+    ])
+    job = CatalogJob(user_id=editor.id, brand_id=test_data["brand"].id, status="queued", total_items=1,
+                     generation_mode="studio_quality", credits_reserved=reserved)
+    db_session.add(job)
+    await db_session.commit()
+    item = CatalogJobItem(job_id=job.id, sku_tag="SKU-1", status=item_status, product_image_path=path)
+    db_session.add(item)
+    await db_session.commit()
+    return job.id, item.id, editor.id
+
+
+async def _work(db_session, worker, *args):
+    db_session.expunge_all()
+    with patch("app.worker.async_session_maker", models.async_session_maker):
+        await worker(*args)
+
+
+@pytest.mark.parametrize("path", list(BAD_PATHS.values()), ids=list(BAD_PATHS))
+@pytest.mark.asyncio
+async def test_bad_path_fails_the_item_refunds_once_and_never_reaches_fashn(
+        db_session, test_data, fashn, capsys, path):
+    job_id, item_id, user_id = await _catalog_job(db_session, test_data, path)
+    start = await _user_credits(db_session, user_id)
+
+    await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
+
+    fashn.assert_not_called()
+    item = await _reload(db_session, CatalogJobItem, item_id)
+    assert item.status == "failed" and item.output_url is None
+    assert item.error_message in ("Product image is not stored in ModeLens storage.",
+                                  "Product image is not stored in this brand's ModeLens storage.")
+    job = await _reload(db_session, CatalogJob, job_id)
+    assert (job.status, job.completed_items, job.failed_items, job.credits_consumed) == ("failed", 0, 1, 0)
+    assert await _user_credits(db_session, user_id) == start + 5
+    assert [r.refund_key for r in await _refunds(db_session)] == [f"catalog_job:{job_id}:item:{item_id}"]
+    if path:
+        assert path not in capsys.readouterr().out
+        assert path not in item.error_message
+
+
+@pytest.mark.asyncio
+async def test_valid_path_is_still_sent_to_fashn(db_session, test_data, fashn):
+    job_id, item_id, user_id = await _catalog_job(db_session, test_data, MINE)
+    start = await _user_credits(db_session, user_id)
+
+    await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
+
+    fashn.assert_called_once()
+    assert fashn.call_args.kwargs["json"]["inputs"]["product_image"] == MINE
+    item = await _reload(db_session, CatalogJobItem, item_id)
+    assert (item.status, item.output_url, item.provider_job_id) == (
+        "qa_passed", "https://cdn.fashn.ai/out/1.png", "fashn-run-1")
+    assert (await _reload(db_session, CatalogJob, job_id)).status == "completed"
+    assert await _user_credits(db_session, user_id) == start
+    assert await _refunds(db_session) == []
+
+
+@pytest.mark.asyncio
+async def test_job_retry_of_an_old_job_with_a_bad_path_is_blocked_and_not_refunded_twice(
+        client, db_session, test_data, fashn):
+    job_id, item_id, user_id = await _catalog_job(db_session, test_data, THEIRS)
+    start = await _user_credits(db_session, user_id)
+    await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
+    assert await _user_credits(db_session, user_id) == start + 5
+
+    with patch("app.routers.catalog_jobs.process_catalog_job.delay") as delay:
+        res = await client.post(f"/api/v1/catalog-jobs/{job_id}/retry", headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 200 and delay.called
+    await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
+
+    fashn.assert_not_called()
+    assert (await _reload(db_session, CatalogJobItem, item_id)).status == "failed"
+    assert await _user_credits(db_session, user_id) == start + 5
+    assert len(await _refunds(db_session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_item_retry_of_an_old_job_with_a_bad_path_is_blocked(client, db_session, test_data, fashn, capsys):
+    # Failed before the create-time checks existed and never refunded: the retry fails it, refunds it once.
+    job_id, item_id, user_id = await _catalog_job(db_session, test_data, "/uploads/../secrets/x.png",
+                                                  item_status="failed")
+    job = await db_session.get(CatalogJob, job_id)
+    job.status, job.failed_items = "failed", 1
+    await db_session.commit()
+    start = await _user_credits(db_session, user_id)
+
+    for _ in range(2):  # a second retry (or a redelivered message) changes nothing more
+        with patch("app.routers.catalog_jobs.process_catalog_item.delay") as delay:
+            res = await client.post(f"/api/v1/catalog-jobs/{job_id}/items/{item_id}/retry",
+                                    headers=test_data["get_headers"]("editor"))
+        assert res.status_code == 200 and delay.called
+        await _work(db_session, _process_catalog_item_retry_async, item_id)
+
+    fashn.assert_not_called()
+    item = await _reload(db_session, CatalogJobItem, item_id)
+    assert (item.status, item.output_url) == ("failed", None)
+    assert item.error_message == "Product image is not stored in ModeLens storage."
+    job = await _reload(db_session, CatalogJob, job_id)
+    assert (job.completed_items, job.failed_items) == (0, 1)
+    assert await _user_credits(db_session, user_id) == start + 5
+    assert len(await _refunds(db_session)) == 1
+    assert "secrets" not in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_item_retry_with_a_valid_path_still_runs(db_session, test_data, fashn):
+    job_id, item_id, _ = await _catalog_job(db_session, test_data, MINE, item_status="queued")
+    job = await db_session.get(CatalogJob, job_id)
+    job.failed_items = 1
+    await db_session.commit()
+    await _work(db_session, _process_catalog_item_retry_async, item_id)
+    assert (await _reload(db_session, CatalogJobItem, item_id)).status == "qa_passed"
+
+
+@pytest.mark.asyncio
+async def test_batch_single_item_task_blocks_a_bad_path_without_a_retry(db_session, test_data, fashn):
+    job_id, item_id, user_id = await _catalog_job(db_session, test_data, THEIRS)
+    start = await _user_credits(db_session, user_id)
+    task = MagicMock()
+    for _ in range(2):
+        await _work(db_session, _process_single_catalog_item_async, task, item_id, job_id)
+    task.retry.assert_not_called()
+    fashn.assert_not_called()
+    item = await _reload(db_session, CatalogJobItem, item_id)
+    assert (item.status, item.output_url) == ("failed", None)
+    assert await _user_credits(db_session, user_id) == start + 5
+    assert len(await _refunds(db_session)) == 1
