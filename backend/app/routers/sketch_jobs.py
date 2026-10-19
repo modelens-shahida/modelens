@@ -8,7 +8,7 @@ from app.models.db import get_db, User, SketchJob, SketchJobReference, SketchOut
 from app.middleware.auth import check_brand_role, get_current_user
 from app.worker import process_sketch_job
 from app.api_docs import error_responses
-from app.services.job_access import require_readable
+from app.services.job_access import require_readable, require_writable
 from app.services.job_refunds import refund_job
 from app.services.sketch_availability import SKETCH_DISABLED_RESPONSE, require_sketch_jobs_enabled
 from app.routers.body_parsing import parse_body, read_form_or_json
@@ -262,10 +262,10 @@ async def get_sketch_job(
 @router.post(
     "/{job_id}/cancel",
     summary="Cancel a sketch job",
-    description="Cancel active/queued sketch job and refund credits.",
+    description="Cancel active/queued sketch job and refund credits. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The cancelled job; reserved credits are refunded.",
     operation_id="cancel_sketch_job",
-    responses=error_responses(401, 404, 409, 422),
+    responses=error_responses(401, 403, 404, 409, 422),
 )
 async def cancel_sketch_job(
     job_id: int,
@@ -275,12 +275,10 @@ async def cancel_sketch_job(
     """Cancel active/queued sketch job and refund credits."""
     # Locked: a second cancel or the worker's failure handler waits, then sees the new status.
     result = await db.execute(
-        select(SketchJob).where(SketchJob.id == job_id, SketchJob.user_id == current_user.id)
+        select(SketchJob).where(SketchJob.id == job_id)
         .with_for_update().execution_options(populate_existing=True)
     )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sketch job not found.")
+    job = await require_writable(db, current_user, result.scalars().first(), "Sketch job not found.")
     if job.status in ("completed", "failed", "cancelled"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot cancel job with status: {job.status}")
 
@@ -294,10 +292,10 @@ async def cancel_sketch_job(
 @router.post(
     "/{job_id}/retry",
     summary="Retry a sketch job",
-    description="Retry a failed sketch job. Disabled in production (503) while `SKETCH_JOBS_ENABLED` is off.",
+    description="Retry a failed sketch job. Disabled in production (503) while `SKETCH_JOBS_ENABLED` is off. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The sketch job re-queued for processing.",
     operation_id="retry_sketch_job",
-    responses={**error_responses(401, 404, 409, 422), **SKETCH_DISABLED_RESPONSE},
+    responses={**error_responses(401, 403, 404, 409, 422), **SKETCH_DISABLED_RESPONSE},
 )
 async def retry_sketch_job(
     job_id: int,
@@ -305,12 +303,8 @@ async def retry_sketch_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed sketch job."""
-    result = await db.execute(
-        select(SketchJob).where(SketchJob.id == job_id, SketchJob.user_id == current_user.id)
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sketch job not found.")
+    result = await db.execute(select(SketchJob).where(SketchJob.id == job_id))
+    job = await require_writable(db, current_user, result.scalars().first(), "Sketch job not found.")
     if job.status != "failed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot retry job with status: {job.status}")
 

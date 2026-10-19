@@ -8,7 +8,7 @@ import asyncio
 import logging
 
 from app.models.db import get_db, User, Brand, BrandMember, async_session_maker
-from app.middleware.auth import decode_token_subject, get_current_user, get_user_by_email
+from app.middleware.auth import decode_token_subject, get_current_user, get_user_by_email, require_platform_admin
 from app.services.generation_events import generation_events, GenerationEvent, GENERATION_STEPS
 from app.api_docs import error_responses
 from app.services.job_access import is_platform_admin, job_has_brand, stream_job
@@ -242,34 +242,45 @@ async def get_generation_steps(
 @router.post(
     "/generation/{job_id}/emit",
     summary="Emit a generation event",
-    description="Emit a generation event manually (internal/admin use).",
+    description=(
+        "Emit a generation event manually, for debugging. Platform admins/owners only (`users.role`); everyone "
+        "else gets 403. Workers publish their events directly, not through this route. The job must exist (a "
+        "catalog job uuid, production id or ghost batch uuid, else 404) and the event is published only to that "
+        "job's own brand channel; a `brand_id` that is not the job's brand is a 422."
+    ),
     response_description="Confirmation that the event was published.",
     operation_id="emit_generation_event",
-    responses=error_responses(401, 403, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def emit_generation_event(
     job_id: str,
     event: str,
-    brand_id: int,
+    brand_id: Optional[int] = None,
     step: Optional[str] = None,
     percent: Optional[int] = None,
     reason: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Emit a generation event manually (internal/admin use)."""
-    has_access = await _verify_brand_access(current_user.id, brand_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this brand.")
+    """Emit a generation event manually (platform admins, debugging)."""
+    job = await stream_job(db, current_user, job_id)
+    if job is None or job.brand_id is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if brand_id is not None and brand_id != job.brand_id:
+        raise HTTPException(status_code=422, detail="brand_id is not the job's brand.")
+    try:
+        generation_event = GenerationEvent(event)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Unknown event: {event}")
 
     await generation_events.publish(
-        brand_id=brand_id,
+        brand_id=job.brand_id,  # the job's own channel, never one chosen by the caller
         job_id=job_id,
-        event=GenerationEvent(event),
+        event=generation_event,
         data={
             "step": step,
             "percent": percent or 0,
             "reason": reason,
         }
     )
-    return {"status": "published", "event": event, "job_id": job_id}
+    return {"status": "published", "event": event, "job_id": job_id, "brand_id": job.brand_id}

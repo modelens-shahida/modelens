@@ -19,7 +19,10 @@ from app.services.pipeline_hardening import (
     is_retryable_error,
 )
 from app.api_docs import error_responses, limit_query
-from app.services.job_access import catalog_job_has_brand, readable_brand_ids, require_readable
+from app.services.job_access import catalog_job_has_brand, readable_brand_ids, require_readable, require_writable
+
+# Moving a job to the DLQ is terminal and refunds it: more than an editor's cancel.
+DLQ_ROLE = "admin"
 
 router = APIRouter(prefix="/api/v1", tags=["Pipeline Hardening"])
 
@@ -32,7 +35,7 @@ class CancelJobRequest(BaseModel):
 
 class DLQRouteRequest(BaseModel):
     error: str
-    brand_id: int
+    brand_id: Optional[int] = None  # ignored: the job's own brand is used
 
 
 # ========================== Helpers ==============================
@@ -58,7 +61,11 @@ async def get_job_by_id(job_id: str, db: AsyncSession):
 @router.post(
     "/generate/{job_id}/cancel",
     summary="Cancel a generation job",
-    description="Cancel a generation job with immediate credit refund.",
+    description=(
+        "Cancel a generation job with immediate credit refund (at most once). Needs at least the editor role in "
+        "the job's brand (platform admins: any job; a job without a brand: its creator). Unknown ids and other "
+        "brands' jobs get the same 404; a member with a lower role gets 403."
+    ),
     response_description="The cancelled job; reserved credits are refunded.",
     operation_id="cancel_generation_job",
     responses=error_responses(400, 401, 403, 404, 422),
@@ -70,19 +77,13 @@ async def cancel_generation_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Cancel a generation job with immediate credit refund."""
-    job = await get_job_by_id(job_id, db)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
-
-    # Verify ownership
-    if job.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to cancel this job.")
-
-    brand_id = getattr(current_user, 'brand_id', None) or getattr(job, 'brand_id', None) or 1
+    # Editors of the job's brand (platform admins: any job); the refund is at most once
+    # (credits_sync_service.refund_credits -> job_refunds), however often this is called.
+    job = await require_writable(db, current_user, await get_job_by_id(job_id, db), "Job not found.")
 
     result = await pipeline_hardening.cancel_job(
         job=job,
-        brand_id=brand_id,
+        brand_id=job.brand_id,
         user_id=current_user.id,
         db=db,
         reason=payload.reason,
@@ -135,10 +136,15 @@ async def get_job_lifecycle_status(
 @router.post(
     "/generate/{job_id}/dlq",
     summary="Move a job to the dead-letter queue",
-    description="Route an unrecoverable job to Dead Letter Queue.",
+    description=(
+        "Route an unrecoverable job to Dead Letter Queue, refunding it (at most once). Needs the admin or owner "
+        "role in the job's brand (platform admins: any job; a job without a brand: its creator). Unknown ids and "
+        "other brands' jobs get the same 404; a member with a lower role gets 403. `brand_id` in the body is "
+        "ignored: the job's own brand is used."
+    ),
     response_description="The job routed to the DLQ.",
     operation_id="route_job_to_dlq",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def route_job_to_dlq(
     job_id: str,
@@ -147,15 +153,15 @@ async def route_job_to_dlq(
     db: AsyncSession = Depends(get_db),
 ):
     """Route an unrecoverable job to Dead Letter Queue."""
-    job = await get_job_by_id(job_id, db)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
+    # Terminal and refunds the job: brand admins/owners of the job's brand (platform admins: any).
+    job = await require_writable(db, current_user, await get_job_by_id(job_id, db), "Job not found.",
+                                 minimum_role=DLQ_ROLE)
 
     result = await pipeline_hardening.route_to_dlq(
         job=job,
         error=payload.error,
         db=db,
-        brand_id=payload.brand_id,
+        brand_id=job.brand_id,  # the job's own brand, whatever the request says
     )
 
     return result

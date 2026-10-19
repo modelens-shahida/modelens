@@ -1,4 +1,5 @@
-"""Who may read a job (status, items, outputs, exports, progress streams).
+"""Who may read or change a job (status, items, outputs, exports, progress streams; cancel, retry,
+DLQ, QA review, events).
 
 One rule for every studio and pipeline:
 
@@ -13,6 +14,10 @@ One rule for every studio and pipeline:
 
 A job the caller may not read is reported exactly like an unknown id (the
 route's own 404 message), never 403, so ids cannot be probed.
+
+Changing a job (``require_writable``) needs at least the editor role in its
+brand (some routes ask for more), or platform admin; a brandless job only its
+creator. A member below that role gets 403.
 """
 from typing import Optional, Set
 
@@ -65,6 +70,34 @@ async def require_readable(db, user: User, job, not_found: str, *, has_brand: Op
         if await can_read_job(db, user, job.brand_id, job.user_id, has_brand):
             return job
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found)
+
+
+WRITE_ROLE = "editor"
+
+
+async def require_writable(db, user: User, job, not_found: str, *, minimum_role: str = WRITE_ROLE):
+    """``job`` when ``user`` may change it (cancel, retry, review, ...); otherwise an error.
+
+    Platform admins may change any job. Otherwise the caller must be able to read it (the read
+    rule above: unknown ids, other brands' jobs and other users' brandless jobs are the same 404,
+    ``not_found``) and, for a job with a brand, have at least ``minimum_role`` in it: a member with
+    a lower role gets 403 (they can already see the job, so nothing is revealed)."""
+    job = await require_readable(db, user, job, not_found)
+    if is_platform_admin(user) or not job_has_brand(job):
+        return job  # a brandless job readable by this user is their own
+    await check_brand_role(job.brand_id, user, db, minimum_role=minimum_role)
+    return job
+
+
+async def require_brand_writable(db, user: User, brand_id: Optional[int], not_found: str, *,
+                                 minimum_role: str = WRITE_ROLE) -> None:
+    """The same rule for something that belongs to a brand but is not a job (an asset, a QA
+    evaluation): 404 unless a member or platform admin, 403 below ``minimum_role``."""
+    if is_platform_admin(user):
+        return
+    if brand_id is None or not await can_read_job(db, user, brand_id, None):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found)
+    await check_brand_role(brand_id, user, db, minimum_role=minimum_role)
 
 
 async def readable_brand_ids(db, user: User) -> Optional[Set[int]]:

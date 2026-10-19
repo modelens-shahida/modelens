@@ -2,8 +2,12 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response
 import re
 from fastapi.responses import JSONResponse
 from httpx import AsyncClient, ConnectError, TimeoutException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.middleware.auth import get_current_user, require_platform_admin
-from app.models.db import User
+from app.models.db import CreditTransaction, User, get_db
+from app.services.job_access import require_brand_writable
 from app.config import settings
 from app.api_docs import ErrorResponse, error_responses
 
@@ -229,9 +233,34 @@ async def proxy_generations(
     path: str,
     request: Request,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Proxy all generation requests to NestJS templates service."""
+    cancel = GENERATION_CANCEL.fullmatch(path.strip("/"))
+    if request.method == "POST" and cancel:
+        await _check_generation_cancel(db, current_user, cancel.group(1))
     return await _proxy_request(request, f"v1/generations/{path}", current_user)
+
+
+# POST /api/v1/generations/{id}/cancel: checked here before it reaches NestJS.
+GENERATION_CANCEL = re.compile(r"([^/]+)/cancel")
+GENERATION_NOT_FOUND = "Generation not found."
+
+
+async def _check_generation_cancel(db: AsyncSession, user: User, generation_id: str) -> None:
+    """Editors and above of the generation's brand (platform admins: any) may cancel it.
+
+    The brand is that of the generation's credit reservation (credit_transactions,
+    reference_id = generation id), the ledger row NestJS settles through the internal
+    complete/fail callbacks. A generation without one, or of a brand the caller is not in,
+    gets the same 404 and is never forwarded; a member below editor gets 403."""
+    reservation = (await db.execute(
+        select(CreditTransaction.brand_id).where(
+            CreditTransaction.reference_id == generation_id,
+            CreditTransaction.transaction_type == "reserved",
+        ).order_by(CreditTransaction.id).limit(1)
+    )).scalar()
+    await require_brand_writable(db, user, reservation, GENERATION_NOT_FOUND)
 
 
 # ========================== Angle-Shots Proxy =====================
