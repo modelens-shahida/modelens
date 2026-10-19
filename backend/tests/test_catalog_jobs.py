@@ -7,6 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.db import Asset, CatalogJob, CatalogJobItem, CatalogOutput
+from app.config import settings
+
+
+@pytest.fixture(autouse=True)
+def outside_production(monkeypatch):
+    """Catalog is disabled in production (tests/test_catalog_disabled.py); these cover it elsewhere."""
+    monkeypatch.setattr(settings, "APP_ENV", "development")
 
 
 # ========================== Helper ===============================

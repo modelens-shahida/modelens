@@ -2462,6 +2462,23 @@ async def _catalog_path_problem(db, job, item):
     return f"{CATALOG_IMAGE_LABEL} {problem}." if problem else None
 
 
+class CatalogGenerationError(RuntimeError):
+    """FASHN produced no image for a catalog item (production: no mock output is saved instead)."""
+
+
+async def _block_catalog_job(db, job, items):
+    """Catalog is disabled in production: fail the job's unfinished items without calling FASHN and
+    refund what the job has left unused, once (a redelivered message refunds nothing more)."""
+    from app.services.catalog_availability import CATALOG_DISABLED
+    for item in items:
+        item.status = "failed"
+        item.error_message = CATALOG_DISABLED
+        job.failed_items += 1
+    job.status = "failed" if not job.completed_items else "partially_completed"
+    job.error_message = CATALOG_DISABLED
+    await refund_job(db, "catalog_job", job, "Catalog Studio disabled")
+
+
 async def _fail_catalog_item(db, job, item, message: str, *, count: bool = True):
     """Mark the item failed and refund its credits: once per item (a re-queued item that fails
     again is not refunded twice), and never beyond what the job has left unused. ``count``
@@ -2492,6 +2509,8 @@ def process_catalog_job(self, job_id: int):
 
 async def _process_catalog_job_async(task_self, job_id: int):
     from app.models.db import CatalogJob, CatalogJobItem, Asset
+    from app.config import catalog_fashn_key, production_rules_apply
+    from app.services.catalog_availability import CATALOG_GENERATION_FAILED, catalog_jobs_blocked
     from app.services.job_images import InputImageError
 
     async with async_session_maker() as db:
@@ -2502,6 +2521,15 @@ async def _process_catalog_job_async(task_self, job_id: int):
             return
         if job.status == "cancelled":  # cancelled (and refunded) while queued
             print(f"[CatalogJob] Job {job_id} was cancelled; not processing it.")
+            return
+        if catalog_jobs_blocked():
+            print(f"[CatalogJob] Job {job_id}: Catalog is disabled in production; failing and refunding it.")
+            unfinished = (await db.execute(select(CatalogJobItem).where(
+                CatalogJobItem.job_id == job_id,
+                CatalogJobItem.status.in_(("queued", "segmenting", "generating")),
+            ))).scalars().all()
+            await _block_catalog_job(db, job, unfinished)
+            await db.commit()
             return
 
         job.status = "processing"
@@ -2538,9 +2566,8 @@ async def _process_catalog_job_async(task_self, job_id: int):
                 provider_job_id = None
 
                 try:
-                    from app.config import settings
-                    fashn_key = getattr(settings, "FASHN_API_KEY", None)
-                    if not fashn_key or fashn_key == "mock":
+                    fashn_key = catalog_fashn_key()
+                    if not fashn_key:
                         raise Exception("FASHN mock mode")
 
                     import httpx
@@ -2564,8 +2591,13 @@ async def _process_catalog_job_async(task_self, job_id: int):
                         data = response.json()
                         provider_job_id = data.get("id")
                         output_url = data.get("output", [None])[0]
+                    if not output_url:
+                        raise Exception("FASHN returned no output")
 
                 except Exception as fashn_err:
+                    if production_rules_apply():  # never a mock output in production: fail and refund
+                        print(f"[CatalogJob] Item {item.id}: FASHN did not generate it ({type(fashn_err).__name__})")
+                        raise CatalogGenerationError(CATALOG_GENERATION_FAILED) from fashn_err
                     print(f"[CatalogJob] FASHN failed (mock): {fashn_err}")
                     output_url = f"https://cdn.example.com/catalog/mock_{item.id}.png"
                     provider_job_id = f"mock_{item.id}"
@@ -2645,6 +2677,8 @@ def process_catalog_item(self, item_id: int):
 
 async def _process_catalog_item_retry_async(item_id: int):
     from app.models.db import CatalogJobItem, CatalogJob
+    from app.config import production_rules_apply
+    from app.services.catalog_availability import CATALOG_DISABLED, CATALOG_GENERATION_FAILED, catalog_jobs_blocked
     async with async_session_maker() as db:
         result = await db.execute(select(CatalogJobItem).where(CatalogJobItem.id == item_id))
         item = result.scalars().first()
@@ -2655,6 +2689,9 @@ async def _process_catalog_item_retry_async(item_id: int):
         if not job:
             return
         problem = await _catalog_path_problem(db, job, item)
+        if not problem and production_rules_apply():
+            # This retry only writes a mock output, which production never saves as a success.
+            problem = CATALOG_DISABLED if catalog_jobs_blocked() else CATALOG_GENERATION_FAILED
         if problem:
             print(f"[CatalogItem] Item {item_id} failed: {problem}")
             await _fail_catalog_item(db, job, item, problem, count=False)  # counted when it first failed
@@ -2968,6 +3005,8 @@ def process_catalog_item_single(self, item_id: int, job_id: int):
 async def _process_single_catalog_item_async(task_self, item_id: int, job_id: int):
     """Async runner for single catalog item processing."""
     from app.models.db import CatalogJobItem, CatalogJob, Asset
+    from app.config import production_rules_apply
+    from app.services.catalog_availability import CATALOG_DISABLED, CATALOG_GENERATION_FAILED, catalog_jobs_blocked
     from app.services.batch_concurrency import (
         get_cached_mask, set_cached_mask,
         get_cached_character_embedding, publish_batch_telemetry
@@ -2987,7 +3026,10 @@ async def _process_single_catalog_item_async(task_self, item_id: int, job_id: in
         start_time = datetime.utcnow()
 
         problem = await _catalog_path_problem(db, job, item)
-        if problem:  # final: retrying cannot make the path acceptable
+        if not problem and production_rules_apply():
+            # This task only writes a mock output, which production never saves as a success.
+            problem = CATALOG_DISABLED if catalog_jobs_blocked() else CATALOG_GENERATION_FAILED
+        if problem:  # final: a retry would end the same way
             print(f"[Batch] Item {item_id} failed: {problem}")
             await _fail_catalog_item(db, job, item, problem, count=item.status != "failed")
             await db.commit()
