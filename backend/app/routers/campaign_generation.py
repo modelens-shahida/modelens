@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.db import get_db, User, Asset
 from app.middleware.auth import get_current_user
 from app.api_docs import error_responses
+from app.services.job_access import can_read_job
 
 router = APIRouter(prefix="/api/v1/campaigns", tags=["Campaign Studio"])
 
@@ -132,10 +133,13 @@ async def create_campaign_job(
 @router.get(
     "/jobs/{task_id}/export-zip",
     summary="Export campaign assets as ZIP",
-    description="Export campaign assets as ZIP with C2PA manifests.",
+    description=(
+        "Export campaign assets as ZIP with C2PA manifests. Members of `brand_id` (any role) and platform admins "
+        "only; anyone else gets the same 404 as an unknown campaign job."
+    ),
     response_description="ZIP archive of campaign assets with C2PA manifests.",
     operation_id="export_campaign_zip",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 404, 422),
 )
 async def export_campaign_zip(
     task_id: str,
@@ -144,6 +148,8 @@ async def export_campaign_zip(
     db: AsyncSession = Depends(get_db),
 ):
     """Export campaign assets as ZIP with C2PA manifests."""
+    if not await can_read_job(db, current_user, brand_id, None):
+        raise HTTPException(status_code=404, detail="Campaign job not found.")
     import io
     import json
     import zipfile

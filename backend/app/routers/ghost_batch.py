@@ -11,6 +11,7 @@ from app.models.db import get_db, User, GhostJob, CreditTransaction
 from app.middleware.auth import check_brand_role, get_current_user, require_platform_admin
 from app.services.credits_sync_service import credits_sync_service, estimate_credits
 from app.api_docs import ErrorResponse, error_responses
+from app.services.job_access import require_readable
 
 router = APIRouter(prefix="/api/v1/ghost", tags=["Ghost Studio Batch"])
 
@@ -342,7 +343,8 @@ async def list_stuck_ghost_batches(
 @router.get(
     "/batch/{job_id}",
     summary="Get a ghost batch job",
-    description="Get ghost batch job status. Only members of the job's brand can see it (else 404).",
+    description="Get ghost batch job status. Only members of the job's brand (any role) and platform admins can "
+                "see it; anyone else gets the same 404 as an unknown id.",
     response_description="Ghost batch job status.",
     operation_id="get_ghost_batch_job",
     responses=error_responses(401, 404, 422),
@@ -353,7 +355,8 @@ async def get_ghost_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Get ghost batch job status."""
-    job = await _get_batch_job(job_id, current_user, db, minimum_role="viewer")
+    job = (await db.execute(select(GhostJob).where(GhostJob.job_id == job_id))).scalars().first()
+    job = await require_readable(db, current_user, job, "Ghost job not found.")
 
     return {
         "job_id": job_id,

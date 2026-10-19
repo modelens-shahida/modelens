@@ -18,7 +18,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.config import settings
 from app.main import app
 from app.middleware.auth import hash_password
-from app.models.db import User
+from app.models.db import CatalogJob, User
 
 pytestmark = pytest.mark.integration
 
@@ -122,8 +122,10 @@ async def test_events_ws_member_bound_to_own_user(tc, test_data):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["generation/JOB-1/progress", "brand/{brand_id}/events"])
-async def test_realtime_ws_valid_token_binds_user(tc, test_data, path):
+async def test_realtime_ws_valid_token_binds_user(tc, test_data, db_session, path):
     owner, brand = test_data["users"]["owner"], test_data["brand"]
+    db_session.add(CatalogJob(job_id="JOB-1", user_id=owner.id, brand_id=brand.id, status="queued"))
+    await db_session.commit()  # the progress stream is for a job of that brand
     url = f"/api/v1/ws/{path.format(brand_id=brand.id)}?token={token_for(owner.email)}&brand_id={brand.id}"
     with tc.websocket_connect(url) as ws:
         msg = ws.receive_json()

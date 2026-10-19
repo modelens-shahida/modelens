@@ -335,11 +335,12 @@ async def test_same_idempotency_key_creates_one_production_and_one_charge(client
 # ========================== Access ================================
 
 @pytest.mark.asyncio
-async def test_users_only_read_their_own_productions(client, world, queue):
+async def test_productions_are_read_by_their_brand_only(client, world, queue):
     production_id = (await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])).json()["production_id"]
     url = f"/api/v1/productions/{production_id}"
-    assert (await client.get(url, headers=world["h"]["other"])).status_code == 404
-    assert (await client.get(url, headers=world["h"]["editor"])).status_code == 404  # same brand, not theirs
+    other = await client.get(url, headers=world["h"]["other"])
+    assert (other.status_code, other.json()) == (404, {"detail": f"Production {production_id} not found."})
+    assert (await client.get(url, headers=world["h"]["editor"])).status_code == 200  # same brand
     assert (await client.get("/api/v1/productions/prd_nope", headers=world["h"]["owner"])).status_code == 404
 
 

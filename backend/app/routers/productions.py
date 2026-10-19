@@ -21,6 +21,7 @@ from app.middleware import dispatch_rate_limit
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import AIJob, User, get_db
 from app.services import production_dispatch as svc
+from app.services.job_access import require_readable
 from app.services import production_presets as presets
 from app.services.fluid_service import FOCAL_LENGTHS
 
@@ -166,8 +167,9 @@ async def dispatch_production(
     "/{production_id}",
     response_model=ProductionStatusResponse,
     summary="Get a production",
-    description="Status, outputs and credits charged of one of your own productions. Other users' productions "
-                "return 404. Only customer-facing fields are returned.",
+    description="Status, outputs and credits charged of a production of a brand you belong to (any role; "
+                "platform admins: any). Other brands' productions return the same 404 as an unknown id. Only "
+                "customer-facing fields are returned.",
     response_description="The production.",
     operation_id="get_production",
     responses=error_responses(401, 404),
@@ -177,7 +179,8 @@ async def get_production(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    production = await _run(svc.get_production(db, production_id, current_user))
+    production = await require_readable(db, current_user, await _run(svc.get_production(db, production_id)),
+                                        f"Production {production_id} not found.")
     job = await db.get(AIJob, production.ai_job_id) if production.ai_job_id else None
     return ProductionStatusResponse(
         production_id=production.production_id, status=svc.customer_status(job), created_at=production.created_at,

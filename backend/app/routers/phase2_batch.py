@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -14,6 +14,7 @@ import io
 from app.models.db import get_db, Asset, User, CatalogJob, CatalogJobItem, CanonicalAsset
 from app.middleware.auth import check_brand_role, get_current_user
 from app.api_docs import error_responses
+from app.services.job_access import require_readable, stream_job_for_token
 
 router = APIRouter(prefix="/api/v1", tags=["Phase 2 - Batch, QA & Export"])
 
@@ -172,9 +173,7 @@ async def get_batch_job(
     result = await db.execute(
         select(CatalogJob).where(CatalogJob.job_id == job_id)
     )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
+    job = await require_readable(db, current_user, result.scalars().first(), "Job not found.")
 
     angle_tiles = job.meta.get("angle_tiles", []) if job.meta else []
 
@@ -197,9 +196,15 @@ async def get_batch_job(
 async def batch_websocket(
     job_id: str,
     websocket: WebSocket,
+    token: str = Query(..., description="JWT token for authentication"),
     db: AsyncSession = Depends(get_db),
 ):
     """WebSocket for per-angle-tile real-time streaming progress."""
+    # Token login (as /ws/generation/{job_id}/progress), then the job read rule, before anything
+    # is accepted or sent: a bad token, an unknown id or another brand's job all close with 1008.
+    if await stream_job_for_token(token, job_id) is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await websocket.accept()
     try:
         await websocket.send_json({

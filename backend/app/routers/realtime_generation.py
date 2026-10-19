@@ -11,6 +11,7 @@ from app.models.db import get_db, User, Brand, BrandMember, async_session_maker
 from app.middleware.auth import decode_token_subject, get_current_user, get_user_by_email
 from app.services.generation_events import generation_events, GenerationEvent, GENERATION_STEPS
 from app.api_docs import error_responses
+from app.services.job_access import is_platform_admin, job_has_brand, stream_job
 
 logger = logging.getLogger("modelens.realtime")
 
@@ -75,11 +76,20 @@ async def generation_progress_ws(
         await websocket.close(code=4001, reason=error)
         return
 
-    # Verify brand access
-    has_access = await _verify_brand_access(user.id, brand_id)
+    # Verify brand access (platform admins may read any job's progress)
+    has_access = is_platform_admin(user) or await _verify_brand_access(user.id, brand_id)
     if not has_access:
         await websocket.close(code=4003, reason="No access to this brand workspace")
         return
+
+    # The job itself: one the caller may read and, when it has a brand, of the brand whose channel
+    # was asked for. An unknown id or another brand's job closes with 1008 before anything is sent.
+    async with async_session_maker() as db:
+        job = await stream_job(db, user, job_id)
+    if job is None or (job_has_brand(job) and job.brand_id != brand_id):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    channel_brand_id = job.brand_id if job.brand_id is not None else brand_id
 
     await websocket.accept()
 
@@ -97,7 +107,7 @@ async def generation_progress_ws(
         redis = await generation_events._get_redis()
 
         if redis:
-            channel = generation_events._channel(brand_id, job_id)
+            channel = generation_events._channel(channel_brand_id, job_id)
             pubsub = redis.pubsub()
             await pubsub.subscribe(channel)
 
