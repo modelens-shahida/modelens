@@ -11,6 +11,7 @@ from app.middleware.auth import get_current_user
 from app.services.credits_sync_service import credits_sync_service
 from app.services.pipeline_hardening import pipeline_hardening, JobStatus
 from app.api_docs import error_responses
+from app.services.rosanne_availability import ROSANNE_DISABLED_RESPONSE, require_rosanne_jobs_enabled
 
 router = APIRouter(prefix="/api/v1/rosanne", tags=["Rosanne Pipeline"])
 
@@ -244,15 +245,20 @@ async def check_rosanne_credits(
     "/generate",
     status_code=status.HTTP_201_CREATED,
     summary="Submit a Rosanne generation job",
-    description="Submit a Rosanne pipeline generation job.",
+    description=(
+        "Submit a Rosanne pipeline generation job.\n"
+        "\n"
+        "**Disabled in production** while `ROSANNE_JOBS_ENABLED` is off: answers 503 for every caller, "
+        "before anything is reserved, written or dispatched."
+    ),
     response_description="The created Rosanne job with reserved credits.",
     operation_id="create_rosanne_job",
-    responses=error_responses(401, 402, 404, 422),
+    responses={**error_responses(401, 402, 404, 422), **ROSANNE_DISABLED_RESPONSE},
 )
 async def rosanne_generate(
     payload: RosanneGenerationRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_rosanne_jobs_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a Rosanne pipeline generation job."""
@@ -414,6 +420,19 @@ async def get_rosanne_job(
 
 # ========================== Background Worker ===================
 
+async def _fail_rosanne_job(db, job, message: str):
+    """Fail a Rosanne job without generating anything and refund its brand reservation: once (a
+    reservation already refunded or finalized is not pending, so nothing more is refunded)."""
+    from app.services.job_refunds import lock_reservation, refund_reservation
+    print(f"[Rosanne] Job {job.id}: failing it without generating ({message})")
+    job.status = JobStatus.FAILED.value
+    job.error_message = message
+    reservation = await lock_reservation(db, job.job_id)
+    if reservation is not None:
+        await refund_reservation(db, reservation, message)
+    await db.commit()
+
+
 async def _dispatch_rosanne_workflow(
     job_id: str,
     brand_id: int,
@@ -422,6 +441,8 @@ async def _dispatch_rosanne_workflow(
     """Dispatch Rosanne workflow to ComfyUI worker."""
     from app.models.db import async_session_maker, CatalogJob
     from sqlalchemy import select
+    from app.config import production_rules_apply
+    from app.services.rosanne_availability import ROSANNE_DISABLED, ROSANNE_GENERATION_FAILED, rosanne_jobs_blocked
 
     async with async_session_maker() as db:
         try:
@@ -430,6 +451,11 @@ async def _dispatch_rosanne_workflow(
             )
             job = result.scalars().first()
             if not job:
+                return
+            if production_rules_apply():
+                # No real Rosanne pipeline exists yet (only the mock below), and production never
+                # marks a mock output completed: fail the job and refund its reservation, once.
+                await _fail_rosanne_job(db, job, ROSANNE_DISABLED if rosanne_jobs_blocked() else ROSANNE_GENERATION_FAILED)
                 return
 
             # Transition to processing
