@@ -12,6 +12,7 @@ from app.middleware.auth import get_current_user
 from app.services.fashn_service import fashn_service
 from app.services.credits_sync_service import credits_sync_service
 from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
+from app.services.job_access import require_readable
 from app.services.internal_auth import check_internal_secret
 
 router = APIRouter(prefix="/api/v1/fashn", tags=["FASHN Workflow Integration"])
@@ -428,9 +429,7 @@ async def get_fashn_job(
     result = await db.execute(
         select(CatalogJob).where(CatalogJob.job_id == job_id)
     )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
+    job = await require_readable(db, current_user, result.scalars().first(), "Job not found.")
 
     return {
         "job_id": job_id,

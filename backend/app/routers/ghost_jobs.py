@@ -9,6 +9,7 @@ from app.models.db import get_db, Asset, User, GhostJob, GhostJobAsset, GhostOut
 from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.worker import process_ghost_job
 from app.api_docs import error_responses
+from app.services.job_access import require_readable
 from app.services.job_images import is_image
 from app.services.job_refunds import refund_job
 from app.routers.body_parsing import parse_body, read_form_or_json
@@ -216,7 +217,8 @@ async def create_ghost_job(
 @router.get(
     "/{job_id}",
     summary="Get a ghost mannequin job",
-    description="Get ghost job status and progress.",
+    description="Get ghost job status and progress. Members of the job's brand (any role) and platform admins "
+                "only; anyone else gets the same 404 as an unknown id.",
     response_description="Ghost job status and progress.",
     operation_id="get_ghost_job",
     responses=error_responses(401, 404, 422),
@@ -227,10 +229,8 @@ async def get_ghost_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Get ghost job status and progress."""
-    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id, GhostJob.user_id == current_user.id))
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ghost job not found.")
+    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id))
+    job = await require_readable(db, current_user, result.scalars().first(), "Ghost job not found.")
 
     return {
         "job_id": job.id,
@@ -310,7 +310,8 @@ async def cancel_ghost_job(
 @router.get(
     "/{job_id}/outputs",
     summary="Get ghost mannequin job outputs",
-    description="Get completed ghost job outputs.",
+    description="Get completed ghost job outputs. Members of the job's brand (any role) and platform admins "
+                "only; anyone else gets the same 404 as an unknown id.",
     response_description="Output assets of the completed ghost job.",
     operation_id="get_ghost_job_outputs",
     responses=error_responses(401, 404, 422),
@@ -321,10 +322,8 @@ async def get_ghost_job_outputs(
     db: AsyncSession = Depends(get_db),
 ):
     """Get completed ghost job outputs."""
-    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id, GhostJob.user_id == current_user.id))
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ghost job not found.")
+    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id))
+    job = await require_readable(db, current_user, result.scalars().first(), "Ghost job not found.")
 
     outputs_result = await db.execute(select(GhostOutput).where(GhostOutput.job_id == job_id))
     outputs = outputs_result.scalars().all()

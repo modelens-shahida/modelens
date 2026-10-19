@@ -11,6 +11,15 @@ from sqlalchemy import select
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Asset, QAEvaluation
 from app.middleware.auth import get_current_user
 from app.api_docs import error_responses
+from app.services.job_access import require_readable
+
+JOB_NOT_FOUND = "Catalog job not found."
+
+
+async def _readable_job(db: AsyncSession, user: User, job_id: int) -> CatalogJob:
+    """The catalog job if ``user`` may read it (its brand's members, platform admins); else 404."""
+    job = (await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))).scalars().first()
+    return await require_readable(db, user, job, JOB_NOT_FOUND)
 
 router = APIRouter(prefix="/api/v1/catalog-jobs", tags=["Catalog Export"])
 
@@ -30,13 +39,7 @@ async def export_catalog_zip(
 ):
     """Export catalog job outputs as ZIP with manifest.json."""
 
-    # Get job
-    result = await db.execute(
-        select(CatalogJob).where(CatalogJob.id == job_id, CatalogJob.user_id == current_user.id)
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Catalog job not found.")
+    job = await _readable_job(db, current_user, job_id)
 
     # Get completed items
     items_result = await db.execute(
@@ -196,6 +199,7 @@ async def export_marketplace_feed(
     from app.services.marketplace_service import marketplace_service, MARKETPLACE_CONFIGS
     from fastapi.responses import Response
 
+    await _readable_job(db, current_user, job_id)
     if marketplace not in MARKETPLACE_CONFIGS:
         raise HTTPException(status_code=400, detail=f"Invalid marketplace: {marketplace}")
 
@@ -257,6 +261,7 @@ async def export_multi_marketplace_zip(
     from fastapi.responses import StreamingResponse
     from app.services.marketplace_service import marketplace_service, MARKETPLACE_CONFIGS
 
+    await _readable_job(db, current_user, job_id)
     items_result = await db.execute(
         select(CatalogJobItem).where(
             CatalogJobItem.job_id == job_id,

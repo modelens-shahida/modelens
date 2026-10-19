@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from datetime import datetime
 
 from app.models.db import get_db, User, CatalogJob, GhostJob
@@ -19,6 +19,7 @@ from app.services.pipeline_hardening import (
     is_retryable_error,
 )
 from app.api_docs import error_responses, limit_query
+from app.services.job_access import catalog_job_has_brand, readable_brand_ids, require_readable
 
 router = APIRouter(prefix="/api/v1", tags=["Pipeline Hardening"])
 
@@ -110,9 +111,7 @@ async def get_job_lifecycle_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Get detailed job lifecycle status with transition history."""
-    job = await get_job_by_id(job_id, db)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
+    job = await require_readable(db, current_user, await get_job_by_id(job_id, db), "Job not found.")
 
     meta = job.meta or {}
     status_history = meta.get("status_history", [])
@@ -193,7 +192,7 @@ async def get_pipeline_config(
 @router.get(
     "/pipeline/dlq",
     summary="List dead-letter queue jobs",
-    description="Get jobs in Dead Letter Queue.",
+    description="Get jobs in Dead Letter Queue: those of the caller's brands (all brands for platform admins).",
     response_description="Jobs currently in the dead-letter queue.",
     operation_id="list_dlq_jobs",
     responses=error_responses(401, 422),
@@ -203,14 +202,17 @@ async def get_dlq_jobs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get jobs in Dead Letter Queue."""
-    result = await db.execute(
-        select(CatalogJob)
-        .where(CatalogJob.status == JobStatus.DLQ.value)
-        .order_by(CatalogJob.id.desc())
-        .limit(limit)
-    )
-    jobs = result.scalars().all()
+    """Get jobs in Dead Letter Queue: of the caller's brands (every brand for platform admins)."""
+    query = select(CatalogJob).where(CatalogJob.status == JobStatus.DLQ.value).order_by(CatalogJob.id.desc())
+    brands = await readable_brand_ids(db, current_user)
+    if brands is None:
+        jobs = (await db.execute(query.limit(limit))).scalars().all()
+    else:
+        candidates = (await db.execute(query.where(or_(
+            CatalogJob.brand_id.in_(brands), CatalogJob.user_id == current_user.id,
+        )))).scalars().all()
+        jobs = [j for j in candidates  # a job without a brand of its own: only its creator's
+                if (j.brand_id in brands if catalog_job_has_brand(j) else j.user_id == current_user.id)][:limit]
 
     return {
         "dlq_jobs": [

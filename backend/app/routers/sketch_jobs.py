@@ -8,6 +8,7 @@ from app.models.db import get_db, User, SketchJob, SketchJobReference, SketchOut
 from app.middleware.auth import check_brand_role, get_current_user
 from app.worker import process_sketch_job
 from app.api_docs import error_responses
+from app.services.job_access import require_readable
 from app.services.job_refunds import refund_job
 from app.services.sketch_availability import SKETCH_DISABLED_RESPONSE, require_sketch_jobs_enabled
 from app.routers.body_parsing import parse_body, read_form_or_json
@@ -223,7 +224,8 @@ async def create_sketch_job(
 @router.get(
     "/{job_id}",
     summary="Get a sketch job",
-    description="Get sketch job status, progress, and outputs.",
+    description="Get sketch job status, progress, and outputs. Members of the job's brand (any role) and "
+                "platform admins only; anyone else gets the same 404 as an unknown id.",
     response_description="Sketch job status, progress and outputs.",
     operation_id="get_sketch_job",
     responses=error_responses(401, 404, 422),
@@ -234,12 +236,8 @@ async def get_sketch_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Get sketch job status, progress, and outputs."""
-    result = await db.execute(
-        select(SketchJob).where(SketchJob.id == job_id, SketchJob.user_id == current_user.id)
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sketch job not found.")
+    result = await db.execute(select(SketchJob).where(SketchJob.id == job_id))
+    job = await require_readable(db, current_user, result.scalars().first(), "Sketch job not found.")
 
     refs_result = await db.execute(select(SketchJobReference).where(SketchJobReference.job_id == job_id))
     refs = refs_result.scalars().all()

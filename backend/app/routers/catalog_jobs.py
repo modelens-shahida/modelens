@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Brand, BrandMember
 from app.middleware.auth import check_brand_role, get_current_user
 from app.services.catalog_availability import CATALOG_DISABLED_RESPONSE, require_catalog_jobs_enabled
+from app.services.job_access import require_readable
 from app.worker import process_catalog_job, process_catalog_item
 from app.services.storage import storage_service
 import uuid
@@ -213,7 +214,8 @@ async def create_catalog_job(
 @router.get(
     "/{job_id}",
     summary="Get a catalog job",
-    description="Get catalog job status with per-SKU tracking.",
+    description="Get catalog job status with per-SKU tracking. Members of the job's brand (any role) and "
+                "platform admins only; anyone else gets the same 404 as an unknown id.",
     response_description="Catalog job status with per-SKU progress.",
     operation_id="get_catalog_job",
     responses=error_responses(401, 404, 422),
@@ -224,12 +226,8 @@ async def get_catalog_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Get catalog job status with per-SKU tracking."""
-    result = await db.execute(
-        select(CatalogJob).where(CatalogJob.id == job_id, CatalogJob.user_id == current_user.id)
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog job not found.")
+    result = await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))
+    job = await require_readable(db, current_user, result.scalars().first(), "Catalog job not found.")
 
     items_result = await db.execute(select(CatalogJobItem).where(CatalogJobItem.job_id == job_id))
     items = items_result.scalars().all()

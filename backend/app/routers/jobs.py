@@ -22,6 +22,9 @@ from app.middleware.auth import get_current_user, ROLE_HIERARCHY
 from app.middleware.rate_limit import redis_client, RateLimiter
 from app.worker import process_generation_job, process_workflow_job
 from app.api_docs import error_responses, limit_query, offset_query
+from app.services.job_access import can_read_job, require_readable
+
+JOB_NOT_FOUND = "Job not found"
 
 logger = logging.getLogger("modelens.jobs")
 
@@ -48,8 +51,8 @@ class JobWorkflowRequest(BaseModel):
 
 class JobResponse(BaseModel):
     id: int
-    user_id: int
-    brand_id: int
+    user_id: Optional[int] = None  # NULL on legacy AIJob rows
+    brand_id: Optional[int] = None  # NULL on legacy AIJob rows (readable by their creator only)
     workflow_template_id: Optional[int] = None
     asset_id: Optional[int] = None
     status: str
@@ -485,11 +488,12 @@ async def list_workflow_templates(
     description=(
         "Checks the status of an AI job.\n"
         "Tries Redis status cache first to bypass database load, fallback to PostgreSQL on miss.\n"
-        "Verifies that caller has brand access."
+        "Members of the job's brand (any role) and platform admins may read it; a job without a brand only "
+        "its creator. Anyone else gets the same 404 as an unknown id."
     ),
     response_description="Current status of the job.",
     operation_id="get_job_status",
-    responses=error_responses(401, 403, 404, 422),
+    responses=error_responses(401, 404, 422),
 )
 async def get_job_status(
     job_id: int,
@@ -499,7 +503,7 @@ async def get_job_status(
     """
     Checks the status of an AI job.
     Tries Redis status cache first to bypass database load, fallback to PostgreSQL on miss.
-    Verifies that caller has brand access.
+    Same access rule as the description: another brand's job is an unknown id.
     """
     # 1. Try Redis cache first
     cached_val = None
@@ -511,32 +515,9 @@ async def get_job_status(
     if cached_val:
         try:
             job_data = json.loads(cached_val)
-            brand_id = job_data.get("brand_id")
-
-            # Verify caller brand membership
-            brand_query = select(Brand).where(Brand.id == brand_id)
-            brand_res = await db.execute(brand_query)
-            brand = brand_res.scalars().first()
-            if not brand:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Brand not found"
-                )
-
-            is_member = brand.owner_id == current_user.id
-            if not is_member:
-                member_query = select(BrandMember).where(
-                    BrandMember.brand_id == brand_id,
-                    BrandMember.user_id == current_user.id
-                )
-                member_res = await db.execute(member_query)
-                is_member = member_res.scalars().first() is not None
-
-            if not is_member:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You do not have access to this brand's jobs"
-                )
+            # The same rule as the database row below: another brand's job is an unknown id.
+            if not await can_read_job(db, current_user, job_data.get("brand_id"), job_data.get("user_id")):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=JOB_NOT_FOUND)
 
             # Parse datetimes to keep Pydantic serialization happy
             if "created_at" in job_data and job_data["created_at"]:
@@ -551,40 +532,11 @@ async def get_job_status(
             logger.error(f"Error parsing cached job JSON: {e}")
             # Fall through to DB query on cache parsing errors
 
-    # 2. Fallback to Postgres query
+    # 2. Fallback to Postgres query; brand members (any role), the creator of a job without a
+    # brand, and platform admins may read it. Anyone else gets the same 404 as an unknown id.
     query = select(AIJob).where(AIJob.id == job_id)
     res = await db.execute(query)
-    job = res.scalars().first()
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
-        )
-
-    # Verify brand membership
-    brand_query = select(Brand).where(Brand.id == job.brand_id)
-    brand_res = await db.execute(brand_query)
-    brand = brand_res.scalars().first()
-    if not brand:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Brand not found"
-        )
-
-    is_member = brand.owner_id == current_user.id
-    if not is_member:
-        member_query = select(BrandMember).where(
-            BrandMember.brand_id == job.brand_id,
-            BrandMember.user_id == current_user.id
-        )
-        member_res = await db.execute(member_query)
-        is_member = member_res.scalars().first() is not None
-
-    if not is_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this brand's jobs"
-        )
+    job = await require_readable(db, current_user, res.scalars().first(), JOB_NOT_FOUND)
 
     # Proactively populate Redis if it was a cache miss
     try:
