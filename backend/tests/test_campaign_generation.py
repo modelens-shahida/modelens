@@ -5,6 +5,8 @@ from unittest.mock import patch, AsyncMock
 from fastapi import status
 from httpx import AsyncClient, Response
 
+from app.models.db import CreditTransaction
+
 
 # ========================== Generations proxy =====================
 # /api/v1/generations/* is forwarded to the external templates service; the upstream call is mocked.
@@ -22,10 +24,19 @@ def _upstream_json(status_code, body):
     return Response(status_code=status_code, json=body)
 
 
+async def _reserved_generation(db_session, test_data, generation_id):
+    """A generation of the test brand: cancel is checked against its credit reservation's brand."""
+    db_session.add(CreditTransaction(user_id=test_data["users"]["owner"].id, brand_id=test_data["brand"].id,
+                                     amount=-5, transaction_type="reserved", status="pending",
+                                     reference_id=generation_id))
+    await db_session.commit()
+
+
 @pytest.mark.asyncio
-async def test_cancel_generation(client: AsyncClient, test_data: dict, templates_upstream):
+async def test_cancel_generation(client: AsyncClient, test_data: dict, db_session, templates_upstream):
     """Cancel is forwarded to the templates service with the caller's identity and body."""
     owner = test_data["users"]["owner"]
+    await _reserved_generation(db_session, test_data, "gen_1")
     templates_upstream.request.return_value = _upstream_json(200, {"id": "gen_1", "status": "cancelled"})
 
     res = await client.post("/api/v1/generations/gen_1/cancel",
@@ -43,8 +54,9 @@ async def test_cancel_generation(client: AsyncClient, test_data: dict, templates
 
 
 @pytest.mark.asyncio
-async def test_cancel_completed_job_returns_409(client: AsyncClient, test_data: dict, templates_upstream):
+async def test_cancel_completed_job_returns_409(client: AsyncClient, test_data: dict, db_session, templates_upstream):
     """The templates service's 409 for an already-finished job is passed through unchanged."""
+    await _reserved_generation(db_session, test_data, "gen_done")
     templates_upstream.request.return_value = _upstream_json(409, {"message": "Generation already completed"})
 
     res = await client.post("/api/v1/generations/gen_done/cancel",
@@ -53,6 +65,15 @@ async def test_cancel_completed_job_returns_409(client: AsyncClient, test_data: 
 
     assert res.status_code == status.HTTP_409_CONFLICT
     assert res.json() == {"message": "Generation already completed"}
+
+
+@pytest.mark.asyncio
+async def test_cancel_of_a_generation_of_no_known_brand_is_not_forwarded(client, test_data, templates_upstream):
+    """Without a reservation its brand is unknown: refused like an unknown id, never sent upstream."""
+    res = await client.post("/api/v1/generations/gen_unknown/cancel", json={},
+                            headers=test_data["get_headers"]("owner"))
+    assert (res.status_code, res.json()) == (404, {"detail": "Generation not found."})
+    templates_upstream.request.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from app.models.db import get_db, User, Asset, QAProfile, QAEvaluation, QAArtifa
 from app.middleware.auth import get_current_user
 from app.services.qa_service import qa_service
 from app.api_docs import error_responses
+from app.services.job_access import require_brand_writable
 
 router = APIRouter(prefix="/api/v1/qa", tags=["QA Scoring"])
 
@@ -35,10 +36,13 @@ class QAReviewRequest(BaseModel):
     "/evaluate",
     status_code=status.HTTP_201_CREATED,
     summary="Run a QA evaluation",
-    description="Run multi-dimensional QA evaluation on an asset.",
+    description=(
+        "Run multi-dimensional QA evaluation on an asset. Needs at least the editor role in the asset's brand "
+        "(platform admins: any); unknown assets and other brands' get the same 404, a member with a lower role 403."
+    ),
     response_description="The created QA evaluation.",
     operation_id="evaluate_asset_quality",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def evaluate_asset(
     payload: QAEvaluateRequest,
@@ -46,11 +50,10 @@ async def evaluate_asset(
     db: AsyncSession = Depends(get_db),
 ):
     """Run multi-dimensional QA evaluation on an asset."""
-    # Verify asset exists
+    # Verify asset exists and the caller may change its brand's QA (editors and above)
     asset_result = await db.execute(select(Asset).where(Asset.id == payload.asset_id))
     asset = asset_result.scalars().first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+    await require_brand_writable(db, current_user, asset.brand_id if asset else None, "Asset not found.")
 
     # Get or create QA profile
     profile_result = await db.execute(
@@ -183,10 +186,14 @@ async def get_asset_evaluations(
 @router.post(
     "/evaluations/{evaluation_id}/review",
     summary="Review a QA evaluation",
-    description="Human review override for QA evaluation.",
+    description=(
+        "Human review override for QA evaluation. Needs at least the editor role in the evaluated asset's brand "
+        "(platform admins: any); unknown evaluations and other brands' get the same 404, a member with a lower "
+        "role 403."
+    ),
     response_description="The QA evaluation with the human review applied.",
     operation_id="review_qa_evaluation",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def review_evaluation(
     evaluation_id: int,
@@ -201,6 +208,10 @@ async def review_evaluation(
     evaluation = result.scalars().first()
     if not evaluation:
         raise HTTPException(status_code=404, detail="QA evaluation not found.")
+    # The evaluated asset's brand decides: editors and above (platform admins: any).
+    asset_brand = (await db.execute(select(Asset.brand_id).where(Asset.id == evaluation.asset_id))).scalar() \
+        if evaluation.asset_id is not None else None
+    await require_brand_writable(db, current_user, asset_brand, "QA evaluation not found.")
 
     # Update decision with audit trail
     previous_decision = evaluation.decision

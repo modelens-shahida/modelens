@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Brand, BrandMember
 from app.middleware.auth import check_brand_role, get_current_user
 from app.services.catalog_availability import CATALOG_DISABLED_RESPONSE, require_catalog_jobs_enabled
-from app.services.job_access import require_readable
+from app.services.job_access import require_readable, require_writable
 from app.worker import process_catalog_job, process_catalog_item
 from app.services.storage import storage_service
 import uuid
@@ -261,10 +261,10 @@ async def get_catalog_job(
 @router.post(
     "/{job_id}/cancel",
     summary="Cancel a catalog job",
-    description="Cancel catalog job and refund credits.",
+    description="Cancel catalog job and refund credits. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The cancelled job; reserved credits are refunded.",
     operation_id="cancel_catalog_job",
-    responses=error_responses(401, 404, 409, 422),
+    responses=error_responses(401, 403, 404, 409, 422),
 )
 async def cancel_catalog_job(
     job_id: int,
@@ -274,12 +274,10 @@ async def cancel_catalog_job(
     """Cancel catalog job and refund credits."""
     # Locked: a second cancel or the worker's item refunds wait, then see the new state.
     result = await db.execute(
-        select(CatalogJob).where(CatalogJob.id == job_id, CatalogJob.user_id == current_user.id)
+        select(CatalogJob).where(CatalogJob.id == job_id)
         .with_for_update().execution_options(populate_existing=True)
     )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog job not found.")
+    job = await require_writable(db, current_user, result.scalars().first(), "Catalog job not found.")
     if job.status in ("completed", "failed", "cancelled"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot cancel job with status: {job.status}")
 
@@ -294,10 +292,10 @@ async def cancel_catalog_job(
 @router.post(
     "/{job_id}/retry",
     summary="Retry a catalog job",
-    description="Retry a failed catalog job. Disabled in production (503) while `CATALOG_JOBS_ENABLED` is off.",
+    description="Retry a failed catalog job. Disabled in production (503) while `CATALOG_JOBS_ENABLED` is off. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The catalog job re-queued for processing.",
     operation_id="retry_catalog_job",
-    responses={**error_responses(401, 404, 409, 422), **CATALOG_DISABLED_RESPONSE},
+    responses={**error_responses(401, 403, 404, 409, 422), **CATALOG_DISABLED_RESPONSE},
 )
 async def retry_catalog_job(
     job_id: int,
@@ -305,12 +303,8 @@ async def retry_catalog_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed catalog job."""
-    result = await db.execute(
-        select(CatalogJob).where(CatalogJob.id == job_id, CatalogJob.user_id == current_user.id)
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog job not found.")
+    result = await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))
+    job = await require_writable(db, current_user, result.scalars().first(), "Catalog job not found.")
     if job.status != "failed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot retry job with status: {job.status}")
 
@@ -340,10 +334,10 @@ async def retry_catalog_job(
 @router.post(
     "/{job_id}/items/{item_id}/retry",
     summary="Retry a catalog item",
-    description="Retry a failed catalog item. Disabled in production (503) while `CATALOG_JOBS_ENABLED` is off.",
+    description="Retry a failed catalog item. Disabled in production (503) while `CATALOG_JOBS_ENABLED` is off. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The catalog item re-queued for processing.",
     operation_id="retry_catalog_item",
-    responses={**error_responses(401, 404, 409, 422), **CATALOG_DISABLED_RESPONSE},
+    responses={**error_responses(401, 403, 404, 409, 422), **CATALOG_DISABLED_RESPONSE},
 )
 async def retry_catalog_item(
     job_id: int,
@@ -352,6 +346,9 @@ async def retry_catalog_item(
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed catalog item."""
+    # The item's job decides: another brand's job is reported like an unknown item.
+    job = (await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))).scalars().first()
+    await require_writable(db, current_user, job, "Catalog item not found.")
     result = await db.execute(
         select(CatalogJobItem).where(CatalogJobItem.id == item_id, CatalogJobItem.job_id == job_id)
     )

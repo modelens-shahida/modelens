@@ -12,7 +12,7 @@ import zipfile
 import io
 
 from app.models.db import get_db, Asset, User, CatalogJob, CatalogJobItem, CanonicalAsset
-from app.middleware.auth import check_brand_role, get_current_user
+from app.middleware.auth import check_brand_role, get_current_user, require_platform_admin
 from app.api_docs import error_responses
 from app.services.job_access import require_readable, stream_job_for_token
 
@@ -255,15 +255,18 @@ async def batch_websocket(
 @router.patch(
     "/qa/evaluations/{asset_id}/override",
     summary="Override a QA gate",
-    description="Override QA gate for a generated asset.",
+    description=(
+        "Override the QA gate of a canonical asset. Canonical assets belong to the shared character registry, "
+        "not to a brand, so only platform admins/owners (`users.role`) may override them; everyone else gets 403."
+    ),
     response_description="The QA evaluation with the override applied.",
     operation_id="override_qa_evaluation",
-    responses=error_responses(400, 401, 422),
+    responses=error_responses(400, 401, 403, 422),
 )
 async def override_qa_evaluation(
     asset_id: str,
     payload: QAOverrideRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Override QA gate for a generated asset."""

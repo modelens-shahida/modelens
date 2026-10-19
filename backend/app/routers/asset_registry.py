@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.db import get_db, User, Asset, AssetVersion, AssetRelationship, ReferenceSet, ReferenceSetItem
 from app.middleware.auth import get_current_user
 from app.api_docs import error_responses
+from app.services.job_access import require_brand_writable
 
 router = APIRouter(prefix="/api/v1/assets", tags=["Asset Registry"])
 
@@ -256,10 +257,14 @@ class AssetTouchUpRequest(BaseModel):
     "/{asset_id}/touch-up",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Queue an asset touch-up job",
-    description="Queue a localized touch-up inpainting job for an asset.",
+    description=(
+        "Queue a localized touch-up inpainting job for an asset. Needs at least the editor role in the asset's "
+        "brand (platform admins: any); unknown assets and other brands' get the same 404, a member with a lower "
+        "role 403."
+    ),
     response_description="The touch-up job was accepted and queued.",
     operation_id="create_touch_up_job",
-    responses=error_responses(401, 404, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def create_touch_up_job(
     asset_id: int,
@@ -270,8 +275,8 @@ async def create_touch_up_job(
     """Queue a localized touch-up inpainting job for an asset."""
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalars().first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+    # Editors and above of the asset's brand (platform admins: any); else the same 404 as unknown.
+    await require_brand_writable(db, current_user, asset.brand_id if asset else None, "Asset not found.")
 
     # Dispatch Celery task
     try:

@@ -9,7 +9,7 @@ from app.models.db import get_db, Asset, User, GhostJob, GhostJobAsset, GhostOut
 from app.middleware.auth import check_brand_asset, check_brand_role, get_current_user
 from app.worker import process_ghost_job
 from app.api_docs import error_responses
-from app.services.job_access import require_readable
+from app.services.job_access import require_readable, require_writable
 from app.services.job_images import is_image
 from app.services.job_refunds import refund_job
 from app.routers.body_parsing import parse_body, read_form_or_json
@@ -246,10 +246,10 @@ async def get_ghost_job(
 @router.post(
     "/{job_id}/retry",
     summary="Retry a ghost mannequin job",
-    description="Retry a failed ghost job.",
+    description="Retry a failed ghost job. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The ghost job re-queued for processing.",
     operation_id="retry_ghost_job",
-    responses=error_responses(401, 404, 409, 422),
+    responses=error_responses(401, 403, 404, 409, 422),
 )
 async def retry_ghost_job(
     job_id: int,
@@ -257,10 +257,8 @@ async def retry_ghost_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed ghost job."""
-    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id, GhostJob.user_id == current_user.id))
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ghost job not found.")
+    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id))
+    job = await require_writable(db, current_user, result.scalars().first(), "Ghost job not found.")
     if job.status not in ("failed",):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot retry job with status: {job.status}")
 
@@ -280,10 +278,10 @@ async def retry_ghost_job(
 @router.post(
     "/{job_id}/cancel",
     summary="Cancel a ghost mannequin job",
-    description="Cancel an active ghost job.",
+    description="Cancel an active ghost job. Needs at least the editor role in the job's brand (platform admins: any job); unknown ids and other brands' jobs get the same 404, a member with a lower role 403.",
     response_description="The cancelled ghost job.",
     operation_id="cancel_ghost_job",
-    responses=error_responses(401, 404, 409, 422),
+    responses=error_responses(401, 403, 404, 409, 422),
 )
 async def cancel_ghost_job(
     job_id: int,
@@ -292,11 +290,9 @@ async def cancel_ghost_job(
 ):
     """Cancel an active ghost job."""
     # Locked: a second cancel or the worker's failure handler waits, then sees the new status.
-    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id, GhostJob.user_id == current_user.id)
+    result = await db.execute(select(GhostJob).where(GhostJob.id == job_id)
                               .with_for_update().execution_options(populate_existing=True))
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ghost job not found.")
+    job = await require_writable(db, current_user, result.scalars().first(), "Ghost job not found.")
     if job.status in ("completed", "failed", "cancelled"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot cancel job with status: {job.status}")
 
