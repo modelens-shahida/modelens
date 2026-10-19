@@ -15,6 +15,7 @@ import {
   exportShopifyPreset 
 } from "@/lib/generationService";
 import { toast } from "react-hot-toast";
+import { useAuth } from "@/lib/auth-context";
 
 export default function ReviewComparisonWorkspace({
   resultAsset = {
@@ -35,6 +36,7 @@ export default function ReviewComparisonWorkspace({
     overall_qa_status: "APPROVED",
   },
 }) {
+  const { isPlatformAdmin } = useAuth();
   const [showQaDetails, setShowQaDetails] = useState(true);
   const [approvalState, setApprovalState] = useState(resultAsset.overall_qa_status || "APPROVED");
   
@@ -61,6 +63,10 @@ export default function ReviewComparisonWorkspace({
 
   // Handle QA Override
   const handleQaOverrideSubmit = async () => {
+    if (!isPlatformAdmin) {
+      toast.error("Platform Admin privileges required to override character QA evaluations");
+      return;
+    }
     try {
       setLoadingAction(true);
       const res = await overrideQaEvaluation(resultAsset.id, {
@@ -177,10 +183,20 @@ export default function ReviewComparisonWorkspace({
           {/* QA Override Action */}
           <button
             onClick={() => setActiveModal("qa_override")}
-            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/20"
+            className={`flex items-center gap-1.5 font-bold text-xs px-4 py-2 rounded-xl transition-all ${
+              isPlatformAdmin
+                ? "bg-emerald-500 hover:bg-emerald-400 text-black shadow-md shadow-emerald-500/20"
+                : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white"
+            }`}
+            title={isPlatformAdmin ? "Override QA Evaluation" : "Platform Admin Privileges Required"}
           >
-            <CheckCircle2 className="w-4 h-4" />
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>QA OVERRIDE</span>
+            {!isPlatformAdmin && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono uppercase">
+                Admin
+              </span>
+            )}
           </button>
 
           {/* Regenerate Action */}
@@ -345,6 +361,13 @@ export default function ReviewComparisonWorkspace({
               </div>
             </div>
 
+            {!isPlatformAdmin && (
+              <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-amber-300 text-xs flex items-center gap-2.5">
+                <AlertOctagon className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Platform Admin privileges required to override character QA evaluations.</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setActiveModal(null)}
@@ -354,11 +377,11 @@ export default function ReviewComparisonWorkspace({
               </button>
               <button
                 onClick={handleQaOverrideSubmit}
-                disabled={loadingAction}
-                className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-black font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20"
+                disabled={loadingAction || !isPlatformAdmin}
+                className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20"
               >
                 {loadingAction ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>Save Override</span>
+                <span>{isPlatformAdmin ? "Save Override" : "Admin Only"}</span>
               </button>
             </div>
           </div>
