@@ -2446,6 +2446,34 @@ async def _process_sketch_job_async(task_self, job_id: int):
 
 # ========================== Catalog Studio Task =================
 
+CATALOG_IMAGE_LABEL = "Product image"
+
+
+def _catalog_item_credits(job) -> int:
+    return 5 if job.generation_mode == "studio_quality" else 2
+
+
+async def _catalog_path_problem(db, job, item):
+    """Why the item's product image may not be sent to FASHN, as a message safe to store and log
+    (it never contains the path), or None. Checked again on every attempt, so a retry or a job
+    created before the create-time checks existed is held to the same rule (input_paths)."""
+    from app.services.input_paths import path_problem
+    problem = await path_problem(db, item.product_image_path, job.brand_id)
+    return f"{CATALOG_IMAGE_LABEL} {problem}." if problem else None
+
+
+async def _fail_catalog_item(db, job, item, message: str, *, count: bool = True):
+    """Mark the item failed and refund its credits: once per item (a re-queued item that fails
+    again is not refunded twice), and never beyond what the job has left unused. ``count``
+    is False for an item already counted in ``failed_items`` (an item retry)."""
+    item.status = "failed"
+    item.error_message = message[:200]
+    if count:
+        job.failed_items += 1
+    await refund_job(db, "catalog_job", job, f"item {item.id} failed", amount=_catalog_item_credits(job),
+                     part=f"item:{item.id}")
+
+
 @celery_app.task(
     name="app.worker.process_catalog_job",
     bind=True,
@@ -2464,6 +2492,7 @@ def process_catalog_job(self, job_id: int):
 
 async def _process_catalog_job_async(task_self, job_id: int):
     from app.models.db import CatalogJob, CatalogJobItem, Asset
+    from app.services.job_images import InputImageError
 
     async with async_session_maker() as db:
         result = await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))
@@ -2485,6 +2514,10 @@ async def _process_catalog_job_async(task_self, job_id: int):
 
         for item in items:
             try:
+                problem = await _catalog_path_problem(db, job, item)
+                if problem:
+                    raise InputImageError(problem)
+
                 # Step 1: SAM2 Segmentation
                 item.status = "segmenting"
                 await db.commit()
@@ -2573,20 +2606,13 @@ async def _process_catalog_job_async(task_self, job_id: int):
                 item.fidelity_status = fidelity_status
                 item.provider_job_id = provider_job_id
                 job.completed_items += 1
-                job.credits_consumed += 5 if job.generation_mode == "studio_quality" else 2
+                job.credits_consumed += _catalog_item_credits(job)
 
                 await db.commit()
 
             except Exception as item_err:
                 print(f"[CatalogJob] Item {item.id} failed: {item_err}")
-                item.status = "failed"
-                item.error_message = str(item_err)[:200]
-                job.failed_items += 1
-                # Refund the failed item's credits: once per item (a re-queued item that fails
-                # again is not refunded twice), and never beyond what the job has left unused.
-                credits_per = 5 if job.generation_mode == "studio_quality" else 2
-                await refund_job(db, "catalog_job", job, f"item {item.id} failed", amount=credits_per,
-                                 part=f"item:{item.id}")
+                await _fail_catalog_item(db, job, item, str(item_err))
                 await db.commit()
 
         # Update job status
@@ -2627,6 +2653,12 @@ async def _process_catalog_item_retry_async(item_id: int):
         job_result = await db.execute(select(CatalogJob).where(CatalogJob.id == item.job_id))
         job = job_result.scalars().first()
         if not job:
+            return
+        problem = await _catalog_path_problem(db, job, item)
+        if problem:
+            print(f"[CatalogItem] Item {item_id} failed: {problem}")
+            await _fail_catalog_item(db, job, item, problem, count=False)  # counted when it first failed
+            await db.commit()
             return
         # Re-process single item
         item.status = "generating"
@@ -2954,6 +2986,13 @@ async def _process_single_catalog_item_async(task_self, item_id: int, job_id: in
 
         start_time = datetime.utcnow()
 
+        problem = await _catalog_path_problem(db, job, item)
+        if problem:  # final: retrying cannot make the path acceptable
+            print(f"[Batch] Item {item_id} failed: {problem}")
+            await _fail_catalog_item(db, job, item, problem, count=item.status != "failed")
+            await db.commit()
+            return
+
         try:
             item.status = "generating"
             await db.commit()
@@ -2999,7 +3038,7 @@ async def _process_single_catalog_item_async(task_self, item_id: int, job_id: in
             item.quality_score = 0.93
             item.provider_job_id = provider_job_id
             job.completed_items += 1
-            job.credits_consumed += 5 if job.generation_mode == "studio_quality" else 2
+            job.credits_consumed += _catalog_item_credits(job)
 
             await db.commit()
 
