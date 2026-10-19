@@ -4,9 +4,12 @@ import React from "react";
 import Link from "next/link";
 import GenerationProgressMonitor from "@/components/dashboard/GenerationProgressMonitor";
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 export default function GenerationProgressPage({ params }) {
+  const { user } = useAuth();
   const jobId = params?.id || "JOB-SPRING-2027-001";
+  const brandId = user?.activeBrandId || user?.brand_id || user?.brandId;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 space-y-6">
@@ -28,7 +31,7 @@ export default function GenerationProgressPage({ params }) {
         </Link>
       </div>
 
-      <GenerationProgressMonitor jobId={jobId} />
+      <GenerationProgressMonitor jobId={jobId} brandId={brandId} />
     </div>
   );
 }

@@ -11,6 +11,7 @@ export default function GenerationProgressMonitor({
   projectName = "Spring 2027 Runway Campaign",
   characterName = "ELISKA NOVAK (EE-F-002)",
   productName = "Silk Bias Cut Slip Dress",
+  brandId: propBrandId,
   onComplete,
 }) {
   const [jobStatus, setJobStatus] = useState("generating"); // "queued" | "generating" | "completed" | "failed"
@@ -35,14 +36,19 @@ export default function GenerationProgressMonitor({
     const connectWs = () => {
       try {
         const token = typeof window !== "undefined" ? (localStorage.getItem("modelens_token") || localStorage.getItem("token")) : null;
-        let brandId = 1;
-        try {
-          const userObj = JSON.parse(localStorage.getItem("modelens_user") || "{}");
-          brandId = userObj?.activeBrandId || userObj?.brand_id || userObj?.brandId || 1;
-        } catch (_) {}
+        let brandId = propBrandId;
+        if (!brandId && typeof window !== "undefined") {
+          try {
+            const userObj = JSON.parse(localStorage.getItem("modelens_user") || "{}");
+            brandId = userObj?.activeBrandId || userObj?.brand_id || userObj?.brandId || userObj?.active_brand_id;
+          } catch (_) {}
+          if (!brandId) {
+            brandId = localStorage.getItem("modelens_active_brand") || localStorage.getItem("active_brand_id");
+          }
+        }
 
-        if (!token) {
-          // No token available, rely on HTTP polling
+        if (!token || !brandId) {
+          // No token or brand available, rely on HTTP polling
           return;
         }
 
