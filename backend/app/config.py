@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     # Catalog works either way (app/services/catalog_availability.py).
     CATALOG_JOBS_ENABLED: bool = Field(default=False)
 
+    # Rosanne Studio jobs (POST /api/v1/rosanne/generate). Off (default): in production that
+    # answers 503 before anything is reserved, written or dispatched, and the dispatcher fails
+    # (and refunds) Rosanne jobs. Outside production Rosanne works either way
+    # (app/services/rosanne_availability.py).
+    ROSANNE_JOBS_ENABLED: bool = Field(default=False)
+
     # Database Connection Pool
     DB_POOL_SIZE: int = Field(default=10)
     DB_MAX_OVERFLOW: int = Field(default=20)

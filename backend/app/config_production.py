@@ -19,6 +19,7 @@ from app.config import (
     app_env, catalog_fashn_key, is_production, production_rules_apply, settings,
 )
 from app.services.gemini_client import GEMINI_IMAGE_MODELS, gemini_api_key
+from app.services.rosanne_availability import rosanne_pipeline_configured
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,9 @@ def check_config() -> List[Issue]:
     if settings.CATALOG_JOBS_ENABLED and not catalog_fashn_key():
         add("CATALOG_JOBS_ENABLED", "is on, but the Catalog worker has no FASHN key (FASHN_API_KEY is not a "
             "declared setting); Catalog items would fail and be refunded", False)
+    if settings.ROSANNE_JOBS_ENABLED and not rosanne_pipeline_configured():
+        add("ROSANNE_JOBS_ENABLED", "is on, but there is no real Rosanne ComfyUI pipeline (the dispatcher only "
+            "mocks); Rosanne jobs would fail and be refunded", False)
     if settings.COMFYUI_MOCK_MODE:
         add("COMFYUI_MOCK_MODE", "is on; ComfyUI generation is mocked", False)
     if (settings.STORAGE_BACKEND or "").lower() != "s3":

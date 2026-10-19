@@ -4,6 +4,13 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.db import Brand, CatalogJob, CreditTransaction
+from app.config import settings
+
+
+@pytest.fixture(autouse=True)
+def outside_production(monkeypatch):
+    """Rosanne is disabled in production (tests/test_rosanne_gate_legacy_generate.py)."""
+    monkeypatch.setattr(settings, "APP_ENV", "development")
 
 
 # ========================== Config Tests ========================
