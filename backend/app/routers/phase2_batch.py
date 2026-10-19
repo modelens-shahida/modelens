@@ -11,8 +11,8 @@ import uuid
 import zipfile
 import io
 
-from app.models.db import get_db, User, CatalogJob, CatalogJobItem, CanonicalAsset
-from app.middleware.auth import get_current_user
+from app.models.db import get_db, Asset, User, CatalogJob, CatalogJobItem, CanonicalAsset
+from app.middleware.auth import check_brand_role, get_current_user
 from app.api_docs import error_responses
 
 router = APIRouter(prefix="/api/v1", tags=["Phase 2 - Batch, QA & Export"])
@@ -30,7 +30,13 @@ class AngleSlotV2(BaseModel):
     priority: int = 1
 
 
+# Minimum brand role to create generation work, as for the other studio create routes.
+GENERATE_ROLE = "editor"
+ASSET_NOT_FOUND = "Asset not found."
+
+
 class BatchGenerationRequest(BaseModel):
+    brand_id: int = Field(..., description="The brand the batch is for; the caller needs at least the editor role.")
     product_id: str
     character_id: str
     character_version: str = "1.0"
@@ -43,7 +49,8 @@ class BatchGenerationRequest(BaseModel):
 
 
 class RegenerateRequest(BaseModel):
-    asset_id: str
+    asset_id: str = Field(..., description="The id of the brand asset to regenerate; its brand is the job's brand.")
+    brand_id: Optional[int] = Field(None, description="Optional; when sent it must be the asset's brand.")
     angle_code: str
     face_identity_weight: float = Field(0.78, ge=0.5, le=1.0)
     quality_mode: str = "STUDIO_QUALITY"
@@ -77,10 +84,14 @@ class CollectionCreate(BaseModel):
     "/generate/batch",
     status_code=status.HTTP_201_CREATED,
     summary="Create a multi-angle batch generation",
-    description="Multi-angle batch generation with parallel processing.",
+    description=(
+        "Multi-angle batch generation with parallel processing. `brand_id` is required (422 naming it when "
+        "missing); the caller must own the brand or be a member with at least the editor role (else 403); an "
+        "unknown brand is a 404. Nothing is written when rejected."
+    ),
     response_description="The created batch job.",
     operation_id="create_batch_generation",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def create_batch_generation(
     payload: BatchGenerationRequest,
@@ -88,6 +99,7 @@ async def create_batch_generation(
     db: AsyncSession = Depends(get_db),
 ):
     """Multi-angle batch generation with parallel processing."""
+    await check_brand_role(payload.brand_id, current_user, db, minimum_role=GENERATE_ROLE)
     job_id = str(uuid.uuid4())
 
     # Create angle tiles
@@ -110,7 +122,7 @@ async def create_batch_generation(
     job = CatalogJob(
         job_id=job_id,
         user_id=current_user.id,
-        brand_id=getattr(current_user, 'brand_id', 1),
+        brand_id=payload.brand_id,
         status="queued",
         quality_mode=payload.quality_mode,
         total_skus=len(payload.angle_slots),
@@ -274,14 +286,39 @@ async def override_qa_evaluation(
     }
 
 
+async def _regeneration_brand(db, user: User, payload: RegenerateRequest) -> int:
+    """The brand of the asset to regenerate, once the caller may create work for it."""
+    asset = None
+    if payload.asset_id.isdigit():
+        asset = (await db.execute(select(Asset).where(
+            Asset.id == int(payload.asset_id), Asset.deleted_at.is_(None)))).scalars().first()
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ASSET_NOT_FOUND)
+    try:  # not in the asset's brand at all: reported exactly like an unknown asset
+        await check_brand_role(asset.brand_id, user, db, minimum_role="viewer")
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ASSET_NOT_FOUND)
+    if payload.brand_id is not None and payload.brand_id != asset.brand_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="brand_id does not match the asset's brand.")
+    await check_brand_role(asset.brand_id, user, db, minimum_role=GENERATE_ROLE)
+    return asset.brand_id
+
+
 @router.post(
     "/generate/regenerate",
     status_code=status.HTTP_201_CREATED,
     summary="Regenerate an asset",
-    description="Regenerate a failed/borderline asset with adjusted parameters.",
+    description=(
+        "Regenerate a failed/borderline asset with adjusted parameters. The job's brand is the asset's brand "
+        "(`asset_id` is the asset's id); the caller must own that brand or be a member with at least the editor "
+        "role (else 403). An unknown or deleted asset, or one of a brand the caller is not in, is a 404 with the "
+        "same message. An optional `brand_id` that is not the asset's brand is a 422. Nothing is written when "
+        "rejected."
+    ),
     response_description="The created regeneration job.",
     operation_id="regenerate_asset",
-    responses=error_responses(401, 422),
+    responses=error_responses(401, 403, 404, 422),
 )
 async def regenerate_asset(
     payload: RegenerateRequest,
@@ -289,12 +326,13 @@ async def regenerate_asset(
     db: AsyncSession = Depends(get_db),
 ):
     """Regenerate a failed/borderline asset with adjusted parameters."""
+    brand_id = await _regeneration_brand(db, current_user, payload)
     job_id = str(uuid.uuid4())
 
     job = CatalogJob(
         job_id=job_id,
         user_id=current_user.id,
-        brand_id=getattr(current_user, 'brand_id', 1),
+        brand_id=brand_id,
         status="queued",
         quality_mode=payload.quality_mode,
         total_skus=1,

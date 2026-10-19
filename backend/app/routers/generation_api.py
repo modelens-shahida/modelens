@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from datetime import datetime
 import asyncio
 import json
-import uuid
 
 from app.models.db import (
     get_db, User,
@@ -21,26 +20,6 @@ router = APIRouter(prefix="/api/v1", tags=["Generation API & WebSockets"])
 
 
 # ========================== Schemas ==============================
-
-class AngleSlot(BaseModel):
-    angle_code: str
-    framing: str = "FULL_BODY"
-    body_yaw_deg: float = 0.0
-    head_pitch_deg: float = 0.0
-    expression: str = "NEUTRAL"
-    pose_id: Optional[str] = None
-
-
-class GenerationRequest(BaseModel):
-    product_id: str
-    character_id: str = Field(..., description="e.g. EE-F-002")
-    character_version: str = "1.0"
-    angle_slots: List[AngleSlot]
-    environment_id: Optional[str] = None
-    quality_mode: str = "STUDIO_QUALITY"
-    output_format: str = "PNG"
-    project_name: Optional[str] = None
-
 
 class QAEvaluationResponse(BaseModel):
     asset_id: str
@@ -87,54 +66,6 @@ manager = GenerationConnectionManager()
 
 
 # ========================== Generation Endpoints =================
-
-@router.post(
-    "/generate",
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a generation job",
-    description="Create a new generation job with character, product, angles and environment.",
-    response_description="The created generation job.",
-    operation_id="create_generation_job",
-    responses=error_responses(401, 422),
-)
-async def create_generation_job(
-    payload: GenerationRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a new generation job with character, product, angles and environment."""
-    job_id = str(uuid.uuid4())
-
-    job = CatalogJob(
-        job_id=job_id,
-        user_id=current_user.id,
-        brand_id=current_user.brand_id if hasattr(current_user, 'brand_id') else 1,
-        status="queued",
-        quality_mode=payload.quality_mode,
-        total_skus=len(payload.angle_slots),
-        meta={
-            "character_id": payload.character_id,
-            "character_version": payload.character_version,
-            "product_id": payload.product_id,
-            "environment_id": payload.environment_id,
-            "project_name": payload.project_name,
-            "angle_slots": [slot.dict() for slot in payload.angle_slots],
-        }
-    )
-    db.add(job)
-    await db.commit()
-
-    return {
-        "job_id": job_id,
-        "status": "queued",
-        "total_angles": len(payload.angle_slots),
-        "character_id": payload.character_id,
-        "product_id": payload.product_id,
-        "quality_mode": payload.quality_mode,
-        "websocket_url": f"/api/v1/ws/generation/{job_id}",
-        "created_at": str(datetime.utcnow()),
-    }
-
 
 @router.get(
     "/generate/{job_id}",

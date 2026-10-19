@@ -1,4 +1,4 @@
-"""Rosanne Studio is disabled in production.
+"""Rosanne Studio is disabled in production; the legacy /generate routes are brand-scoped.
 
 Rosanne: POST /api/v1/rosanne/generate reserved brand credits and then marked
 the job completed from a mock ComfyUI run, charging for images that were never
@@ -6,6 +6,10 @@ made. In production with ROSANNE_JOBS_ENABLED off it answers 503 for every
 caller before anything is reserved, written or dispatched; the dispatcher never
 marks a mock completed in production and fails + refunds the job once instead.
 Outside production nothing changes.
+
+Legacy generate: POST /api/v1/generate is gone; /generate/batch needs a
+brand_id the caller can create work for (editor or above); /generate/regenerate
+takes its brand from the asset. Neither writes rows for brand 1 by default.
 
 Everything is mocked: no network.
 """
@@ -16,7 +20,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.config_production import check_config
-from app.models.db import Brand, CatalogJob, CreditTransaction
+from app.models.db import Asset, Brand, CatalogJob, CreditTransaction
 from app.routers.rosanne_pipeline import _dispatch_rosanne_workflow
 from app.services.rosanne_availability import ROSANNE_DISABLED, ROSANNE_GENERATION_FAILED
 
@@ -26,6 +30,8 @@ MESSAGE = "Rosanne Studio is undergoing scheduled pipeline upgrades. Please chec
 ROSANNE_URL = "/api/v1/rosanne/generate"
 ROSANNE_BODY = {"product_id": "GAR-TEST-001", "character_id": "EE-F-002", "quality_mode": "quality",
                 "num_images": 1}
+BATCH_URL = "/api/v1/generate/batch"
+REGEN_URL = "/api/v1/generate/regenerate"
 
 
 @pytest.fixture(autouse=True)
@@ -189,3 +195,130 @@ def test_startup_warns_but_does_not_fail_when_rosanne_is_enabled_in_production(m
     monkeypatch.setattr(settings, "ROSANNE_JOBS_ENABLED", True)
     [issue] = [i for i in check_config() if i.name == "ROSANNE_JOBS_ENABLED"]
     assert issue.fatal is False
+
+
+# ========================== Legacy generate routes ==============================
+
+BATCH_BODY = {"product_id": "prod_1", "character_id": "EE-F-002", "angle_slots": [{"angle_code": "FRONT"}],
+              "quality_mode": "studio_quality", "parallel": True}
+REGEN_BODY = {"angle_code": "L30", "face_identity_weight": 0.8, "fix_type": "hands", "quality_mode": "STUDIO_QUALITY"}
+
+
+async def _ledger_and_credits(db_session):
+    credits = sorted((await db_session.execute(select(Brand.id, Brand.credits)
+                                               .execution_options(populate_existing=True))).all())
+    return await _count(db_session, CreditTransaction), credits
+
+
+async def _brand_asset(db_session, brand_id, deleted=False):
+    from datetime import datetime
+    asset = Asset(brand_id=brand_id, filename="look.png", storage_path=f"/uploads/look-{brand_id}.png",
+                  asset_type="image", deleted_at=datetime.utcnow() if deleted else None)
+    db_session.add(asset)
+    await db_session.commit()
+    return asset.id
+
+
+@pytest.mark.asyncio
+async def test_single_generate_route_is_removed(client, test_data):
+    res = await client.post("/api/v1/generate", json={"product_id": "p", "character_id": "c", "angle_slots": []},
+                            headers=test_data["get_headers"]("owner"))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_batch_without_brand_id_is_422_naming_the_field(client, db_session, test_data):
+    jobs = await _count(db_session, CatalogJob)
+    res = await client.post(BATCH_URL, json=BATCH_BODY, headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 422
+    assert any(e["loc"][-1] == "brand_id" for e in res.json()["detail"])
+    assert await _count(db_session, CatalogJob) == jobs
+
+
+@pytest.mark.parametrize("role,expected", [("viewer", 403), ("nonmember", 403)])
+@pytest.mark.asyncio
+async def test_batch_needs_the_editor_role_in_the_brand(client, db_session, test_data, role, expected):
+    jobs = await _count(db_session, CatalogJob)
+    res = await client.post(BATCH_URL, json={**BATCH_BODY, "brand_id": test_data["brand"].id},
+                            headers=test_data["get_headers"](role))
+    assert res.status_code == expected
+    assert await _count(db_session, CatalogJob) == jobs
+
+
+@pytest.mark.asyncio
+async def test_batch_for_an_unknown_brand_is_404(client, test_data):
+    res = await client.post(BATCH_URL, json={**BATCH_BODY, "brand_id": 999999},
+                            headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 404
+
+
+@pytest.mark.parametrize("role,brand", [("editor", "brand"), ("owner", "brand"), ("nonmember", "other_brand")])
+@pytest.mark.asyncio
+async def test_batch_is_written_for_the_requested_brand_only_and_charges_nothing(
+        client, db_session, test_data, role, brand):
+    brand_id = test_data[brand].id
+    ledger = await _ledger_and_credits(db_session)
+    res = await client.post(BATCH_URL, json={**BATCH_BODY, "brand_id": brand_id},
+                            headers=test_data["get_headers"](role))
+    assert res.status_code == 201, res.text
+    job = await _job(db_session, res.json()["job_id"])
+    assert job.brand_id == brand_id
+    others = (await db_session.execute(select(func.count(CatalogJob.id)).where(CatalogJob.brand_id != brand_id))).scalar()
+    assert others == 0  # no brand-1 (or any other brand) fallback
+    assert await _ledger_and_credits(db_session) == ledger
+
+
+@pytest.mark.parametrize("role", ["editor", "owner", "admin"])
+@pytest.mark.asyncio
+async def test_regenerate_without_brand_id_uses_the_assets_brand(client, db_session, test_data, role):
+    asset_id = await _brand_asset(db_session, test_data["brand"].id)
+    ledger = await _ledger_and_credits(db_session)
+    res = await client.post(REGEN_URL, json={**REGEN_BODY, "asset_id": str(asset_id)},
+                            headers=test_data["get_headers"](role))
+    assert res.status_code == 201, res.text
+    job = await _job(db_session, res.json()["job_id"])
+    assert (job.brand_id, job.meta["source_asset_id"]) == (test_data["brand"].id, str(asset_id))
+    assert await _ledger_and_credits(db_session) == ledger
+
+
+@pytest.mark.asyncio
+async def test_regenerate_with_the_matching_brand_id_works(client, db_session, test_data):
+    asset_id = await _brand_asset(db_session, test_data["brand"].id)
+    res = await client.post(REGEN_URL, json={**REGEN_BODY, "asset_id": str(asset_id), "brand_id": test_data["brand"].id},
+                            headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 201, res.text
+
+
+@pytest.mark.asyncio
+async def test_regenerate_unknown_or_other_brands_asset_is_the_same_404(client, db_session, test_data):
+    other_asset = await _brand_asset(db_session, test_data["other_brand"].id)
+    deleted_asset = await _brand_asset(db_session, test_data["brand"].id, deleted=True)
+    jobs = await _count(db_session, CatalogJob)
+    editor = test_data["get_headers"]("editor")
+    for asset_id in (str(other_asset), "999999", "AST-2027-001", str(deleted_asset)):
+        res = await client.post(REGEN_URL, json={**REGEN_BODY, "asset_id": asset_id}, headers=editor)
+        assert (res.status_code, res.json()) == (404, {"detail": "Asset not found."}), asset_id
+    # Even with the right brand_id for that asset, a non-member learns nothing more
+    res = await client.post(REGEN_URL, json={**REGEN_BODY, "asset_id": str(other_asset),
+                                             "brand_id": test_data["other_brand"].id}, headers=editor)
+    assert (res.status_code, res.json()) == (404, {"detail": "Asset not found."})
+    assert await _count(db_session, CatalogJob) == jobs
+
+
+@pytest.mark.asyncio
+async def test_regenerate_with_a_mismatched_brand_id_is_422(client, db_session, test_data):
+    asset_id = await _brand_asset(db_session, test_data["brand"].id)
+    jobs = await _count(db_session, CatalogJob)
+    res = await client.post(REGEN_URL, json={**REGEN_BODY, "asset_id": str(asset_id),
+                                             "brand_id": test_data["other_brand"].id},
+                            headers=test_data["get_headers"]("editor"))
+    assert res.status_code == 422
+    assert await _count(db_session, CatalogJob) == jobs
+
+
+@pytest.mark.asyncio
+async def test_regenerate_needs_the_editor_role(client, db_session, test_data):
+    asset_id = await _brand_asset(db_session, test_data["brand"].id)
+    res = await client.post(REGEN_URL, json={**REGEN_BODY, "asset_id": str(asset_id)},
+                            headers=test_data["get_headers"]("viewer"))
+    assert res.status_code == 403
