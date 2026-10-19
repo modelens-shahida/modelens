@@ -453,20 +453,24 @@ export default function ReviewComparisonWorkspace({
               </div>
             </div>
 
+            <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-800/40 text-cyan-300 text-xs flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span>Fine-grained inpainting & angle regeneration is undergoing scheduled pipeline upgrades.</span>
+            </div>
+
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setActiveModal(null)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white"
               >
-                Cancel
+                Close
               </button>
               <button
-                onClick={handleRegenerateSubmit}
-                disabled={loadingAction}
-                className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-60 text-black font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-cyan-500/20"
+                disabled={true}
+                className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 text-zinc-400 font-bold text-xs px-5 py-2.5 rounded-xl cursor-not-allowed opacity-80"
               >
-                {loadingAction ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                <span>Trigger Adjusted Regeneration</span>
+                <RotateCcw className="w-4 h-4" />
+                <span>Upgrade in Progress</span>
               </button>
             </div>
           </div>
