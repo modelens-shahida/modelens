@@ -44,6 +44,16 @@ ROSANNE_PRESET_PARAMS = {
     "cfg": 7.0,
 }
 
+# Customer responses never carry generation internals (strengths, steps, CFG,
+# seed, workflow ids): docs/character-runtime/DESIGN.md section 0.
+ROSANNE_CUSTOMER_DEFAULTS = {
+    "aspect_ratio": ROSANNE_PRESET_PARAMS["aspect_ratio"],
+    "width": ROSANNE_PRESET_PARAMS["width"],
+    "height": ROSANNE_PRESET_PARAMS["height"],
+    "garment_preservation": ROSANNE_PRESET_PARAMS["garment_preservation"],
+    "print_preservation": ROSANNE_PRESET_PARAMS["print_preservation"],
+}
+
 ROSANNE_CREDIT_RATES = {
     "standard": 3,
     "quality": 5,
@@ -129,19 +139,21 @@ def build_scene_prompt(payload: RosanneScenePrompt) -> str:
 @router.get(
     "/config",
     summary="Get Rosanne configuration",
-    description="Get Rosanne workflow configuration and preset parameters.",
-    response_description="Rosanne workflow configuration and preset parameters.",
+    description=(
+        "Rosanne identity locks, output defaults, credit rates and pose presets. Generation internals "
+        "(strengths, steps, CFG, seed, workflow ids) are never returned."
+    ),
+    response_description="Rosanne identity locks, output defaults, credit rates and pose presets.",
     operation_id="get_rosanne_config",
     responses=error_responses(401),
 )
 async def get_rosanne_config(
     current_user: User = Depends(get_current_user),
 ):
-    """Get Rosanne workflow configuration and preset parameters."""
+    """Get Rosanne identity locks, output defaults, credit rates and pose presets."""
     return {
-        "workflow_template_id": ROSANNE_WORKFLOW_TEMPLATE_ID,
         "identity_locks": ROSANNE_IDENTITY_LOCKS,
-        "preset_params": ROSANNE_PRESET_PARAMS,
+        "defaults": ROSANNE_CUSTOMER_DEFAULTS,
         "credit_rates": ROSANNE_CREDIT_RATES,
         "pose_presets": ROSANNE_POSE_PRESETS,
         "supported_aspect_ratios": ["4:5", "3:4", "1:1", "9:16"],
@@ -208,7 +220,6 @@ async def estimate_rosanne_credits(
         "quality_mode": quality_mode,
         "num_images": num_images,
         "rate_per_image": rate,
-        "workflow": ROSANNE_WORKFLOW_TEMPLATE_ID,
     }
 
 
@@ -238,7 +249,6 @@ async def check_rosanne_credits(
         "balance": check["balance"],
         "required": required,
         "shortfall": check["shortfall"],
-        "workflow": ROSANNE_WORKFLOW_TEMPLATE_ID,
     }
 
 
@@ -370,9 +380,7 @@ async def rosanne_generate(
     return {
         "job_id": job_id,
         "status": JobStatus.QUEUED.value,
-        "workflow_template_id": ROSANNE_WORKFLOW_TEMPLATE_ID,
         "character_id": payload.character_id,
-        "identity_strength": identity_strength,
         "identity_locks": ROSANNE_IDENTITY_LOCKS,
         "pose_preset": pose_data,
         "scene_prompt": scene_prompt,
@@ -405,9 +413,7 @@ async def get_rosanne_job(
     return {
         "job_id": job_id,
         "status": job.status,
-        "workflow_template_id": meta.get("workflow_template_id"),
         "character_id": meta.get("character_id"),
-        "identity_strength": meta.get("identity_strength"),
         "identity_locks": meta.get("identity_locks"),
         "pose_preset": meta.get("pose_preset"),
         "credits_reserved": meta.get("credits_reserved"),

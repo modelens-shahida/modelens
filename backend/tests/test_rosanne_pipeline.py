@@ -86,7 +86,7 @@ async def test_estimate_rosanne_credits_quality(client: AsyncClient, test_data: 
     assert res.status_code == 200
     data = res.json()
     assert data["estimated_credits"] == 5
-    assert data["workflow"] == "rosanne-v1"
+    assert "workflow" not in data
 
 
 @pytest.mark.asyncio
@@ -109,9 +109,9 @@ async def test_get_rosanne_config(client: AsyncClient, test_data: dict):
     res = await client.get("/api/v1/rosanne/config", headers=owner_headers)
     assert res.status_code == 200
     data = res.json()
-    assert data["workflow_template_id"] == "rosanne-v1"
+    assert "workflow_template_id" not in data and "preset_params" not in data
     assert "identity_locks" in data
-    assert "preset_params" in data
+    assert data["defaults"]["aspect_ratio"] == "4:5"
     assert "pose_presets" in data
 
 
@@ -172,7 +172,7 @@ async def test_rosanne_generate_success(client: AsyncClient, test_data: dict, db
 
     assert res.status_code == 201
     data = res.json()
-    assert data["workflow_template_id"] == "rosanne-v1"
+    assert "workflow_template_id" not in data
     assert data["character_id"] == "EE-F-002"
     assert data["identity_locks"]["face_geometry"] is True
     assert data["credits_reserved"] == 5
@@ -222,7 +222,9 @@ async def test_rosanne_generate_with_custom_identity_strength(client: AsyncClien
 
     assert res.status_code == 201
     data = res.json()
-    assert data["identity_strength"] == 0.85
+    assert "identity_strength" not in data  # used internally, never returned
+    job = (await db_session.execute(select(CatalogJob).where(CatalogJob.job_id == data["job_id"]))).scalars().one()
+    assert job.meta["identity_strength"] == 0.85
 
 
 @pytest.mark.asyncio
@@ -251,6 +253,5 @@ async def test_get_rosanne_job_status(client: AsyncClient, test_data: dict, db_s
     res = await client.get("/api/v1/rosanne/jobs/rosanne_status_test", headers=owner_headers)
     assert res.status_code == 200
     data = res.json()
-    assert data["workflow_template_id"] == "rosanne-v1"
+    assert "workflow_template_id" not in data and "identity_strength" not in data
     assert data["character_id"] == "EE-F-002"
-    assert data["identity_strength"] == 0.82
