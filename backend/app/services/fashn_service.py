@@ -1,12 +1,15 @@
 import os
+
+from app.config import settings
 import logging
 import httpx
 from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger("modelens.fashn")
 
-FASHN_API_KEY = os.getenv("FASHN_API_KEY", "demo_fashn_key")
-FASHN_BASE_URL = os.getenv("FASHN_BASE_URL", "https://api.fashn.ai/v1")
+# The declared settings (app/config.py): FASHN_BASE_URL is the host, the API is under /v1.
+FASHN_API_KEY = settings.FASHN_API_KEY or "demo_fashn_key"
+FASHN_BASE_URL = f"{settings.FASHN_BASE_URL.rstrip('/')}/v1"
 
 class FASHNService:
     """

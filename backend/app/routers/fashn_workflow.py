@@ -14,8 +14,22 @@ from app.services.credits_sync_service import credits_sync_service
 from app.api_docs import NOT_CONFIGURED_RESPONSE, error_responses
 from app.services.job_access import require_readable
 from app.services.internal_auth import check_internal_secret
+from app.config import production_rules_apply
+from app.services.studio_availability import require_available, unavailable_response
 
 router = APIRouter(prefix="/api/v1/fashn", tags=["FASHN Workflow Integration"])
+
+# POST /product-to-model and /try-on-max answer 503 in production (for every caller, before
+# anything is reserved or sent): they charge brand 1 (no brand in the request) and return FASHN's
+# own output URLs. Catalog Studio (POST /api/v1/catalog-jobs) is the FASHN integration.
+FASHN_DIRECT_DISABLED = (
+    "Direct FASHN jobs are not available. Please use Catalog Studio to create try-on images."
+)
+require_fashn_direct_available = require_available(lambda: production_rules_apply(), FASHN_DIRECT_DISABLED)
+FASHN_DIRECT_DISABLED_RESPONSE = unavailable_response(
+    "Not available in production: use POST /api/v1/catalog-jobs. Nothing was reserved or sent.",
+    FASHN_DIRECT_DISABLED,
+)
 
 # ========================== Credit Rates =========================
 
@@ -213,12 +227,12 @@ async def check_fashn_credits(
     description="FASHN Product-to-Model try-on with credit reservation.",
     response_description="The created job with reserved credits.",
     operation_id="create_fashn_product_to_model_job",
-    responses=error_responses(401, 402, 404, 422, 500),
+    responses={**error_responses(401, 402, 404, 422, 500), **FASHN_DIRECT_DISABLED_RESPONSE},
 )
 async def product_to_model(
     payload: ProductToModelRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_fashn_direct_available),
     db: AsyncSession = Depends(get_db),
 ):
     """FASHN Product-to-Model try-on with credit reservation."""
@@ -320,12 +334,12 @@ async def product_to_model(
     description="FASHN Try-On Max with credit reservation.",
     response_description="The created job with reserved credits.",
     operation_id="create_fashn_try_on_max_job",
-    responses=error_responses(401, 402, 404, 422, 500),
+    responses={**error_responses(401, 402, 404, 422, 500), **FASHN_DIRECT_DISABLED_RESPONSE},
 )
 async def try_on_max(
     payload: TryOnMaxRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_fashn_direct_available),
     db: AsyncSession = Depends(get_db),
 ):
     """FASHN Try-On Max with credit reservation."""

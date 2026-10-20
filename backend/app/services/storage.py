@@ -104,6 +104,21 @@ class StorageService:
         except Exception:
             pass
 
+    def presigned_get_url(self, unique_filename: str, expires_in: int) -> Optional[str]:
+        """A short-lived signed GET URL for one object of our bucket, for a provider that must
+        fetch it (FASHN). None on local storage, which has no signed URLs. The URL carries a
+        signature: never log or store it."""
+        if self.backend != "s3":
+            return None
+        try:
+            return self.s3_client.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": self.bucket, "Key": unique_filename},
+                ExpiresIn=expires_in,
+            )
+        except ClientError as e:
+            raise RuntimeError(f"Failed to presign S3 object: {e.response.get('Error', {}).get('Code', 'error')}")
+
     def read_file_bytes(self, unique_filename: str) -> bytes:
         """Reads and returns file bytes from either S3 or local uploads directory."""
         if self.backend == "s3":
@@ -135,8 +150,8 @@ class StorageService:
                 raise RuntimeError(f"Failed to upload file to S3 '{unique_filename}': {str(e)}")
         else:
             local_dir = "uploads"
-            os.makedirs(local_dir, exist_ok=True)
             local_path = os.path.join(local_dir, unique_filename)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)  # keys may have folders
             with open(local_path, "wb") as f:
                 f.write(file_bytes)
             return f"/uploads/{unique_filename}"

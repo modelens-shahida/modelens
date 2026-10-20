@@ -11,6 +11,8 @@ from sqlalchemy import select
 from app.models.db import get_db, User, CatalogJob, CatalogJobItem, Asset, QAEvaluation
 from app.middleware.auth import get_current_user
 from app.api_docs import error_responses
+from app.services.job_images import storage_key
+from app.services.storage import storage_service
 from app.services.job_access import require_readable
 
 JOB_NOT_FOUND = "Catalog job not found."
@@ -107,16 +109,11 @@ async def export_catalog_zip(
             }
             manifest["skus"].append(sku_entry)
 
-            # Add placeholder image file in ZIP
-            # In production: download actual image from storage_path
+            # The render from our own storage (FASHN outputs are stored there); nothing is fetched
+            # from other hosts. Older mock outputs have no stored file: a placeholder is written.
             placeholder = b"PNG_PLACEHOLDER"
             try:
-                import httpx
-                if item.output_url and item.output_url.startswith("http"):
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        img_resp = await client.get(item.output_url)
-                        if img_resp.status_code == 200:
-                            placeholder = img_resp.content
+                placeholder = storage_service.read_file_bytes(storage_key(item.output_url or ""))
             except Exception:
                 pass
 

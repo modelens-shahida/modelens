@@ -1,9 +1,8 @@
 """Catalog Studio is off in production unless CATALOG_JOBS_ENABLED is on.
 
-The Catalog worker has never reached FASHN in production (it reads a FASHN key
-Settings does not declare, see catalog_fashn_key), so every job saved a mock
-output as a success and was charged for it. Until the try-on pipeline is
-rebuilt:
+Catalog generates with FASHN (app/services/fashn_catalog.py). Earlier the worker
+never reached FASHN and saved mock outputs as charged successes, so Catalog stays
+off in production until it has been tested with the real key:
 
 * while the flag is off and production rules apply, POST /api/v1/catalog-jobs
   (JSON and multipart), /{job_id}/retry and /{job_id}/items/{item_id}/retry

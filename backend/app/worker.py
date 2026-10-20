@@ -2462,10 +2462,6 @@ async def _catalog_path_problem(db, job, item):
     return f"{CATALOG_IMAGE_LABEL} {problem}." if problem else None
 
 
-class CatalogGenerationError(RuntimeError):
-    """FASHN produced no image for a catalog item (production: no mock output is saved instead)."""
-
-
 async def _block_catalog_job(db, job, items):
     """Catalog is disabled in production: fail the job's unfinished items without calling FASHN and
     refund what the job has left unused, once (a redelivered message refunds nothing more)."""
@@ -2507,11 +2503,89 @@ def process_catalog_job(self, job_id: int):
     loop.run_until_complete(_process_catalog_job_async(self, job_id))
 
 
-async def _process_catalog_job_async(task_self, job_id: int):
-    from app.models.db import CatalogJob, CatalogJobItem, Asset
+async def _run_catalog_item(db, job, item, *, retry: bool = False) -> bool:
+    """Generate one catalog item, store its image and count it; True on success.
+
+    With a FASHN key the image comes from FASHN (app/services/fashn_catalog.py: checked inputs
+    as presigned URLs, run + poll, output downloaded into our storage under the brand). Without
+    one, production fails the item (never a mock output), and only development uses the mock.
+    Any failure marks the item failed and refunds it once (``_fail_catalog_item``); ``retry``
+    is True for an item already counted in ``failed_items``."""
+    from app.models.db import Asset
     from app.config import catalog_fashn_key, production_rules_apply
-    from app.services.catalog_availability import CATALOG_GENERATION_FAILED, catalog_jobs_blocked
+    from app.services import fashn_catalog
+    from app.services.catalog_availability import CATALOG_GENERATION_FAILED
     from app.services.job_images import InputImageError
+
+    asset = None
+    try:
+        problem = await _catalog_path_problem(db, job, item)
+        if problem:
+            raise InputImageError(problem)
+        item.status = "generating"  # FASHN starting / in_queue / processing
+        await db.commit()
+
+        if catalog_fashn_key():
+            output_path, provider_job_id = await fashn_catalog.generate_item(db, job, item)
+        elif production_rules_apply():  # never a mock output in production
+            raise fashn_catalog.CatalogGenerationError(code="no_key")
+        else:  # development without a key
+            output_path, provider_job_id = f"https://cdn.example.com/catalog/mock_{item.id}.png", f"mock_{item.id}"
+
+        asset = Asset(
+            brand_id=job.brand_id,
+            name=f"Catalog Output - {item.sku_tag or item.id}",
+            filename=output_path.rsplit("/", 1)[-1],
+            storage_path=output_path,
+            asset_type="generated",
+            status="active",
+            meta={"source": "catalog_studio", "job_id": job.id, "item_id": item.id, "sku_tag": item.sku_tag,
+                  "engine_mode": job.engine_mode},
+        )
+        db.add(asset)
+        await db.flush()
+        await _register_asset_version(db, asset.id, output_path)
+        if item.product_image_path:
+            await _register_asset_relationship(db, asset.id, asset.id, "REL-DERIVED-FROM")
+
+        # Counted (and its credits consumed) only once nothing above can fail: a failed
+        # item must not also count as completed, or its refund would be capped away.
+        item.status = "qa_passed"
+        item.output_url = output_path  # our storage, never FASHN's URL
+        item.quality_score = 0.92
+        item.fidelity_status = "passed"
+        item.provider_job_id = provider_job_id
+        item.error_message = None
+        job.completed_items += 1
+        if retry:
+            job.failed_items = max(0, job.failed_items - 1)
+        job.credits_consumed += _catalog_item_credits(job)
+        await db.commit()
+        return True
+    except Exception as exc:
+        safe = isinstance(exc, (InputImageError, fashn_catalog.CatalogGenerationError))
+        print(f"[CatalogJob] Item {item.id} failed ({getattr(exc, 'code', type(exc).__name__)})")
+        if asset is not None and asset in db.new:
+            db.expunge(asset)
+        await _fail_catalog_item(db, job, item, str(exc) if safe else CATALOG_GENERATION_FAILED, count=not retry)
+        await db.commit()
+        return False
+
+
+def _settle_catalog_job(job) -> None:
+    """The job's status once every item has finished."""
+    if job.completed_items + job.failed_items >= job.total_items:
+        if job.failed_items == 0:
+            job.status = "completed"
+        elif job.completed_items == 0:
+            job.status = "failed"
+        else:
+            job.status = "partially_completed"
+
+
+async def _process_catalog_job_async(task_self, job_id: int):
+    from app.models.db import CatalogJob, CatalogJobItem
+    from app.services.catalog_availability import catalog_jobs_blocked
 
     async with async_session_maker() as db:
         result = await db.execute(select(CatalogJob).where(CatalogJob.id == job_id))
@@ -2535,127 +2609,13 @@ async def _process_catalog_job_async(task_self, job_id: int):
         job.status = "processing"
         await db.commit()
 
-        items_result = await db.execute(
+        items = (await db.execute(
             select(CatalogJobItem).where(CatalogJobItem.job_id == job_id, CatalogJobItem.status == "queued")
-        )
-        items = items_result.scalars().all()
-
+        )).scalars().all()
         for item in items:
-            try:
-                problem = await _catalog_path_problem(db, job, item)
-                if problem:
-                    raise InputImageError(problem)
+            await _run_catalog_item(db, job, item)
 
-                # Step 1: SAM2 Segmentation
-                item.status = "segmenting"
-                await db.commit()
-
-                mask_path = None
-                try:
-                    # SAM2 segmentation placeholder
-                    mask_path = f"/masks/mask_{item.id}.png"
-                    item.mask_path = mask_path
-                except Exception as seg_err:
-                    print(f"[CatalogJob] SAM2 segmentation failed (mock): {seg_err}")
-
-                # Step 2: FASHN API Generation
-                item.status = "generating"
-                await db.commit()
-
-                output_url = None
-                provider_job_id = None
-
-                try:
-                    fashn_key = catalog_fashn_key()
-                    if not fashn_key:
-                        raise Exception("FASHN mock mode")
-
-                    import httpx
-                    # FASHN Product-to-Model or Try-On Max
-                    endpoint = "product-to-model" if job.engine_mode == "product_to_model" else "tryon-max"
-                    async with httpx.AsyncClient(timeout=120) as client:
-                        response = await client.post(
-                            f"https://api.fashn.ai/v1/{endpoint}",
-                            headers={"Authorization": f"Bearer {fashn_key}"},
-                            json={
-                                "model_name": endpoint,
-                                "inputs": {
-                                    "product_image": item.product_image_path,
-                                    "prompt": f"professional fashion catalog, {job.pose}, {job.background}",
-                                    "aspect_ratio": job.aspect_ratio,
-                                    "resolution": job.resolution,
-                                    "generation_mode": "quality" if job.generation_mode == "studio_quality" else "speed",
-                                }
-                            }
-                        )
-                        data = response.json()
-                        provider_job_id = data.get("id")
-                        output_url = data.get("output", [None])[0]
-                    if not output_url:
-                        raise Exception("FASHN returned no output")
-
-                except Exception as fashn_err:
-                    if production_rules_apply():  # never a mock output in production: fail and refund
-                        print(f"[CatalogJob] Item {item.id}: FASHN did not generate it ({type(fashn_err).__name__})")
-                        raise CatalogGenerationError(CATALOG_GENERATION_FAILED) from fashn_err
-                    print(f"[CatalogJob] FASHN failed (mock): {fashn_err}")
-                    output_url = f"https://cdn.example.com/catalog/mock_{item.id}.png"
-                    provider_job_id = f"mock_{item.id}"
-
-                # Step 3: QA Check
-                quality_score = 0.92
-                fidelity_status = "passed"
-
-                # Step 4: Store as Asset
-                new_asset = Asset(
-                    brand_id=job.brand_id,
-                    name=f"Catalog Output - {item.sku_tag or item.id}",
-                    filename=f"catalog_{item.id}.png",
-                    storage_path=output_url,
-                    asset_type="generated",
-                    status="active",
-                    meta={
-                        "source": "catalog_studio",
-                        "job_id": job_id,
-                        "item_id": item.id,
-                        "sku_tag": item.sku_tag,
-                        "engine_mode": job.engine_mode,
-                    }
-                )
-                db.add(new_asset)
-                await db.flush()
-
-                # Register asset version and lineage
-                await _register_asset_version(db, new_asset.id, output_url)
-                if item.product_image_path:
-                    await _register_asset_relationship(db, new_asset.id, new_asset.id, "REL-DERIVED-FROM")
-
-                # Counted (and its credits consumed) only once nothing above can fail: a failed
-                # item must not also count as completed, or its refund would be capped away.
-                item.status = "qa_passed"
-                item.output_url = output_url
-                item.quality_score = quality_score
-                item.fidelity_status = fidelity_status
-                item.provider_job_id = provider_job_id
-                job.completed_items += 1
-                job.credits_consumed += _catalog_item_credits(job)
-
-                await db.commit()
-
-            except Exception as item_err:
-                print(f"[CatalogJob] Item {item.id} failed: {item_err}")
-                await _fail_catalog_item(db, job, item, str(item_err))
-                await db.commit()
-
-        # Update job status
-        all_done = job.completed_items + job.failed_items >= job.total_items
-        if all_done:
-            if job.failed_items == 0:
-                job.status = "completed"
-            elif job.completed_items == 0:
-                job.status = "failed"
-            else:
-                job.status = "partially_completed"
+        _settle_catalog_job(job)
         await db.commit()
         print(f"[CatalogJob] Job {job_id} done. Completed: {job.completed_items}, Failed: {job.failed_items}")
 
@@ -2677,8 +2637,7 @@ def process_catalog_item(self, item_id: int):
 
 async def _process_catalog_item_retry_async(item_id: int):
     from app.models.db import CatalogJobItem, CatalogJob
-    from app.config import production_rules_apply
-    from app.services.catalog_availability import CATALOG_DISABLED, CATALOG_GENERATION_FAILED, catalog_jobs_blocked
+    from app.services.catalog_availability import CATALOG_DISABLED, catalog_jobs_blocked
     async with async_session_maker() as db:
         result = await db.execute(select(CatalogJobItem).where(CatalogJobItem.id == item_id))
         item = result.scalars().first()
@@ -2689,22 +2648,16 @@ async def _process_catalog_item_retry_async(item_id: int):
         if not job:
             return
         problem = await _catalog_path_problem(db, job, item)
-        if not problem and production_rules_apply():
-            # This retry only writes a mock output, which production never saves as a success.
-            problem = CATALOG_DISABLED if catalog_jobs_blocked() else CATALOG_GENERATION_FAILED
+        if not problem and catalog_jobs_blocked():
+            problem = CATALOG_DISABLED
         if problem:
             print(f"[CatalogItem] Item {item_id} failed: {problem}")
             await _fail_catalog_item(db, job, item, problem, count=False)  # counted when it first failed
             await db.commit()
             return
-        # Re-process single item
-        item.status = "generating"
-        await db.commit()
-        item.output_url = f"https://cdn.example.com/catalog/retry_{item_id}.png"
-        item.status = "qa_passed"
-        item.quality_score = 0.90
-        job.completed_items += 1
-        job.failed_items = max(0, job.failed_items - 1)
+        # The same generation as the job run; counted in failed_items when it first failed.
+        await _run_catalog_item(db, job, item, retry=True)
+        _settle_catalog_job(job)
         await db.commit()
 
 
@@ -3004,13 +2957,9 @@ def process_catalog_item_single(self, item_id: int, job_id: int):
 
 async def _process_single_catalog_item_async(task_self, item_id: int, job_id: int):
     """Async runner for single catalog item processing."""
-    from app.models.db import CatalogJobItem, CatalogJob, Asset
-    from app.config import production_rules_apply
-    from app.services.catalog_availability import CATALOG_DISABLED, CATALOG_GENERATION_FAILED, catalog_jobs_blocked
-    from app.services.batch_concurrency import (
-        get_cached_mask, set_cached_mask,
-        get_cached_character_embedding, publish_batch_telemetry
-    )
+    from app.models.db import CatalogJobItem, CatalogJob
+    from app.services.catalog_availability import CATALOG_DISABLED, catalog_jobs_blocked
+    from app.services.batch_concurrency import publish_batch_telemetry
 
     async with async_session_maker() as db:
         item_result = await db.execute(select(CatalogJobItem).where(CatalogJobItem.id == item_id))
@@ -3026,65 +2975,17 @@ async def _process_single_catalog_item_async(task_self, item_id: int, job_id: in
         start_time = datetime.utcnow()
 
         problem = await _catalog_path_problem(db, job, item)
-        if not problem and production_rules_apply():
-            # This task only writes a mock output, which production never saves as a success.
-            problem = CATALOG_DISABLED if catalog_jobs_blocked() else CATALOG_GENERATION_FAILED
+        if not problem and catalog_jobs_blocked():
+            problem = CATALOG_DISABLED
         if problem:  # final: a retry would end the same way
             print(f"[Batch] Item {item_id} failed: {problem}")
             await _fail_catalog_item(db, job, item, problem, count=item.status != "failed")
             await db.commit()
             return
 
-        try:
-            item.status = "generating"
-            await db.commit()
-
-            # Check Redis cache for pre-segmented mask
-            cached_mask = None
-            if item.product_image_path:
-                cached_mask = await get_cached_mask(None, item.id)
-                if cached_mask:
-                    print(f"[Batch] Using cached mask for item {item_id}")
-
-            # FASHN generation (mock)
-            output_url = f"https://cdn.example.com/catalog/batch_{item_id}.png"
-            provider_job_id = f"batch_mock_{item_id}"
-
-            # Cache mask for future use
-            if not cached_mask:
-                await set_cached_mask(None, item.id, b"mock_mask_data")
-
-            # Register output
-            new_asset = Asset(
-                brand_id=job.brand_id,
-                name=f"Batch Catalog - {item.sku_tag or item.id}",
-                filename=f"catalog_batch_{item_id}.png",
-                storage_path=output_url,
-                asset_type="generated",
-                status="active",
-                meta={
-                    "source": "catalog_batch",
-                    "job_id": job_id,
-                    "item_id": item_id,
-                    "sku_tag": item.sku_tag,
-                }
-            )
-            db.add(new_asset)
-            await db.flush()
-
-            # Register lineage
-            await _register_asset_version(db, new_asset.id, output_url)
-
-            item.status = "qa_passed"
-            item.output_url = output_url
-            item.quality_score = 0.93
-            item.provider_job_id = provider_job_id
-            job.completed_items += 1
-            job.credits_consumed += _catalog_item_credits(job)
-
-            await db.commit()
-
-            # Publish batch telemetry
+        # The same generation as the job run. Final either way: a failure is refunded once and
+        # not retried by Celery (a retry would charge FASHN again for the same item).
+        if await _run_catalog_item(db, job, item, retry=item.status == "failed"):
             await publish_batch_telemetry(
                 redis_client=None,
                 brand_id=job.brand_id,
@@ -3095,14 +2996,6 @@ async def _process_single_catalog_item_async(task_self, item_id: int, job_id: in
                 active_workers=1,
                 start_time=start_time,
             )
-
-        except Exception as e:
-            print(f"[Batch] Item {item_id} failed: {e}")
-            item.status = "failed"
-            item.error_message = str(e)[:200]
-            job.failed_items += 1
-            await db.commit()
-            raise task_self.retry(exc=e, countdown=30)
 
 
 @celery_app.task(
