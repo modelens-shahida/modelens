@@ -14,7 +14,7 @@ every job saved a mock output as a success and was charged for it. Now:
 Everything is mocked: no network, fake keys only.
 """
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
@@ -26,6 +26,7 @@ from app.config_production import check_config
 from app.models.db import Asset, CatalogJob, CatalogJobItem, CreditTransaction, User
 from app.services.catalog_availability import CATALOG_DISABLED, CATALOG_GENERATION_FAILED
 from app.services.storage import storage_service
+from tests import fashn_fakes
 from app.worker import (
     _process_catalog_item_retry_async, _process_catalog_job_async, _process_single_catalog_item_async,
 )
@@ -35,7 +36,6 @@ pytestmark = pytest.mark.integration  # runs worker task bodies
 MESSAGE = "Catalog Studio is undergoing scheduled try-on pipeline upgrades. Please check back shortly."
 MINE = "/uploads/brand/catalog-product.png"
 URL = "/api/v1/catalog-jobs"
-FASHN_OUTPUT = "https://cdn.fashn.ai/out/1.png"
 
 
 def _png():
@@ -62,38 +62,22 @@ def dispatch():
         yield job_task, item_task, save
 
 
-class _SettingsWithFashnKey:
-    """The real settings plus a FASHN key (Settings declares none, see app.config.catalog_fashn_key)."""
-    FASHN_API_KEY = "fashn-test-key"
-
-    def __getattr__(self, name):
-        return getattr(settings, name)
-
-
-def _fake_fashn(response=None, error=None):
-    client = MagicMock()
-    if error is not None:
-        client.post = AsyncMock(side_effect=error)
-    else:
-        reply = MagicMock()
-        reply.json.return_value = response
-        client.post = AsyncMock(return_value=reply)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=False)
-    return client
+def _signed(key, expires_in):
+    return f"https://modelens-test.s3.amazonaws.com/{key}?X-Amz-Expires={expires_in}&X-Amz-Signature=test"
 
 
 @pytest.fixture
-def fashn():
-    """No FASHN key (as in Railway) and a fake HTTP client that records any request; none is sent."""
-    client = _fake_fashn({"id": "fashn-run-1", "output": [FASHN_OUTPUT]})
-    with patch("httpx.AsyncClient", return_value=client):
-        yield client.post
+def fashn(monkeypatch):
+    """No FASHN key (as in Railway today) and a fake FASHN API that records any request (tests/fashn_fakes.py)."""
+    return fashn_fakes.install(monkeypatch, key=None)
 
 
 @pytest.fixture
-def fashn_key(monkeypatch):
-    monkeypatch.setattr("app.config.settings", _SettingsWithFashnKey())
+def fashn_key(monkeypatch, fashn):
+    """A test-only FASHN key, and S3-style presigned input URLs."""
+    monkeypatch.setattr(settings, "FASHN_API_KEY", fashn_fakes.TEST_KEY)
+    monkeypatch.setattr(storage_service, "presigned_get_url", MagicMock(side_effect=_signed))
+    return fashn
 
 
 async def _user_credits(db_session, user_id):
@@ -280,18 +264,21 @@ async def test_queued_catalog_item_in_production_fails_and_refunds_once(
 @pytest.mark.parametrize("case", ["no key", "fashn error", "no output"])
 @pytest.mark.asyncio
 async def test_production_never_saves_a_mock_output_even_when_enabled(
-        db_session, test_data, production, enabled, monkeypatch, capsys, case):
+        db_session, test_data, production, enabled, fashn, monkeypatch, capsys, case):
     if case != "no key":
-        monkeypatch.setattr("app.config.settings", _SettingsWithFashnKey())
-    client = _fake_fashn(error=RuntimeError("boom")) if case == "fashn error" else _fake_fashn({"id": "x", "output": []})
+        monkeypatch.setattr(settings, "FASHN_API_KEY", fashn_fakes.TEST_KEY)
+        monkeypatch.setattr(storage_service, "presigned_get_url", MagicMock(side_effect=_signed))
+    if case == "fashn error":
+        fashn.status_replies = [fashn_fakes.status("failed", error={"name": "PipelineError", "message": "boom"})]
+    if case == "no output":
+        fashn.status_replies = [fashn_fakes.status("completed", [])]
     job_id, item_ids, user_id = await _catalog_job(db_session, test_data)
     start = await _user_credits(db_session, user_id)
 
-    with patch("httpx.AsyncClient", return_value=client):
-        for _ in range(2):
-            await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
+    for _ in range(2):
+        await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
 
-    assert client.post.called == (case != "no key")
+    assert (fashn.call_count > 0) == (case != "no key")
     for item_id in item_ids:
         item = await _reload(db_session, CatalogJobItem, item_id)
         assert (item.status, item.error_message, item.output_url) == ("failed", CATALOG_GENERATION_FAILED, None)
@@ -326,9 +313,10 @@ async def test_production_with_the_flag_and_a_working_fashn_still_generates(
     start = await _user_credits(db_session, user_id)
     await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
     assert fashn.call_count == 2
-    assert fashn.call_args.kwargs["json"]["inputs"]["product_image"] == MINE
+    assert fashn.run_json["inputs"]["product_image"].startswith("https://modelens-test.s3.amazonaws.com/")
     assert (await _reload(db_session, CatalogJob, job_id)).status == "completed"
-    assert {a.storage_path for a in await _outputs(db_session)} == {FASHN_OUTPUT}
+    stored = {a.storage_path for a in await _outputs(db_session)}
+    assert len(stored) == 2 and all(p.startswith(f"/uploads/brands/{test_data['brand'].id}/catalog/") for p in stored)
     assert await _user_credits(db_session, user_id) == start
 
 
@@ -354,11 +342,12 @@ def test_catalog_jobs_are_off_by_default():
     assert Settings.model_fields["CATALOG_JOBS_ENABLED"].default is False
 
 
-def test_startup_warns_but_does_not_fail_when_catalog_is_enabled_without_fashn(monkeypatch):
+def test_startup_refuses_catalog_in_production_without_a_fashn_key(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
-    assert not [i for i in check_config() if i.name == "CATALOG_JOBS_ENABLED"]
+    monkeypatch.setattr(settings, "FASHN_API_KEY", None)
+    assert not [i for i in check_config() if i.name == "FASHN_API_KEY"]
     monkeypatch.setattr(settings, "CATALOG_JOBS_ENABLED", True)
-    [issue] = [i for i in check_config() if i.name == "CATALOG_JOBS_ENABLED"]
-    assert issue.fatal is False
-    monkeypatch.setattr("app.config.settings", _SettingsWithFashnKey())
-    assert not [i for i in check_config() if i.name == "CATALOG_JOBS_ENABLED"]
+    [issue] = [i for i in check_config() if i.name == "FASHN_API_KEY"]
+    assert issue.fatal is True
+    monkeypatch.setattr(settings, "FASHN_API_KEY", fashn_fakes.TEST_KEY)
+    assert not [i for i in check_config() if i.name == "FASHN_API_KEY"]

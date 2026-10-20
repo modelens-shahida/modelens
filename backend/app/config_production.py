@@ -81,6 +81,13 @@ def check_config() -> List[Issue]:
     for name in ("GEMINI_GHOST_MODEL", "GEMINI_SKETCH_MODEL", "GEMINI_SKETCH_FAST_MODEL"):
         if not _image_model(getattr(settings, name)):
             add(name, f"is empty or not an image-output model (one of: {', '.join(GEMINI_IMAGE_MODELS)})", True)
+    if settings.CATALOG_JOBS_ENABLED:  # Catalog charges customers: it must be able to generate
+        if not catalog_fashn_key():
+            add("FASHN_API_KEY", "is unset or mock while CATALOG_JOBS_ENABLED is on; Catalog jobs cannot be "
+                "generated", True)
+        if (settings.STORAGE_BACKEND or "").lower() != "s3":
+            add("STORAGE_BACKEND", "is not s3 while CATALOG_JOBS_ENABLED is on; FASHN only gets presigned "
+                "S3 URLs of input images", True)
 
     # --- Warnings: weak or missing, but Railway may not set these ---
     if not _unset_or_default(settings.SECRET_KEY, DEFAULT_SECRET_KEY) \
@@ -99,9 +106,6 @@ def check_config() -> List[Issue]:
         add("SKETCH_JOBS_ENABLED", "is on, but GEMINI_API_KEY, GEMINI_SKETCH_MODEL or GEMINI_SKETCH_FAST_MODEL "
             "is not usable; "
             "Sketch jobs would fail and be refunded", False)
-    if settings.CATALOG_JOBS_ENABLED and not catalog_fashn_key():
-        add("CATALOG_JOBS_ENABLED", "is on, but the Catalog worker has no FASHN key (FASHN_API_KEY is not a "
-            "declared setting); Catalog items would fail and be refunded", False)
     if settings.ROSANNE_JOBS_ENABLED and not rosanne_pipeline_configured():
         add("ROSANNE_JOBS_ENABLED", "is on, but there is no real Rosanne ComfyUI pipeline (the dispatcher only "
             "mocks); Rosanne jobs would fail and be refunded", False)

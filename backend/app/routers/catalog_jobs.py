@@ -24,9 +24,15 @@ CREDITS_PER_SKU = {
     "studio_quality": 5,
 }
 
+ENGINE_MODES = ("product_to_model", "tryon_max")
+
+
 class CatalogJobCreate(BaseModel):
     brand_id: int
-    engine_mode: Optional[str] = "product_to_model"
+    engine_mode: Optional[str] = Field("product_to_model", description="`product_to_model` or `tryon_max`.")
+    model_image_path: Optional[str] = Field(
+        None, description="Try-On Max only (required there): the `storage_path` of an image asset of the same "
+                          "brand showing the model. Multipart requests send a `custom_model` file instead.")
     generation_mode: Optional[str] = "studio_quality"
     model_identity: Optional[str] = "Maya"
     pose: Optional[str] = "Catalog Standing"
@@ -75,6 +81,10 @@ async def get_marketplaces():
         "buckets, `..`, another brand's file) is reported as not found. Any bad image is a 422 naming the "
         "product index, before anything is charged, stored, written or queued.\n"
         "\n"
+        "`engine_mode` (multipart: `fashn_mode`) is `product_to_model` (default) or `tryon_max`. Try-On Max also "
+        "needs a model image: JSON `model_image_path` (an image asset of the same brand) or a multipart "
+        "`custom_model` file, checked like the product images (else 422).\n"
+        "\n"
         "**Disabled in production** while `CATALOG_JOBS_ENABLED` is off: answers 503 for every caller, "
         "before anything is reserved, written, uploaded or queued."
     ),
@@ -99,7 +109,11 @@ async def create_catalog_job(
         background = form.get("background") or "Soft Front Studio"
         aspect_ratio = form.get("aspect_ratio") or "4:5"
         resolution = form.get("resolution") or "2K"
-        
+        model_image_path = form.get("model_image_path") or None
+        model_file = form.get("custom_model")
+        if isinstance(model_file, str):  # an empty form field, not a file
+            model_file = None
+
         # Files are saved once the brand is authorized
         products = []
         files_to_save = [(form.get(f"sku_{i}") or f"SKU-{i+1}", file)
@@ -114,8 +128,18 @@ async def create_catalog_job(
         background = payload.background
         aspect_ratio = payload.aspect_ratio
         resolution = payload.resolution
+        model_image_path = payload.model_image_path
+        model_file = None
         products = payload.products
         files_to_save = []
+
+    engine_mode = engine_mode or "product_to_model"
+    if engine_mode not in ENGINE_MODES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"engine_mode must be one of: {', '.join(ENGINE_MODES)}.")
+    if engine_mode == "tryon_max" and not (model_image_path or model_file):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="model_image: Try-On Max needs a model image (model_image_path or custom_model).")
 
     # Fallback to user's first brand if brand_id is missing or None
     if not brand_id:
@@ -139,13 +163,19 @@ async def create_catalog_job(
     # Every product image, checked before any credits are charged or anything is stored, written or
     # queued: JSON image_paths must be image assets of this brand, uploads real images (422 otherwise).
     await check_request_paths(db, brand_id, [(f"products[{i}].image_path", p.get("image_path"))
-                                             for i, p in enumerate(products)])
+                                             for i, p in enumerate(products)]
+                              + ([("model_image_path", model_image_path)] if model_image_path else []))
     extensions, errors = [], []
     for index, (_, file) in enumerate(files_to_save):
         extension, problem = (None, "is not a file") if isinstance(file, str) else await check_upload(file)
         extensions.append(extension)
         if problem:
             errors.append(f"products[{index}] {problem}.")
+    model_extension = None
+    if model_file is not None and not model_image_path:
+        model_extension, problem = await check_upload(model_file)
+        if problem:
+            errors.append(f"custom_model {problem}.")
     if errors:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=" ".join(errors))
 
@@ -167,6 +197,10 @@ async def create_catalog_job(
             "image_path": storage_path
         })
 
+    if model_extension is not None:
+        model_image_path = storage_service.save_file_bytes(f"{uuid.uuid4()}{model_extension}",
+                                                           await model_file.read())
+
     current_user.credits = (current_user.credits or 0) - credits_needed
 
     job = CatalogJob(
@@ -182,6 +216,7 @@ async def create_catalog_job(
         resolution=resolution,
         total_items=len(products),
         credits_reserved=credits_needed,
+        meta={"model_image_path": model_image_path} if model_image_path else None,
     )
     db.add(job)
     await db.flush()

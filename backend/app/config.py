@@ -68,8 +68,18 @@ class Settings(BaseSettings):
     # Catalog Studio jobs (POST /api/v1/catalog-jobs, its /retry and item /retry). Off (default):
     # in production those answer 503 before anything is reserved, written or queued, and the
     # worker fails (and refunds) queued Catalog jobs without calling FASHN. Outside production
-    # Catalog works either way (app/services/catalog_availability.py).
+    # Catalog works either way (app/services/catalog_availability.py). Turning it on in production
+    # needs FASHN_API_KEY and S3 storage, or the API refuses to start (app/config_production.py).
     CATALOG_JOBS_ENABLED: bool = Field(default=False)
+
+    # FASHN (Catalog generation, app/services/fashn_client.py). The key is a secret: it is only
+    # ever sent as the Authorization header to FASHN_BASE_URL and never logged or returned.
+    FASHN_API_KEY: Optional[str] = Field(default=None)
+    FASHN_BASE_URL: str = Field(default="https://api.fashn.ai")
+    # How long one catalog item may wait for FASHN (run + polling), and how long the presigned
+    # GET URLs of the input images given to FASHN stay valid.
+    FASHN_TIMEOUT_SECONDS: int = Field(default=300, ge=30, le=1800)
+    FASHN_INPUT_URL_TTL_SECONDS: int = Field(default=900, ge=60, le=3600)
 
     # Rosanne Studio jobs (POST /api/v1/rosanne/generate). Off (default): in production that
     # answers 503 before anything is reserved, written or dispatched, and the dispatcher fails
@@ -190,9 +200,8 @@ def is_production() -> bool:
 
 
 def catalog_fashn_key() -> Optional[str]:
-    """The FASHN key the Catalog worker uses: None when unset or "mock". Settings declares no
-    FASHN_API_KEY, so this is None today and the Catalog worker cannot reach FASHN."""
-    key = getattr(settings, "FASHN_API_KEY", None)
+    """The FASHN key the Catalog worker uses: None when unset, blank or "mock"."""
+    key = (getattr(settings, "FASHN_API_KEY", None) or "").strip()
     return None if not key or key == "mock" else key
 
 

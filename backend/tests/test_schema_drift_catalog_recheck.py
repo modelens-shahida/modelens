@@ -15,7 +15,7 @@ Everything is mocked: no network, fake keys only.
 """
 import importlib.util
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import sqlalchemy as sa
@@ -26,11 +26,14 @@ from sqlalchemy.exc import IntegrityError
 
 import app.models.db as models
 from app.config import settings
+from app.services.storage import storage_service
 from app.migration_guard import table_differences
 from app.models.db import Asset, Base, CatalogJob, CatalogJobItem, CreditTransaction, User
 from app.worker import (
     _process_catalog_item_retry_async, _process_catalog_job_async, _process_single_catalog_item_async,
 )
+
+from tests import fashn_fakes
 
 pytestmark = pytest.mark.integration  # runs a migration and worker task bodies
 
@@ -249,15 +252,6 @@ BAD_PATHS = {
 }
 
 
-class _SettingsWithFashnKey:
-    """The real settings plus a FASHN key. Settings declares no FASHN_API_KEY today, so without
-    this the worker never reaches its FASHN request (it reads the key with getattr)."""
-    FASHN_API_KEY = "fashn-test-key"
-
-    def __getattr__(self, name):
-        return getattr(settings, name)
-
-
 @pytest.fixture(autouse=True)
 def outside_production(monkeypatch):
     """Catalog is disabled in production (tests/test_catalog_disabled.py); these cover it elsewhere."""
@@ -266,16 +260,10 @@ def outside_production(monkeypatch):
 
 @pytest.fixture
 def fashn(monkeypatch):
-    """A FASHN key and a fake HTTP client: every request is recorded, none is sent."""
-    monkeypatch.setattr("app.config.settings", _SettingsWithFashnKey())
-    response = MagicMock()
-    response.json.return_value = {"id": "fashn-run-1", "output": ["https://cdn.fashn.ai/out/1.png"]}
-    client = MagicMock()
-    client.post = AsyncMock(return_value=response)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=False)
-    with patch("httpx.AsyncClient", return_value=client):
-        yield client.post
+    """A test-only FASHN key and a fake FASHN API (tests/fashn_fakes.py): every request is recorded,
+    none is sent. The brand's product image exists in (local) storage, so it is sent inline."""
+    storage_service.save_file_bytes(MINE[len("/uploads/"):], fashn_fakes.png())
+    return fashn_fakes.install(monkeypatch)
 
 
 async def _user_credits(db_session, user_id):
@@ -350,11 +338,11 @@ async def test_valid_path_is_still_sent_to_fashn(db_session, test_data, fashn):
 
     await _work(db_session, _process_catalog_job_async, MagicMock(), job_id)
 
-    fashn.assert_called_once()
-    assert fashn.call_args.kwargs["json"]["inputs"]["product_image"] == MINE
+    assert fashn.call_count == 1
+    assert fashn.run_json["inputs"]["product_image"].startswith("data:image/png;base64,")
     item = await _reload(db_session, CatalogJobItem, item_id)
-    assert (item.status, item.output_url, item.provider_job_id) == (
-        "qa_passed", "https://cdn.fashn.ai/out/1.png", "fashn-run-1")
+    assert (item.status, item.provider_job_id) == ("qa_passed", fashn_fakes.PREDICTION_ID)
+    assert item.output_url.startswith(f"/uploads/brands/{test_data['brand'].id}/catalog/")
     assert (await _reload(db_session, CatalogJob, job_id)).status == "completed"
     assert await _user_credits(db_session, user_id) == start
     assert await _refunds(db_session) == []
