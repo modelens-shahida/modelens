@@ -1831,6 +1831,101 @@ class Preset(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+# ========================== Capability Validations ================
+# Whether a capability (a hair style, pose, lighting preset, product type, ...)
+# is validated and promoted *for one character version*. The per-table
+# lifecycles above stay the definition store; this is the per-character record
+# (docs/character-runtime/DESIGN.md section 3.1). Customers only ever get
+# PROMOTED records. Admin/internal only: never returned to customers as is.
+
+CAPABILITY_TRANSITIONS: dict[str, set[str]] = {
+    "REGISTERED": {"VALIDATING", "VALIDATED", "REJECTED", "RETIRED"},
+    "VALIDATING": {"VALIDATED", "REJECTED", "RETIRED"},
+    "VALIDATED": {"PROMOTED", "VALIDATING", "REJECTED", "RETIRED"},
+    "PROMOTED": {"RETIRED"},
+    "REJECTED": {"VALIDATING", "RETIRED"},
+    "RETIRED": set(),
+}
+
+# What a record is about; never changes after insert (register a new version instead).
+CAPABILITY_IDENTITY_FIELDS = (
+    "character_id", "character_version", "capability_type", "capability_key", "capability_version", "customer_id",
+)
+
+
+class CapabilityValidation(Base):
+    __tablename__ = "capability_validations"
+    __table_args__ = (
+        UniqueConstraint("character_id", "character_version", "capability_type", "capability_key",
+                         "capability_version", name="uq_capability_validation_version"),
+        Index("ix_capability_validations_lookup", "character_id", "character_version", "capability_type", "status"),
+        # At most one PROMOTED version per capability, and one PROMOTED record per customer id.
+        Index("uq_capability_validation_promoted", "character_id", "character_version", "capability_type",
+              "capability_key", unique=True,
+              postgresql_where=sa.text("status = 'PROMOTED'"), sqlite_where=sa.text("status = 'PROMOTED'")),
+        Index("uq_capability_validation_customer_id", "character_id", "character_version", "customer_id",
+              unique=True,
+              postgresql_where=sa.text("status = 'PROMOTED'"), sqlite_where=sa.text("status = 'PROMOTED'")),
+    )
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(String(50), nullable=False, index=True)
+    character_version = Column(String(10), nullable=False)
+    capability_type = Column(String(30), nullable=False)  # HAIR, POSE, LIGHTING, PRODUCT_TYPE, ...
+    capability_key = Column(String(80), nullable=False)  # internal key: SOFT_WAVES, walking, ENV-STU-0001
+    capability_version = Column(Integer, nullable=False, default=1)
+    customer_id = Column(String(80), nullable=False)  # namespaced customer id: hair_soft_waves
+    status = Column(String(20), nullable=False, default="REGISTERED")
+    validation = Column(JSONB, nullable=True)  # {checks: {identity, face, body, product}, evidence: {...}}
+    validated_by = Column(String(100), nullable=True)
+    validated_at = Column(DateTime, nullable=True)
+    promoted_by = Column(String(100), nullable=True)
+    promoted_at = Column(DateTime, nullable=True)
+    retired_by = Column(String(100), nullable=True)
+    retired_at = Column(DateTime, nullable=True)
+    retire_reason = Column(Text, nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    recommended = Column(Boolean, nullable=False, default=False)
+    group = Column(String(30), nullable=True)  # UI group (pose, camera, scene groups)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CapabilityValidationRuleError(Exception):
+    """A write broke a capability_validations rule (identity change, skipped step, delete)."""
+
+
+@sa.event.listens_for(CapabilityValidation, "before_update")
+def _check_capability_validation_update(mapper, connection, target):
+    state = sa.inspect(target)
+    for field in CAPABILITY_IDENTITY_FIELDS:
+        if state.attrs[field].history.has_changes():
+            raise CapabilityValidationRuleError(
+                f"{field} of a capability record cannot change; register a new capability version instead.")
+    history = state.attrs["status"].history
+    if history.has_changes() and history.deleted:
+        old, new = history.deleted[0], target.status
+        if new not in CAPABILITY_TRANSITIONS.get(old, set()):
+            raise CapabilityValidationRuleError(f"Capability status cannot move from {old} to {new}.")
+
+
+@sa.event.listens_for(CapabilityValidation, "before_delete")
+def _reject_capability_validation_delete(mapper, connection, target):
+    raise CapabilityValidationRuleError("Capability records are never deleted; retire them instead.")
+
+
+@sa.event.listens_for(sa.orm.Session, "do_orm_execute")
+def _reject_bulk_capability_validation_writes(orm_execute_state):
+    # Bulk UPDATE/DELETE would bypass the per-row rules above.
+    if not (orm_execute_state.is_update or orm_execute_state.is_delete):
+        return
+    mapper = orm_execute_state.bind_mapper
+    if mapper is not None and mapper.class_ is CapabilityValidation:
+        raise CapabilityValidationRuleError(
+            "Bulk UPDATE/DELETE of capability records is not allowed; update them one at a time.")
+
+
 # ========================== P3 Rights Registry ===================
 
 class RightsRegistry(Base):
