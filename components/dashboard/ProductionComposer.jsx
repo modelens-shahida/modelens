@@ -79,18 +79,90 @@ function getProductTypeFromCategory(category = "") {
   return "garment";
 }
 
+const SAMPLE_BEAUTY_DIRECTIONS = [
+  {
+    id: "beauty_quiet_luxury",
+    name: "Quiet Luxury",
+    desc: "Sleek low bun or polished chignon, luminous nude makeup, soft sculpting, neutral lip, clean manicure, restrained jewelry, calm confident expression.",
+    defaults: {
+      hair_id: "sleek_bun",
+      makeup_id: "quiet_luxury",
+      expression_id: "neutral_editorial",
+    },
+    tag: "Quiet Luxury",
+    is_default: true,
+  },
+  {
+    id: "beauty_european_editorial",
+    name: "European Editorial",
+    desc: "Slick-back or wet-look hair, stronger eye definition, sculpted cheekbones, minimal lip, architectural jewelry, angular poise.",
+    defaults: {
+      hair_id: "wet_look",
+      makeup_id: "editorial",
+      expression_id: "serious",
+    },
+    tag: "High Fashion",
+  },
+  {
+    id: "beauty_soft_luxury",
+    name: "Soft Luxury",
+    desc: "Brushed-out waves, glowing skin, soft bronzed makeup, subtle eye definition, natural lip, delicate jewelry, relaxed elegance.",
+    defaults: {
+      hair_id: "soft_waves",
+      makeup_id: "bronzed",
+      expression_id: "soft_confidence",
+    },
+    tag: "Soft Glamour",
+  },
+  {
+    id: "beauty_classic_evening",
+    name: "Classic Evening",
+    desc: "Polished updo, refined eye makeup, red/bordeaux or classic satin lip, evening glamour.",
+    defaults: {
+      hair_id: "low_chignon",
+      makeup_id: "soft_glam",
+      expression_id: "soft_smile",
+    },
+    tag: "Evening / Gala",
+  },
+  {
+    id: "beauty_modern_minimal",
+    name: "Modern Minimal",
+    desc: "Clean tucked or natural straight hair, fresh satin skin, clean brows, minimal sheer lip, architectural poise.",
+    defaults: {
+      hair_id: "canonical",
+      makeup_id: "natural",
+      expression_id: "neutral_editorial",
+    },
+    tag: "Contemporary",
+  },
+  {
+    id: "beauty_resort_luxury",
+    name: "Resort Luxury",
+    desc: "Sunkissed skin, relaxed texture or effortless low knot, golden warmth, glossy lip, vacation ease.",
+    defaults: {
+      hair_id: "hair_down",
+      makeup_id: "bronzed",
+      expression_id: "soft_confidence",
+    },
+    tag: "Resort & Cruise",
+  },
+];
+
 export default function ProductionComposer({ onGenerate, isSubmitting = false }) {
   // Step selections
   const [selectedProduct, setSelectedProduct] = useState(SAMPLE_PRODUCTS[0]);
   const [selectedCharacter, setSelectedCharacter] = useState(SAMPLE_CHARACTERS[0]);
   const [supportedProductTypes, setSupportedProductTypes] = useState([]);
+  const [beautyDirections, setBeautyDirections] = useState(SAMPLE_BEAUTY_DIRECTIONS);
+  const [selectedBeautyDirection, setSelectedBeautyDirection] = useState(SAMPLE_BEAUTY_DIRECTIONS[0]);
   const [hairOptions, setHairOptions] = useState(SAMPLE_HAIRSTYLES);
   const [makeupOptions, setMakeupOptions] = useState(SAMPLE_MAKEUP);
   const [expressionOptions, setExpressionOptions] = useState(SAMPLE_EXPRESSIONS);
-  const [selectedHair, setSelectedHair] = useState(SAMPLE_HAIRSTYLES[0]);
-  const [selectedMakeup, setSelectedMakeup] = useState(SAMPLE_MAKEUP[1]);
-  const [selectedExpression, setSelectedExpression] = useState(SAMPLE_EXPRESSIONS[0]);
-  const [styleSubTab, setStyleSubTab] = useState("hair"); // "hair" | "makeup" | "expression"
+  const [selectedHair, setSelectedHair] = useState(SAMPLE_HAIRSTYLES[1]); // Sleek bun from Quiet Luxury
+  const [selectedMakeup, setSelectedMakeup] = useState(SAMPLE_MAKEUP[1]); // Quiet Luxury
+  const [selectedExpression, setSelectedExpression] = useState(SAMPLE_EXPRESSIONS[0]); // Neutral Editorial
+  const [styleSubTab, setStyleSubTab] = useState("presets"); // "presets" | "hair" | "makeup" | "expression"
   const [availablePoses, setAvailablePoses] = useState(SAMPLE_POSES);
   const [selectedPose, setSelectedPose] = useState(SAMPLE_POSES[0]);
   const [poseDrawerTab, setPoseDrawerTab] = useState("pose"); // "pose" | "angles"
@@ -105,6 +177,18 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
   // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
+
+  const handleSelectBeautyDirection = (dir) => {
+    setSelectedBeautyDirection(dir);
+    if (dir?.defaults) {
+      const h = hairOptions.find((item) => item.id === dir.defaults.hair_id);
+      if (h) setSelectedHair(h);
+      const m = makeupOptions.find((item) => item.id === dir.defaults.makeup_id);
+      if (m) setSelectedMakeup(m);
+      const e = expressionOptions.find((item) => item.id === dir.defaults.expression_id);
+      if (e) setSelectedExpression(e);
+    }
+  };
 
   // Dynamically load validated locations, lighting presets, and campaign directions
   useEffect(() => {
@@ -221,6 +305,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
       onGenerate({
         product: selectedProduct,
         character: selectedCharacter,
+        beauty_direction: selectedBeautyDirection,
         appearance: {
           hair: selectedHair,
           makeup: selectedMakeup,
@@ -321,7 +406,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           </button>
         </div>
 
-        {/* Step 3: STYLE MODEL (Hair, Makeup, Expression) */}
+        {/* Step 3: STYLE MODEL (Luxury Styling Packs & Granular Overrides) */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 backdrop-blur-md hover:border-zinc-700/80 transition-all">
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-4">
             <div className="flex items-center gap-4">
@@ -330,9 +415,14 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               </div>
               <div>
                 <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block font-semibold">
-                  STYLE MODEL
+                  LUXURY STYLING DIRECTION
                 </span>
-                <span className="text-xs text-zinc-400">Hair, Makeup & Expression Configuration</span>
+                <h3 className="text-base font-extrabold text-white mt-0.5 flex items-center gap-2">
+                  <span>[ {selectedBeautyDirection?.name || "Quiet Luxury"} ]</span>
+                  <span className="text-[10px] font-mono text-fuchsia-300 px-2 py-0.5 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/30">
+                    {selectedBeautyDirection?.tag || "Smart Preset"}
+                  </span>
+                </h3>
               </div>
             </div>
 
@@ -341,7 +431,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-fuchsia-500/50 hover:bg-fuchsia-500/10 text-xs font-bold text-zinc-200 hover:text-fuchsia-400 px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
             >
               <Palette className="w-4 h-4 text-fuchsia-400" />
-              <span>Customize Styling &gt;</span>
+              <span>Change Styling &gt;</span>
             </button>
           </div>
 
@@ -696,11 +786,22 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                 </button>
               </div>
 
-              {/* Subtabs: Hair | Makeup | Expression */}
-              <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+              {/* Subtabs: Direction Presets | Hair | Makeup | Expression */}
+              <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                <button
+                  onClick={() => setStyleSubTab("presets")}
+                  className={`flex items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    styleSubTab === "presets"
+                      ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Direction</span>
+                </button>
                 <button
                   onClick={() => setStyleSubTab("hair")}
-                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                     styleSubTab === "hair"
                       ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
@@ -711,7 +812,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                 </button>
                 <button
                   onClick={() => setStyleSubTab("makeup")}
-                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                     styleSubTab === "makeup"
                       ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
@@ -722,7 +823,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                 </button>
                 <button
                   onClick={() => setStyleSubTab("expression")}
-                  className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                     styleSubTab === "expression"
                       ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
@@ -735,6 +836,59 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
               {/* Tab Contents */}
               <div className="space-y-3 overflow-y-auto max-h-[60vh] pr-1">
+                {styleSubTab === "presets" && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-fuchsia-950/20 border border-fuchsia-500/30 rounded-xl text-xs text-fuchsia-200">
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
+                        Smart Preset + Granular Override
+                      </p>
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        Select a flagship Luxury Styling Pack to configure balanced hair, makeup, expression and attitude defaults. Use the tabs above to fine-tune individual elements.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {beautyDirections.map((dir) => {
+                        const isSelected = selectedBeautyDirection?.id === dir.id;
+                        return (
+                          <div
+                            key={dir.id}
+                            onClick={() => handleSelectBeautyDirection(dir)}
+                            className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                              isSelected
+                                ? "bg-fuchsia-500/15 border-fuchsia-500/60 text-white shadow-md"
+                                : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-bold text-white">{dir.name}</h4>
+                                <span className="text-[10px] font-mono px-2 py-0.5 bg-fuchsia-500/10 text-fuchsia-300 rounded-full border border-fuchsia-500/30">
+                                  {dir.tag}
+                                </span>
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
+                            </div>
+                            <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{dir.desc}</p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-zinc-800/80 text-[10px] font-mono text-zinc-400">
+                              <span className="text-zinc-500">Defaults:</span>
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300">
+                                Hair: {hairOptions.find((h) => h.id === dir.defaults?.hair_id)?.name || dir.defaults?.hair_id}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300">
+                                Makeup: {makeupOptions.find((m) => m.id === dir.defaults?.makeup_id)?.name || dir.defaults?.makeup_id}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300">
+                                Expression: {expressionOptions.find((e) => e.id === dir.defaults?.expression_id)?.name || dir.defaults?.expression_id}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {styleSubTab === "hair" && (
                   <div className="space-y-2.5">
                     {SAMPLE_HAIRSTYLES.map((h) => {

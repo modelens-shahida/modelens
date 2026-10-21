@@ -22,20 +22,29 @@ import toast from "react-hot-toast";
 const PIPELINE_MODELS = [
   {
     id: "rosanne-v1",
-    name: "Rosanne ComfyUI Pipeline",
-    description: "Production-grade ComfyUI pipeline with 6-point identity preservation & pose conditioning.",
+    name: "Eliska — Studio Editorial Model",
+    description: "Flagship luxury fashion digital model with locked facial geometry, high-fidelity skin realism & pose directing.",
     badge: "Identity Locked",
     badgeColor: "bg-purple-900/50 border-purple-700 text-purple-300",
     color: "border-purple-600",
   },
   {
     id: "dalle3",
-    name: "Standard DALL-E 3",
-    description: "Creative styling and open-ended scene exploration across broad artistic aesthetics.",
+    name: "Creative Scene Exploration",
+    description: "Open-ended scene exploration and concept moodboarding across contemporary fashion aesthetics.",
     badge: "Standard",
     badgeColor: "bg-zinc-800 border-zinc-700 text-zinc-300",
     color: "border-zinc-700",
   },
+];
+
+const LUXURY_STYLING_PRESETS = [
+  { id: "beauty_quiet_luxury", name: "Quiet Luxury", desc: "Sleek low bun, luminous nude makeup, clean manicure, calm confident gaze" },
+  { id: "beauty_european_editorial", name: "European Editorial", desc: "Slick-back wet sheen, defined sculpted eyes, architectural poise" },
+  { id: "beauty_soft_luxury", name: "Soft Luxury", desc: "Brushed-out waves, radiant skin, soft bronzed tones, relaxed elegance" },
+  { id: "beauty_classic_evening", name: "Classic Evening", desc: "Polished updo, refined eye definition, satin lip, evening glamour" },
+  { id: "beauty_modern_minimal", name: "Modern Minimal", desc: "Clean natural straight hair, fresh satin finish, clean architectural poise" },
+  { id: "beauty_resort_luxury", name: "Resort Luxury", desc: "Sunkissed skin, relaxed texture, golden warmth, vacation ease" },
 ];
 
 const QUALITY_TIERS = [
@@ -103,6 +112,7 @@ export default function GenerationPage() {
   const [selectedPipeline, setSelectedPipeline] = useState("rosanne-v1");
   const [selectedTier, setSelectedTier] = useState("high_fidelity");
   const [selectedPresetId, setSelectedPresetId] = useState("POSE-ROS-001");
+  const [selectedStylePresetId, setSelectedStylePresetId] = useState("beauty_quiet_luxury");
   const [identityStrength, setIdentityStrength] = useState(0.82);
   const [scenePrompt, setScenePrompt] = useState("");
   const [poseAssets, setPoseAssets] = useState([]);
@@ -161,11 +171,13 @@ export default function GenerationPage() {
           brand_id: parseInt(selectedBrandId) || 1,
           quality: selectedTier === "ultra_master" ? "max" : selectedTier === "fast_preview" ? "standard" : "quality",
           identity_strength: identityStrength,
+          beauty_direction: selectedStylePresetId,
           pose_preset_id: selectedPresetId,
           scene_prompt: scenePrompt,
           inputs: {
             scene_description: scenePrompt,
             pose_filename: selectedPoseAsset?.filename || "",
+            beauty_direction: selectedStylePresetId,
           },
         });
       } else {
@@ -206,7 +218,7 @@ export default function GenerationPage() {
                 </span>
               </h1>
               <p className="text-xs text-zinc-400 mt-0.5">
-                AI Photo Producer with Rosanne Identity Locks, Standardized Quality Tiers & ComfyUI Workflows
+                AI Fashion Photoshoot Studio with Precision Identity Locks, Direction Presets & Standardized Quality Tiers
               </p>
             </div>
           </div>
@@ -327,9 +339,9 @@ export default function GenerationPage() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-purple-400" />
-                  <span className="text-xs font-bold text-white">Rosanne Identity Locks (6/6 Active)</span>
+                  <span className="text-xs font-bold text-white">Studio Identity Locks (6/6 Active)</span>
                 </div>
-                <span className="text-[11px] text-purple-300/80">ArcFace Identity Rig</span>
+                <span className="text-[11px] text-purple-300/80">Golden Reference Rig</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -342,30 +354,39 @@ export default function GenerationPage() {
               </div>
             </div>
 
-            {/* Identity Strength Slider */}
+            {/* Luxury Styling Direction Presets */}
             <div>
-              <div className="flex items-center justify-between text-xs mb-2">
+              <div className="flex items-center justify-between text-xs mb-2.5">
                 <span className="text-zinc-300 font-medium flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                  Identity Lock Strength
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  Luxury Styling Direction (Smart Presets)
                 </span>
-                <span className="font-mono font-bold text-purple-300">
-                  {(identityStrength * 100).toFixed(0)}% (0.82 recommended)
+                <span className="text-[11px] font-mono text-purple-300">
+                  Identity Locked (0.82 Standard)
                 </span>
               </div>
-              <input
-                type="range"
-                min="0.70"
-                max="0.90"
-                step="0.01"
-                value={identityStrength}
-                onChange={(e) => setIdentityStrength(parseFloat(e.target.value))}
-                className="w-full accent-purple-500 cursor-pointer h-1.5 bg-zinc-800 rounded-lg"
-              />
-              <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
-                <span>0.70 (Creative flexibility)</span>
-                <span>0.82 (Standard)</span>
-                <span>0.90 (Exact clone)</span>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {LUXURY_STYLING_PRESETS.map((preset) => {
+                  const isActive = selectedStylePresetId === preset.id;
+                  return (
+                    <div
+                      key={preset.id}
+                      onClick={() => setSelectedStylePresetId(preset.id)}
+                      className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                        isActive
+                          ? "bg-purple-950/40 border-purple-500 text-white shadow-sm"
+                          : "bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold">{preset.name}</span>
+                        {isActive && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}
+                      </div>
+                      <p className="text-[10px] text-zinc-400 line-clamp-2 leading-tight">{preset.desc}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

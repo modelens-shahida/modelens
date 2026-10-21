@@ -42,6 +42,7 @@ export default function CreateProductionPage() {
         character_id: data.character?.code || data.character?.id || "EE-F-002",
         product_asset_url: data.product?.image_url || data.product?.url || "https://assets.modelens.ai/demo-sku.png",
         product_type: data.product?.category?.toLowerCase() || "garment",
+        beauty_direction: data.beauty_direction?.id || "beauty_quiet_luxury",
         appearance: {
           hair: data.appearance?.hair?.id || "canonical",
           makeup: data.appearance?.makeup?.id || "natural",
