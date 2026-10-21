@@ -14,6 +14,10 @@ difference, so a half-built or diverged table is never silently accepted.
 import sqlalchemy as sa
 from alembic import op
 
+# Key of the Postgres advisory lock held while migrations run (any constant
+# bigint; only migrations use it).
+MIGRATION_LOCK_KEY = 720_161_001  # fits 32 bits: pg_locks shows it as objid
+
 # Types that the database reports differently from how they are declared.
 _TYPE_ALIASES = {
     "FLOAT": "DOUBLE PRECISION",
@@ -68,3 +72,18 @@ def create_table_if_absent(name, *elements, **kw):
         )
     print(f"[migration] table {name} already exists with matching columns; skipping create")
     return None
+
+
+def take_migration_lock(connection) -> bool:
+    """Serialize concurrent ``alembic upgrade`` runs (e.g. two replicas starting at once).
+
+    Call inside the migration transaction, before the migrations run. On Postgres
+    this waits for ``pg_advisory_xact_lock``, which is released when that
+    transaction commits or rolls back; the second runner then reads the
+    committed ``alembic_version`` and has nothing left to do. Other databases
+    (SQLite in tests) need no lock. Returns whether a lock was taken.
+    """
+    if connection.dialect.name != "postgresql":
+        return False
+    connection.execute(sa.text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK_KEY})
+    return True

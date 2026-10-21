@@ -11,6 +11,7 @@ from alembic import context
 # Add backend directory to sys.path to allow importing from 'app'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from app.migration_guard import take_migration_lock
 from app.models.db import Base
 
 # this is the Alembic Config object, which provides
@@ -67,6 +68,9 @@ def do_run_migrations(connection):
     )
 
     with context.begin_transaction():
+        # One upgrade at a time: a second replica waits here until the first
+        # commits, then finds the database already at head.
+        take_migration_lock(connection)
         context.run_migrations()
 
 

@@ -22,5 +22,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . /workspace/
 
-# Default command (can be overridden in docker-compose.yml)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command: migrate to head, then serve on ${PORT:-8000} (scripts/start-api.sh).
+# docker-compose.yml overrides it for the worker and adds --reload for the dev API.
+CMD ["sh", "scripts/start-api.sh"]

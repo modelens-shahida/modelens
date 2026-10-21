@@ -194,7 +194,7 @@ docker compose exec api python seed_workflow_templates.py
 ```
 
 ### 4. If local migrations fail
-The API container runs `backend/scripts/start-api.sh`, which runs `alembic upgrade head` before starting the API. If the upgrade fails, the API is not started. The script prints the revision your database has recorded and the repository head, then exits.
+The API container runs `backend/scripts/start-api.sh` (docker-compose, and the image's default command), which runs `alembic upgrade head` before starting the API on `${PORT:-8000}`. If the upgrade fails, the API is not started. The script prints the revision your database has recorded and the repository head, then exits. Two containers starting at once are safe: the upgrade holds a Postgres advisory lock, so the second waits and then finds nothing to do.
 
 1. **Rebuild the image first.** The API image contains a copy of the code; it does not mount it. A stale image still has old migrations:
    ```bash
@@ -239,7 +239,7 @@ Follow this runbook to update and rebuild services deployed on the Azure VM:
    sudo docker compose down
    sudo docker compose up -d
    ```
-5. **Verify Migrations & Seed Templates**:
+5. **Verify Migrations & Seed Templates** (the API container already ran `alembic upgrade head` on start; this is a no-op check):
    ```bash
    sudo docker compose exec api alembic upgrade head
    sudo docker compose exec api python seed_workflow_templates.py
