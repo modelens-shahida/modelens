@@ -6,6 +6,8 @@ Create Date: 2026-09-13
 """
 from alembic import op
 import sqlalchemy as sa
+
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'character_registry_001'
@@ -16,7 +18,7 @@ depends_on = None
 
 def upgrade():
     # Character Identity Profile
-    op.create_table('character_identity_profiles',
+    ensure_table('character_identity_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('character_id', sa.String(50), nullable=False, unique=True),
         sa.Column('workspace_id', sa.String(50), nullable=True),
@@ -41,10 +43,10 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_identity_character_id', 'character_identity_profiles', ['character_id'])
+    create_index_if_absent('ix_char_identity_character_id', 'character_identity_profiles', ['character_id'])
 
     # Character Body Profile
-    op.create_table('character_body_profiles',
+    ensure_table('character_body_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('body_profile_id', sa.String(50), nullable=False, unique=True),
         sa.Column('character_id', sa.String(50), nullable=False),
@@ -65,10 +67,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_body_character_id', 'character_body_profiles', ['character_id'])
+    create_index_if_absent('ix_char_body_character_id', 'character_body_profiles', ['character_id'])
 
     # Character Skin Profile
-    op.create_table('character_skin_profiles',
+    ensure_table('character_skin_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('skin_profile_id', sa.String(50), nullable=False, unique=True),
         sa.Column('character_id', sa.String(50), nullable=False),
@@ -89,10 +91,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_skin_character_id', 'character_skin_profiles', ['character_id'])
+    create_index_if_absent('ix_char_skin_character_id', 'character_skin_profiles', ['character_id'])
 
     # Character Hair Profile
-    op.create_table('character_hair_profiles',
+    ensure_table('character_hair_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('hair_dna_id', sa.String(50), nullable=False, unique=True),
         sa.Column('character_id', sa.String(50), nullable=False),
@@ -109,10 +111,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_hair_character_id', 'character_hair_profiles', ['character_id'])
+    create_index_if_absent('ix_char_hair_character_id', 'character_hair_profiles', ['character_id'])
 
     # Character Runtime Profile
-    op.create_table('character_runtime_profiles',
+    ensure_table('character_runtime_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('runtime_profile_id', sa.String(50), nullable=False, unique=True),
         sa.Column('character_id', sa.String(50), nullable=False),
@@ -131,7 +133,7 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_runtime_character_id', 'character_runtime_profiles', ['character_id'])
+    create_index_if_absent('ix_char_runtime_character_id', 'character_runtime_profiles', ['character_id'])
 
 
 def downgrade():

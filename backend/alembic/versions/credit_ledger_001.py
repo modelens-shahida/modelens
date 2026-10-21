@@ -6,6 +6,8 @@ Create Date: 2026-09-14
 """
 from alembic import op
 import sqlalchemy as sa
+
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'credit_ledger_001'
@@ -16,18 +18,18 @@ depends_on = None
 
 def upgrade():
     # Add hash chaining fields to credit_transactions
-    op.add_column('credit_transactions',
+    add_column_if_absent('credit_transactions',
         sa.Column('chain_hash', sa.String(64), nullable=True))
-    op.add_column('credit_transactions',
+    add_column_if_absent('credit_transactions',
         sa.Column('previous_hash', sa.String(64), nullable=True))
     # balance_after is not added here: credit_transactions_001 already creates
     # it (NOT NULL), so adding it again failed on every database.
 
-    op.create_index('ix_credit_transactions_chain_hash',
+    create_index_if_absent('ix_credit_transactions_chain_hash',
         'credit_transactions', ['chain_hash'])
 
     # Preservation profiles table
-    op.create_table('preservation_profiles',
+    ensure_table('preservation_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('profile_id', sa.String(50), unique=True, nullable=False),
         sa.Column('brand_id', sa.Integer, nullable=False),
@@ -40,8 +42,8 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_preservation_profiles_brand', 'preservation_profiles', ['brand_id'])
-    op.create_index('ix_preservation_profiles_product', 'preservation_profiles', ['product_id'])
+    create_index_if_absent('ix_preservation_profiles_brand', 'preservation_profiles', ['brand_id'])
+    create_index_if_absent('ix_preservation_profiles_product', 'preservation_profiles', ['product_id'])
 
 
 def downgrade():

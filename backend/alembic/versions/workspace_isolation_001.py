@@ -7,6 +7,8 @@ Create Date: 2026-09-13
 from alembic import op
 import sqlalchemy as sa
 
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
+
 revision = 'workspace_isolation_001'
 down_revision = 'enterprise_rbac_001'
 branch_labels = None
@@ -15,34 +17,34 @@ depends_on = None
 
 def upgrade():
     # Add workspace_id to assets
-    op.add_column('assets', sa.Column('workspace_id', sa.String(50), nullable=True))
-    op.create_index('ix_assets_workspace_id', 'assets', ['workspace_id'])
+    add_column_if_absent('assets', sa.Column('workspace_id', sa.String(50), nullable=True))
+    create_index_if_absent('ix_assets_workspace_id', 'assets', ['workspace_id'])
 
     # Add workspace_id to catalog_jobs
-    op.add_column('catalog_jobs', sa.Column('workspace_id', sa.String(50), nullable=True))
-    op.create_index('ix_catalog_jobs_workspace_id', 'catalog_jobs', ['workspace_id'])
+    add_column_if_absent('catalog_jobs', sa.Column('workspace_id', sa.String(50), nullable=True))
+    create_index_if_absent('ix_catalog_jobs_workspace_id', 'catalog_jobs', ['workspace_id'])
 
     # Add workspace_id to ghost_jobs
-    op.add_column('ghost_jobs', sa.Column('workspace_id', sa.String(50), nullable=True))
-    op.create_index('ix_ghost_jobs_workspace_id', 'ghost_jobs', ['workspace_id'])
+    add_column_if_absent('ghost_jobs', sa.Column('workspace_id', sa.String(50), nullable=True))
+    create_index_if_absent('ix_ghost_jobs_workspace_id', 'ghost_jobs', ['workspace_id'])
 
     # Add workspace_id to sketch_jobs
-    op.add_column('sketch_jobs', sa.Column('workspace_id', sa.String(50), nullable=True))
-    op.create_index('ix_sketch_jobs_workspace_id', 'sketch_jobs', ['workspace_id'])
+    add_column_if_absent('sketch_jobs', sa.Column('workspace_id', sa.String(50), nullable=True))
+    create_index_if_absent('ix_sketch_jobs_workspace_id', 'sketch_jobs', ['workspace_id'])
 
     # Add workspace_id to video_projects
-    op.add_column('video_projects', sa.Column('workspace_id', sa.String(50), nullable=True))
-    op.create_index('ix_video_projects_workspace_id', 'video_projects', ['workspace_id'])
+    add_column_if_absent('video_projects', sa.Column('workspace_id', sa.String(50), nullable=True))
+    create_index_if_absent('ix_video_projects_workspace_id', 'video_projects', ['workspace_id'])
 
     # Add workspace_id to reference_sets
-    op.add_column('reference_sets', sa.Column('workspace_id', sa.String(50), nullable=True))
+    add_column_if_absent('reference_sets', sa.Column('workspace_id', sa.String(50), nullable=True))
 
     # Add workspace_id to qa_evaluations
-    op.add_column('qa_evaluations', sa.Column('workspace_id', sa.String(50), nullable=True))
+    add_column_if_absent('qa_evaluations', sa.Column('workspace_id', sa.String(50), nullable=True))
 
     # Add workspace_id to audit_logs_v2
-    op.add_column('audit_logs_v2', sa.Column('workspace_id', sa.String(50), nullable=True))
-    op.create_index('ix_audit_logs_workspace_id', 'audit_logs_v2', ['workspace_id'])
+    add_column_if_absent('audit_logs_v2', sa.Column('workspace_id', sa.String(50), nullable=True))
+    create_index_if_absent('ix_audit_logs_workspace_id', 'audit_logs_v2', ['workspace_id'])
 
 
 def downgrade():

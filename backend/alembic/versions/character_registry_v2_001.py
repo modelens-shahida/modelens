@@ -6,6 +6,8 @@ Create Date: 2026-09-18
 """
 from alembic import op
 import sqlalchemy as sa
+
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'character_registry_v2_001'
@@ -16,7 +18,7 @@ depends_on = None
 
 def upgrade():
     # ==================== Character Master ====================
-    op.create_table('characters_v2',
+    ensure_table('characters_v2',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('character_id', sa.String(50), unique=True, nullable=False),
         sa.Column('display_name', sa.String(100), nullable=False),
@@ -31,8 +33,8 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_characters_v2_character_id', 'characters_v2', ['character_id'])
-    op.create_index('ix_characters_v2_status', 'characters_v2', ['status'])
+    create_index_if_absent('ix_characters_v2_character_id', 'characters_v2', ['character_id'])
+    create_index_if_absent('ix_characters_v2_status', 'characters_v2', ['status'])
 
     # ==================== Character Version ====================
     # Not created here: the name character_versions is already taken by the
@@ -40,7 +42,7 @@ def upgrade():
     # character_version_registry_001 creates it as character_registry_versions.
 
     # ==================== Identity DNA ====================
-    op.create_table('character_identity_dna',
+    ensure_table('character_identity_dna',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('character_id', sa.String(50), nullable=False),
         sa.Column('version', sa.String(10), nullable=False),
@@ -107,10 +109,10 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_identity_dna_character', 'character_identity_dna', ['character_id', 'version'])
+    create_index_if_absent('ix_identity_dna_character', 'character_identity_dna', ['character_id', 'version'])
 
     # ==================== Body DNA ====================
-    op.create_table('character_body_dna',
+    ensure_table('character_body_dna',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('character_id', sa.String(50), nullable=False),
         sa.Column('version', sa.String(10), nullable=False),
@@ -157,10 +159,10 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_body_dna_character', 'character_body_dna', ['character_id', 'version'])
+    create_index_if_absent('ix_body_dna_character', 'character_body_dna', ['character_id', 'version'])
 
     # ==================== Appearance Profile ====================
-    op.create_table('character_appearance_profiles',
+    ensure_table('character_appearance_profiles',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('character_id', sa.String(50), nullable=False),
         sa.Column('version', sa.String(10), nullable=False),
@@ -188,10 +190,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_appearance_character', 'character_appearance_profiles', ['character_id', 'version'])
+    create_index_if_absent('ix_appearance_character', 'character_appearance_profiles', ['character_id', 'version'])
 
     # ==================== Canonical Asset Registry ====================
-    op.create_table('canonical_assets',
+    ensure_table('canonical_assets',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('asset_id', sa.String(50), unique=True, nullable=False),
         sa.Column('character_id', sa.String(50), nullable=False),
@@ -261,12 +263,12 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_canonical_assets_character', 'canonical_assets', ['character_id', 'version'])
-    op.create_index('ix_canonical_assets_role', 'canonical_assets', ['asset_role'])
-    op.create_index('ix_canonical_assets_active', 'canonical_assets', ['character_id', 'active_canonical'])
+    create_index_if_absent('ix_canonical_assets_character', 'canonical_assets', ['character_id', 'version'])
+    create_index_if_absent('ix_canonical_assets_role', 'canonical_assets', ['asset_role'])
+    create_index_if_absent('ix_canonical_assets_active', 'canonical_assets', ['character_id', 'active_canonical'])
 
     # ==================== Character Version QA Gates ====================
-    op.create_table('character_version_qa',
+    ensure_table('character_version_qa',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('character_id', sa.String(50), nullable=False),
         sa.Column('version', sa.String(10), nullable=False),
@@ -284,10 +286,10 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_version_qa', 'character_version_qa', ['character_id', 'version'])
+    create_index_if_absent('ix_char_version_qa', 'character_version_qa', ['character_id', 'version'])
 
     # ==================== Character Runtime Profile V2 ====================
-    op.create_table('character_runtime_v2',
+    ensure_table('character_runtime_v2',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('runtime_id', sa.String(50), unique=True, nullable=False),
         sa.Column('character_id', sa.String(50), nullable=False),
@@ -305,7 +307,7 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_char_runtime_v2_character', 'character_runtime_v2', ['character_id', 'version'])
+    create_index_if_absent('ix_char_runtime_v2_character', 'character_runtime_v2', ['character_id', 'version'])
 
 
 def downgrade():

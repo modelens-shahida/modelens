@@ -6,6 +6,8 @@ Create Date: 2026-09-15
 """
 from alembic import op
 import sqlalchemy as sa
+
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'dataset_registry_001'
@@ -16,7 +18,7 @@ depends_on = None
 
 def upgrade():
     # Dataset table
-    op.create_table('datasets',
+    ensure_table('datasets',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('dataset_id', sa.String(50), unique=True, nullable=False),
         sa.Column('character_id', sa.String(50), nullable=True),
@@ -34,11 +36,11 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_datasets_character_id', 'datasets', ['character_id'])
-    op.create_index('ix_datasets_workspace_id', 'datasets', ['workspace_id'])
+    create_index_if_absent('ix_datasets_character_id', 'datasets', ['character_id'])
+    create_index_if_absent('ix_datasets_workspace_id', 'datasets', ['workspace_id'])
 
     # Dataset Item table
-    op.create_table('dataset_items',
+    ensure_table('dataset_items',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('dataset_id', sa.String(50), nullable=False),
         sa.Column('asset_id', sa.Integer, nullable=True),
@@ -53,11 +55,11 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_dataset_items_dataset_id', 'dataset_items', ['dataset_id'])
-    op.create_index('ix_dataset_items_asset_id', 'dataset_items', ['asset_id'])
+    create_index_if_absent('ix_dataset_items_dataset_id', 'dataset_items', ['dataset_id'])
+    create_index_if_absent('ix_dataset_items_asset_id', 'dataset_items', ['asset_id'])
 
     # Dataset Annotation table
-    op.create_table('dataset_annotations',
+    ensure_table('dataset_annotations',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('dataset_item_id', sa.Integer, nullable=False),
         sa.Column('annotation_type', sa.String(50), nullable=False),
@@ -66,10 +68,10 @@ def upgrade():
         sa.Column('confidence', sa.Float, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_dataset_annotations_item_id', 'dataset_annotations', ['dataset_item_id'])
+    create_index_if_absent('ix_dataset_annotations_item_id', 'dataset_annotations', ['dataset_item_id'])
 
     # Experiment Run table
-    op.create_table('experiment_runs',
+    ensure_table('experiment_runs',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('run_id', sa.String(50), unique=True, nullable=False),
         sa.Column('experiment_name', sa.String(100), nullable=False),
@@ -87,10 +89,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_experiment_runs_character_id', 'experiment_runs', ['character_id'])
+    create_index_if_absent('ix_experiment_runs_character_id', 'experiment_runs', ['character_id'])
 
     # Experiment Metric table
-    op.create_table('experiment_metrics',
+    ensure_table('experiment_metrics',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('run_id', sa.String(50), nullable=False),
         sa.Column('metric_name', sa.String(50), nullable=False),
@@ -99,10 +101,10 @@ def upgrade():
         sa.Column('epoch', sa.Integer, nullable=True),
         sa.Column('recorded_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_experiment_metrics_run_id', 'experiment_metrics', ['run_id'])
+    create_index_if_absent('ix_experiment_metrics_run_id', 'experiment_metrics', ['run_id'])
 
     # Model Artifact table
-    op.create_table('model_artifacts',
+    ensure_table('model_artifacts',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('model_id', sa.String(50), unique=True, nullable=False),
         sa.Column('run_id', sa.String(50), nullable=True),
@@ -124,11 +126,11 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_model_artifacts_character_id', 'model_artifacts', ['character_id'])
-    op.create_index('ix_model_artifacts_status', 'model_artifacts', ['status'])
+    create_index_if_absent('ix_model_artifacts_character_id', 'model_artifacts', ['character_id'])
+    create_index_if_absent('ix_model_artifacts_status', 'model_artifacts', ['status'])
 
     # Rights Registry table
-    op.create_table('rights_registry',
+    ensure_table('rights_registry',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('rights_id', sa.String(50), unique=True, nullable=False),
         sa.Column('resource_type', sa.String(50), nullable=False),
@@ -150,8 +152,8 @@ def upgrade():
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_rights_registry_resource', 'rights_registry', ['resource_type', 'resource_id'])
-    op.create_index('ix_rights_registry_workspace', 'rights_registry', ['workspace_id'])
+    create_index_if_absent('ix_rights_registry_resource', 'rights_registry', ['resource_type', 'resource_id'])
+    create_index_if_absent('ix_rights_registry_workspace', 'rights_registry', ['workspace_id'])
 
 
 def downgrade():

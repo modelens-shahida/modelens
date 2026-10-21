@@ -87,3 +87,64 @@ def take_migration_lock(connection) -> bool:
         return False
     connection.execute(sa.text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK_KEY})
     return True
+
+
+# ---------------------------------------------------------------------------
+# Guards for the older migrations that used plain op.add_column / op.create_table /
+# op.create_index (workspace_isolation_001 ... character_registry_v2_001). Production
+# was partly built outside Alembic, so some of their objects may already exist.
+# Each helper skips an object that already exists as the migration defines it and
+# stops the upgrade (SchemaMismatch, nothing changed: one transaction) when it exists
+# differently. A table may have *extra* columns (later migrations and the models add
+# some); missing columns or other types stop the upgrade.
+
+
+def _column_problems(bind, table, column):
+    live = {c["name"]: c for c in sa.inspect(bind).get_columns(table)}
+    if column.name not in live:
+        return None  # absent
+    want = _type_name(column.type, bind.dialect)
+    have = _type_name(live[column.name]["type"], bind.dialect)
+    return [] if want == have else [f"{table}.{column.name}: type is {have}, expected {want}"]
+
+
+def add_column_if_absent(table, column):
+    """``op.add_column`` that skips a column already present with the same type."""
+    bind = op.get_bind()
+    problems = _column_problems(bind, table, column)
+    if problems is None:
+        return op.add_column(table, column)
+    if problems:
+        raise SchemaMismatch("; ".join(problems) + ". Not skipping it.")
+    print(f"[migration] column {table}.{column.name} already exists; skipping add")
+    return None
+
+
+def ensure_table(name, *elements, **kw):
+    """``op.create_table`` that skips a table already present with at least these columns
+    (same types); extra live columns are allowed."""
+    bind = op.get_bind()
+    if not sa.inspect(bind).has_table(name):
+        return op.create_table(name, *elements, **kw)
+    problems = []
+    for column in (e for e in elements if isinstance(e, sa.Column)):
+        found = _column_problems(bind, name, column)
+        problems.extend([f"missing column {column.name}"] if found is None else found)
+    if problems:
+        raise SchemaMismatch(f"Table '{name}' already exists but does not match this migration: "
+                             + "; ".join(problems) + ". Not skipping it.")
+    print(f"[migration] table {name} already exists with the expected columns; skipping create")
+    return None
+
+
+def create_index_if_absent(name, table, columns, **kw):
+    """``op.create_index`` that skips an index of that name already on the same columns."""
+    bind = op.get_bind()
+    existing = {ix["name"]: ix for ix in sa.inspect(bind).get_indexes(table)}
+    if name not in existing:
+        return op.create_index(name, table, columns, **kw)
+    if list(existing[name]["column_names"]) != list(columns):
+        raise SchemaMismatch(f"Index '{name}' on {table} exists on {existing[name]['column_names']}, "
+                             f"expected {list(columns)}. Not skipping it.")
+    print(f"[migration] index {name} already exists; skipping create")
+    return None

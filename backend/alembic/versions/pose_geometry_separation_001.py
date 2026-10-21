@@ -6,6 +6,8 @@ Create Date: 2026-09-13
 """
 from alembic import op
 import sqlalchemy as sa
+
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'pose_geometry_separation_001'
@@ -16,24 +18,24 @@ depends_on = None
 
 def upgrade():
     # Add geometry fields to angle_shots
-    op.add_column('angle_shots', sa.Column('body_yaw', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('body_pitch', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('body_roll', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('head_yaw', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('head_pitch', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('head_roll', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('gaze', sa.String(20), nullable=True))
-    op.add_column('angle_shots', sa.Column('expression_id', sa.String(30), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('body_yaw', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('body_pitch', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('body_roll', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('head_yaw', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('head_pitch', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('head_roll', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('gaze', sa.String(20), nullable=True))
+    add_column_if_absent('angle_shots', sa.Column('expression_id', sa.String(30), nullable=True))
 
     # Add geometry fields to catalog_job_items
-    op.add_column('catalog_job_items', sa.Column('body_yaw', sa.String(20), nullable=True))
-    op.add_column('catalog_job_items', sa.Column('head_yaw', sa.String(20), nullable=True))
-    op.add_column('catalog_job_items', sa.Column('head_pitch', sa.String(20), nullable=True))
-    op.add_column('catalog_job_items', sa.Column('gaze', sa.String(20), nullable=True))
-    op.add_column('catalog_job_items', sa.Column('expression_id', sa.String(30), nullable=True))
+    add_column_if_absent('catalog_job_items', sa.Column('body_yaw', sa.String(20), nullable=True))
+    add_column_if_absent('catalog_job_items', sa.Column('head_yaw', sa.String(20), nullable=True))
+    add_column_if_absent('catalog_job_items', sa.Column('head_pitch', sa.String(20), nullable=True))
+    add_column_if_absent('catalog_job_items', sa.Column('gaze', sa.String(20), nullable=True))
+    add_column_if_absent('catalog_job_items', sa.Column('expression_id', sa.String(30), nullable=True))
 
     # Create pose_geometry_presets table
-    op.create_table('pose_geometry_presets',
+    ensure_table('pose_geometry_presets',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('preset_id', sa.String(50), unique=True, nullable=False),
         sa.Column('display_name', sa.String(100), nullable=False),
@@ -70,7 +72,7 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_pose_geometry_family', 'pose_geometry_presets', ['family'])
+    create_index_if_absent('ix_pose_geometry_family', 'pose_geometry_presets', ['family'])
 
 
 def downgrade():

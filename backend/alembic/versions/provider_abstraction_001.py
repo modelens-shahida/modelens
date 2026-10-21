@@ -6,6 +6,8 @@ Create Date: 2026-09-13
 """
 from alembic import op
 import sqlalchemy as sa
+
+from app.migration_guard import add_column_if_absent, create_index_if_absent, ensure_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = 'provider_abstraction_001'
@@ -16,7 +18,7 @@ depends_on = None
 
 def upgrade():
     # Provider table
-    op.create_table('providers',
+    ensure_table('providers',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('provider_id', sa.String(50), unique=True, nullable=False),
         sa.Column('display_name', sa.String(100), nullable=False),
@@ -30,7 +32,7 @@ def upgrade():
     )
 
     # Provider Model table
-    op.create_table('provider_models',
+    ensure_table('provider_models',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('model_id', sa.String(50), unique=True, nullable=False),
         sa.Column('provider_id', sa.String(50), nullable=False),
@@ -41,10 +43,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_provider_models_provider_id', 'provider_models', ['provider_id'])
+    create_index_if_absent('ix_provider_models_provider_id', 'provider_models', ['provider_id'])
 
     # Provider Route table
-    op.create_table('provider_routes',
+    ensure_table('provider_routes',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('route_id', sa.String(50), unique=True, nullable=False),
         sa.Column('workflow_id', sa.String(50), nullable=False),
@@ -59,10 +61,10 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_provider_routes_workflow', 'provider_routes', ['workflow_id', 'quality_mode'])
+    create_index_if_absent('ix_provider_routes_workflow', 'provider_routes', ['workflow_id', 'quality_mode'])
 
     # Routing Policy table
-    op.create_table('routing_policies',
+    ensure_table('routing_policies',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('policy_id', sa.String(50), unique=True, nullable=False),
         sa.Column('workflow_id', sa.String(50), nullable=False),
@@ -75,7 +77,7 @@ def upgrade():
         sa.Column('meta', JSONB, nullable=True),
         sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
     )
-    op.create_index('ix_routing_policies_workflow', 'routing_policies', ['workflow_id', 'quality_mode'])
+    create_index_if_absent('ix_routing_policies_workflow', 'routing_policies', ['workflow_id', 'quality_mode'])
 
 
 def downgrade():
