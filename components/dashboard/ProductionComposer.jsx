@@ -20,52 +20,52 @@ const SAMPLE_CHARACTERS = [
 ];
 
 const SAMPLE_BACKGROUNDS = [
-  { id: "bg_1", name: "Studio Grey", category: "Studio", desc: "Minimal neutral studio backdrop" },
-  { id: "bg_2", name: "Paris Haussmann Balcony", category: "Editorial", desc: "Classic Parisian architectural vista" },
-  { id: "bg_3", name: "Brutalist Concrete Gallery", category: "Architectural", desc: "Contemporary dramatic shadow environment" },
-  { id: "bg_4", name: "Sunlit Marble Loft", category: "Daylight", desc: "Soft warm natural lighting interior" },
-  { id: "bg_5", name: "High-Key Cyclorama White", category: "Commercial", desc: "Pure seamless e-commerce white" },
+  { id: "scene_env-stu-0001", name: "Studio Grey", category: "Studio", desc: "Minimal neutral studio backdrop", recommended_lighting_id: "lighting_studio_soft_diffuse", is_default: true },
+  { id: "scene_env-stu-0002", name: "High-Key Cyclorama White", category: "Commercial", desc: "Pure seamless e-commerce white", recommended_lighting_id: "lighting_studio_high_key" },
+  { id: "scene_env-stu-0003", name: "Paris Haussmann Balcony", category: "Editorial", desc: "Classic Parisian architectural vista", recommended_lighting_id: "lighting_natural_sunbeam" },
+  { id: "scene_env-stu-0004", name: "Brutalist Concrete Gallery", category: "Architectural", desc: "Contemporary dramatic shadow environment", recommended_lighting_id: "lighting_dramatic_chiaroscuro" },
+  { id: "scene_env-stu-0005", name: "Sunlit Marble Loft", category: "Daylight", desc: "Soft warm natural lighting interior", recommended_lighting_id: "lighting_natural_window_soft" },
 ];
 
 const SAMPLE_DIRECTIONS = [
-  { id: "dir_1", name: "Luxury Editorial", desc: "Vogue-style high dynamic contrast, subtle motion & sharp focal depth" },
-  { id: "dir_2", name: "Minimalist E-Commerce", desc: "Clean, even illumination with focus on garment fabric weave" },
-  { id: "dir_3", name: "Dramatic Chiaroscuro", desc: "Deep cinematic shadows with rich directional key light" },
-  { id: "dir_4", name: "Soft Daylight Natural", desc: "Organic sunbeams, natural skin textures and airy mood" },
+  { id: "campaign_luxury_editorial", name: "Luxury Editorial", desc: "Vogue-style high dynamic contrast, subtle motion & sharp focal depth", is_default: true },
+  { id: "campaign_ecommerce", name: "Minimalist E-Commerce", desc: "Clean, even illumination with focus on garment fabric weave" },
+  { id: "campaign_chiaroscuro", name: "Dramatic Chiaroscuro", desc: "Deep cinematic shadows with rich directional key light" },
+  { id: "campaign_natural_daylight", name: "Soft Daylight Natural", desc: "Organic sunbeams, natural skin textures and airy mood" },
 ];
 
 const SAMPLE_HAIRSTYLES = [
-  { id: "canonical", name: "Canonical Straight", desc: "Sleek natural center-part editorial straight" },
-  { id: "sleek_bun", name: "Sleek Low Bun", desc: "Clean polished quiet luxury low chignon" },
-  { id: "soft_waves", name: "Soft Waves", desc: "Voluminous editorial haute couture waves" },
-  { id: "low_chignon", name: "Classic Chignon", desc: "Sophisticated red-carpet chignon" },
-  { id: "ponytail", name: "High Ponytail", desc: "Sharp runway high-fashion ponytail" },
-  { id: "wet_look", name: "Wet Slick Back", desc: "Avant-garde editorial wet sheen" },
-  { id: "hair_down", name: "Loose Hair Flow", desc: "Relaxed natural movement and texture" },
+  { id: "hair_canonical", name: "Canonical Straight", desc: "Sleek natural center-part editorial straight", is_default: true },
+  { id: "hair_sleek_bun", name: "Sleek Low Bun", desc: "Clean polished quiet luxury low chignon" },
+  { id: "hair_soft_waves", name: "Soft Waves", desc: "Voluminous editorial haute couture waves" },
+  { id: "hair_low_chignon", name: "Classic Chignon", desc: "Sophisticated red-carpet chignon" },
+  { id: "hair_ponytail", name: "High Ponytail", desc: "Sharp runway high-fashion ponytail" },
+  { id: "hair_wet_look", name: "Wet Slick Back", desc: "Avant-garde editorial wet sheen" },
+  { id: "hair_hair_down", name: "Loose Hair Flow", desc: "Relaxed natural movement and texture" },
 ];
 
 const SAMPLE_MAKEUP = [
-  { id: "natural", name: "Natural Minimal", desc: "Clean bare-skin finish with subtle hydration" },
-  { id: "quiet_luxury", name: "Quiet Luxury", desc: "Subtle radiant warmth and velvet contour" },
-  { id: "bronzed", name: "Bronzed Haute", desc: "Sun-kissed golden dimension and glow" },
-  { id: "soft_glam", name: "Soft Glamour", desc: "Velveteen eye shading and satin lip" },
-  { id: "editorial", name: "Runway Editorial", desc: "High-contrast architectural eye focus" },
-  { id: "runway", name: "Avant-Garde", desc: "Statement runway beauty and structure" },
+  { id: "makeup_natural", name: "Natural Minimal", desc: "Clean bare-skin finish with subtle hydration", is_default: true },
+  { id: "makeup_quiet_luxury", name: "Quiet Luxury", desc: "Subtle radiant warmth and velvet contour" },
+  { id: "makeup_bronzed", name: "Bronzed Haute", desc: "Sun-kissed golden dimension and glow" },
+  { id: "makeup_soft_glam", name: "Soft Glamour", desc: "Velveteen eye shading and satin lip" },
+  { id: "makeup_editorial", name: "Runway Editorial", desc: "High-contrast architectural eye focus" },
+  { id: "makeup_runway", name: "Avant-Garde", desc: "Statement runway beauty and structure" },
 ];
 
 const SAMPLE_EXPRESSIONS = [
-  { id: "neutral_editorial", name: "Neutral Editorial", desc: "High-fashion poised and confident" },
-  { id: "soft_confidence", name: "Soft Confidence", desc: "Direct assertive gaze with calm poise" },
-  { id: "soft_smile", name: "Soft Smile", desc: "Warm subtle micro-expression" },
-  { id: "serious", name: "Serious Focus", desc: "Intense runway presence" },
-  { id: "mysterious", name: "Mysterious Depth", desc: "Intriguing chiaroscuro emotion" },
+  { id: "expr_neutral_editorial", name: "Neutral Editorial", desc: "High-fashion poised and confident", is_default: true },
+  { id: "expr_soft_confidence", name: "Soft Confidence", desc: "Direct assertive gaze with calm poise" },
+  { id: "expr_soft_smile", name: "Soft Smile", desc: "Warm subtle micro-expression" },
+  { id: "expr_serious", name: "Serious Focus", desc: "Intense runway presence" },
+  { id: "expr_mysterious", name: "Mysterious Depth", desc: "Intriguing chiaroscuro emotion" },
 ];
 
 const SAMPLE_POSES = [
-  { id: "standing_editorial", label: "Standing Editorial", description: "Full-length poised stance", category: "classic", recommended_framing: "full_body", is_default: true },
-  { id: "walking_editorial", label: "Walking Editorial", description: "Dynamic runway stride", category: "motion", recommended_framing: "full_body", is_default: false },
-  { id: "seated_look", label: "Seated Editorial", description: "Relaxed high-fashion seated posture", category: "editorial", recommended_framing: "three_quarter", is_default: false },
-  { id: "garment_interaction", label: "Garment Interaction", description: "Hand touching fabric / lapel", category: "detail", recommended_framing: "three_quarter", is_default: false },
+  { id: "pose_ML-POSE-CAT-001", label: "Standing Front", description: "Full-length poised stance", category: "classic", recommended_framing: "full_body", is_default: true },
+  { id: "pose_ML-POSE-CAT-002", label: "Front Relaxed", description: "Front view with natural shoulder relaxation", category: "classic", recommended_framing: "full_body", is_default: false },
+  { id: "pose_ML-POSE-CAT-003", label: "Standing Three Quarter", description: "Dynamic runway three-quarter stance", category: "motion", recommended_framing: "full_body", is_default: false },
+  { id: "pose_ML-POSE-EDT-001", label: "Editorial Stance", description: "Hand touching fabric / lapel detail", category: "detail", recommended_framing: "three_quarter", is_default: false },
 ];
 
 function getProductTypeFromCategory(category = "") {
@@ -85,9 +85,9 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     name: "Quiet Luxury",
     desc: "Sleek low bun or polished chignon, luminous nude makeup, soft sculpting, neutral lip, clean manicure, restrained jewelry, calm confident expression.",
     defaults: {
-      hair_id: "sleek_bun",
-      makeup_id: "quiet_luxury",
-      expression_id: "neutral_editorial",
+      hair_id: "hair_sleek_bun",
+      makeup_id: "makeup_quiet_luxury",
+      expression_id: "expr_neutral_editorial",
     },
     tag: "Quiet Luxury",
     is_default: true,
@@ -97,9 +97,9 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     name: "European Editorial",
     desc: "Slick-back or wet-look hair, stronger eye definition, sculpted cheekbones, minimal lip, architectural jewelry, angular poise.",
     defaults: {
-      hair_id: "wet_look",
-      makeup_id: "editorial",
-      expression_id: "serious",
+      hair_id: "hair_wet_look",
+      makeup_id: "makeup_editorial",
+      expression_id: "expr_serious",
     },
     tag: "High Fashion",
   },
@@ -108,9 +108,9 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     name: "Soft Luxury",
     desc: "Brushed-out waves, glowing skin, soft bronzed makeup, subtle eye definition, natural lip, delicate jewelry, relaxed elegance.",
     defaults: {
-      hair_id: "soft_waves",
-      makeup_id: "bronzed",
-      expression_id: "soft_confidence",
+      hair_id: "hair_soft_waves",
+      makeup_id: "makeup_bronzed",
+      expression_id: "expr_soft_confidence",
     },
     tag: "Soft Glamour",
   },
@@ -119,9 +119,9 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     name: "Classic Evening",
     desc: "Polished updo, refined eye makeup, red/bordeaux or classic satin lip, evening glamour.",
     defaults: {
-      hair_id: "low_chignon",
-      makeup_id: "soft_glam",
-      expression_id: "soft_smile",
+      hair_id: "hair_low_chignon",
+      makeup_id: "makeup_soft_glam",
+      expression_id: "expr_soft_smile",
     },
     tag: "Evening / Gala",
   },
@@ -130,9 +130,9 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     name: "Modern Minimal",
     desc: "Clean tucked or natural straight hair, fresh satin skin, clean brows, minimal sheer lip, architectural poise.",
     defaults: {
-      hair_id: "canonical",
-      makeup_id: "natural",
-      expression_id: "neutral_editorial",
+      hair_id: "hair_canonical",
+      makeup_id: "makeup_natural",
+      expression_id: "expr_neutral_editorial",
     },
     tag: "Contemporary",
   },
@@ -141,9 +141,9 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     name: "Resort Luxury",
     desc: "Sunkissed skin, relaxed texture or effortless low knot, golden warmth, glossy lip, vacation ease.",
     defaults: {
-      hair_id: "hair_down",
-      makeup_id: "bronzed",
-      expression_id: "soft_confidence",
+      hair_id: "hair_hair_down",
+      makeup_id: "makeup_bronzed",
+      expression_id: "expr_soft_confidence",
     },
     tag: "Resort & Cruise",
   },
@@ -181,11 +181,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   const handleSelectBeautyDirection = (dir) => {
     setSelectedBeautyDirection(dir);
     if (dir?.defaults) {
-      const h = hairOptions.find((item) => item.id === dir.defaults.hair_id);
+      const h = hairOptions.find((item) => item.id === dir.defaults.hair_id || item.id === dir.defaults.hair_id?.replace(/^hair_/, ""));
       if (h) setSelectedHair(h);
-      const m = makeupOptions.find((item) => item.id === dir.defaults.makeup_id);
+      const m = makeupOptions.find((item) => item.id === dir.defaults.makeup_id || item.id === dir.defaults.makeup_id?.replace(/^makeup_/, ""));
       if (m) setSelectedMakeup(m);
-      const e = expressionOptions.find((item) => item.id === dir.defaults.expression_id);
+      const e = expressionOptions.find((item) => item.id === dir.defaults.expression_id || item.id === dir.defaults.expression_id?.replace(/^expr_/, ""));
       if (e) setSelectedExpression(e);
     }
   };
@@ -195,10 +195,12 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
     // 1. Locations
     api.get("/api/v1/presets/locations")
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const list = data.map((l) => ({
+        const rawList = Array.isArray(data) ? data : data?.presets || [];
+        if (rawList.length > 0) {
+          const list = rawList.map((l) => ({
             id: l.id,
             name: l.label || l.name,
+            label: l.label || l.name,
             desc: l.description || l.desc,
             category: l.category || "Studio",
             recommended_lighting_id: l.recommended_lighting_id,
@@ -214,10 +216,12 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
     // 2. Campaigns / Directions
     api.get("/api/v1/presets/campaigns")
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const list = data.map((c) => ({
+        const rawList = Array.isArray(data) ? data : data?.presets || [];
+        if (rawList.length > 0) {
+          const list = rawList.map((c) => ({
             id: c.id,
             name: c.label || c.name,
+            label: c.label || c.name,
             desc: c.description || c.desc,
             is_default: c.is_default,
           }));
@@ -231,8 +235,16 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
     // 3. Lighting Presets
     api.get("/api/v1/presets/lighting")
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setLightingOptions(data);
+        const rawList = Array.isArray(data) ? data : data?.presets || [];
+        if (rawList.length > 0) {
+          const list = rawList.map((l) => ({
+            id: l.id,
+            name: l.label || l.name,
+            label: l.label || l.name,
+            desc: l.description || l.desc,
+            is_default: l.is_default,
+          }));
+          setLightingOptions(list);
         }
       })
       .catch(() => {});
@@ -248,13 +260,13 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
       .then((data) => {
         if (data && data.categories) {
           if (Array.isArray(data.categories.hair) && data.categories.hair.length > 0) {
-            setHairOptions(data.categories.hair.map((h) => ({ id: h.id, name: h.label || h.name, desc: h.description || h.desc })));
+            setHairOptions(data.categories.hair.map((h) => ({ id: h.id, name: h.label || h.name, desc: h.description || h.desc, is_default: h.is_default, recommended: h.recommended })));
           }
           if (Array.isArray(data.categories.makeup) && data.categories.makeup.length > 0) {
-            setMakeupOptions(data.categories.makeup.map((m) => ({ id: m.id, name: m.label || m.name, desc: m.description || m.desc })));
+            setMakeupOptions(data.categories.makeup.map((m) => ({ id: m.id, name: m.label || m.name, desc: m.description || m.desc, is_default: m.is_default, recommended: m.recommended })));
           }
           if (Array.isArray(data.categories.expression) && data.categories.expression.length > 0) {
-            setExpressionOptions(data.categories.expression.map((e) => ({ id: e.id, name: e.label || e.name, desc: e.description || e.desc })));
+            setExpressionOptions(data.categories.expression.map((e) => ({ id: e.id, name: e.label || e.name, desc: e.description || e.desc, is_default: e.is_default, recommended: e.recommended })));
           }
         }
       })
@@ -311,7 +323,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           makeup: selectedMakeup,
           expression: selectedExpression,
         },
-        pose: selectedPose?.id || "standing_editorial",
+        pose: selectedPose?.id || "pose_ML-POSE-CAT-001",
         angles: selectedAngles,
         background: selectedBackground,
         direction: selectedDirection,
@@ -891,8 +903,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                 )}
                 {styleSubTab === "hair" && (
                   <div className="space-y-2.5">
-                    {SAMPLE_HAIRSTYLES.map((h) => {
-                      const isSelected = selectedHair.id === h.id;
+                    {hairOptions.map((h) => {
+                      const isSelected = selectedHair.id === h.id || selectedHair.id === h.id?.replace(/^hair_/, "");
+                      const isDef = h.is_default || h.id === "hair_canonical" || h.id === "canonical";
                       return (
                         <div
                           key={h.id}
@@ -905,12 +918,15 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                         >
                           <div>
                             <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                              <span>{h.name}</span>
-                              {h.id === "canonical" && (
+                              <span>{h.name || h.label}</span>
+                              {isDef && (
                                 <span className="text-[9px] font-mono px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">Default</span>
                               )}
+                              {h.recommended && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-fuchsia-950 text-fuchsia-300 rounded border border-fuchsia-800/50">Recommended</span>
+                              )}
                             </h4>
-                            <p className="text-[11px] text-zinc-400 mt-0.5">{h.desc}</p>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{h.desc || h.description}</p>
                           </div>
                           {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
                         </div>
@@ -921,8 +937,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
                 {styleSubTab === "makeup" && (
                   <div className="space-y-2.5">
-                    {SAMPLE_MAKEUP.map((m) => {
-                      const isSelected = selectedMakeup.id === m.id;
+                    {makeupOptions.map((m) => {
+                      const isSelected = selectedMakeup.id === m.id || selectedMakeup.id === m.id?.replace(/^makeup_/, "");
+                      const isDef = m.is_default || m.id === "makeup_natural" || m.id === "natural";
                       return (
                         <div
                           key={m.id}
@@ -934,8 +951,16 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                           }`}
                         >
                           <div>
-                            <h4 className="text-xs font-bold text-white">{m.name}</h4>
-                            <p className="text-[11px] text-zinc-400 mt-0.5">{m.desc}</p>
+                            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                              <span>{m.name || m.label}</span>
+                              {isDef && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">Default</span>
+                              )}
+                              {m.recommended && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-fuchsia-950 text-fuchsia-300 rounded border border-fuchsia-800/50">Recommended</span>
+                              )}
+                            </h4>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{m.desc || m.description}</p>
                           </div>
                           {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
                         </div>
@@ -946,8 +971,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
                 {styleSubTab === "expression" && (
                   <div className="space-y-2.5">
-                    {SAMPLE_EXPRESSIONS.map((exp) => {
-                      const isSelected = selectedExpression.id === exp.id;
+                    {expressionOptions.map((exp) => {
+                      const isSelected = selectedExpression.id === exp.id || selectedExpression.id === exp.id?.replace(/^expr_/, "");
+                      const isDef = exp.is_default || exp.id === "expr_neutral_editorial" || exp.id === "neutral_editorial";
                       return (
                         <div
                           key={exp.id}
@@ -959,8 +985,16 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                           }`}
                         >
                           <div>
-                            <h4 className="text-xs font-bold text-white">{exp.name}</h4>
-                            <p className="text-[11px] text-zinc-400 mt-0.5">{exp.desc}</p>
+                            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                              <span>{exp.name || exp.label}</span>
+                              {isDef && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">Default</span>
+                              )}
+                              {exp.recommended && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-fuchsia-950 text-fuchsia-300 rounded border border-fuchsia-800/50">Recommended</span>
+                              )}
+                            </h4>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{exp.desc || exp.description}</p>
                           </div>
                           {isSelected && <Check className="w-4 h-4 text-fuchsia-400 shrink-0" />}
                         </div>
@@ -1147,7 +1181,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                         <span className="text-xs text-zinc-400">{bg.desc}</span>
                         {bg.recommended_lighting_id && (
                           <span className="inline-block text-[9px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded mt-1">
-                            Recommended Lighting: {bg.recommended_lighting_id}
+                            Recommended Lighting: {lightingOptions.find((l) => l.id === bg.recommended_lighting_id)?.label || lightingOptions.find((l) => l.id === bg.recommended_lighting_id)?.name || bg.recommended_lighting_id}
                           </span>
                         )}
                       </div>
