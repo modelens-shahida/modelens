@@ -58,6 +58,7 @@ from app.routers.capability_packs import router as capabilities_router, admin_ro
 from app.routers.pose_resolver import router as poses_router, admin_router as pose_library_admin_router
 from app.routers.productions import router as productions_router, admin_router as productions_admin_router
 from app.routers.presets import router as presets_router, admin_router as presets_admin_router
+from app.routers.capability_admin import router as capability_admin_router
 from app.routers.generation_api import router as generation_api_router
 from app.routers.phase2_batch import router as phase2_batch_router
 from app.routers.campaign_generation import router as campaign_generation_router
@@ -261,6 +262,7 @@ app.include_router(productions_router)
 app.include_router(productions_admin_router)
 app.include_router(presets_router)
 app.include_router(presets_admin_router)
+app.include_router(capability_admin_router)
 app.include_router(generation_api_router)
 app.include_router(phase2_batch_router)
 app.include_router(prompts_router)

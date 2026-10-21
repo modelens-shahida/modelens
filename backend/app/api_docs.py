@@ -303,6 +303,7 @@ TAGS_METADATA = [
     {"name": "Poses", "description": "Customer-facing poses per character and product type (garment, shoes, bags, ...), offered only when the character's capability pack for that product type is in PRODUCTION."},
     {"name": "Pose Library", "description": "Admin only. Pose catalog with technical refs (pose adapters, geometry presets, control references, workflow params), the product type → pose mapping, defaults and archiving."},
     {"name": "Presets", "description": "Customer-facing location, lighting and campaign presets in PRODUCTION, the ids production dispatch accepts."},
+    {"name": "Capability Validations", "description": "Platform admin only: register, validate, promote, retire and list a character's capabilities (per character version), with audit logging. Responses include internal keys, versions and validation evidence; customers never see them."},
     {"name": "Preset Registry", "description": "Admin only. Location, lighting and campaign preset records, technical config and the IN_DEVELOPMENT → PRODUCTION → ARCHIVED lifecycle."},
     {"name": "Productions", "description": "Customer production dispatch: a request resolved server-side into a Runtime Character Profile, charged once in the brand credit ledger and queued; status and outputs of your own productions."},
     {"name": "Production Admin", "description": "Admin only. Resolved Runtime Character Profile snapshots (adapters by layer, workflow and provider route, seed), job status and ledger entries of productions."},
