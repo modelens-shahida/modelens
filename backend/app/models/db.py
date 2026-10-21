@@ -2291,6 +2291,166 @@ class CanonicalAsset(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+# ========================== Reference Sets ========================
+# The files that carry a character version's identity, frozen into an ordered,
+# hashed set (docs/character-runtime/DESIGN.md sections 2 and 3.1). DRAFT sets
+# are edited freely; once LOCKED a set and its items never change (only its
+# status moves forward), and the canonical assets in it keep their file
+# identity. Admin/internal only.
+
+REFERENCE_SET_TRANSITIONS: dict[str, set[str]] = {
+    "DRAFT": {"LOCKED", "RETIRED"},
+    "LOCKED": {"PRODUCTION", "RETIRED"},
+    "PRODUCTION": {"RETIRED"},
+    "RETIRED": set(),
+}
+# Status-only fields a LOCKED / PRODUCTION set may still change.
+REFERENCE_SET_STATUS_FIELDS = ("status", "promoted_at", "promoted_by", "retired_at", "retired_by", "retire_reason")
+# Canonical asset fields that identify the file; frozen while the asset is in a non-DRAFT set.
+CANONICAL_ASSET_FILE_FIELDS = ("asset_id", "character_id", "version", "asset_role", "storage_path",
+                               "content_hash_sha256")
+
+
+class CharacterReferenceSet(Base):
+    __tablename__ = "character_reference_sets"
+    __table_args__ = (
+        UniqueConstraint("character_id", "character_version", "version", name="uq_reference_set_version"),
+        # At most one PRODUCTION set per character version.
+        Index("uq_reference_set_production", "character_id", "character_version", unique=True,
+              postgresql_where=sa.text("status = 'PRODUCTION'"), sqlite_where=sa.text("status = 'PRODUCTION'")),
+    )
+
+    id = Column(Integer, primary_key=True)
+    reference_set_id = Column(String(60), unique=True, nullable=False)  # EE-F-002_V1.0_REF_V1
+    character_id = Column(String(50), nullable=False, index=True)
+    character_version = Column(String(10), nullable=False)
+    version = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default="DRAFT")
+    content_hash = Column(String(64), nullable=True)  # sha256 over the ordered (asset_id, sha256) pairs, at lock
+    created_by = Column(String(100), nullable=True)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by = Column(String(100), nullable=True)
+    promoted_at = Column(DateTime, nullable=True)
+    promoted_by = Column(String(100), nullable=True)
+    retired_at = Column(DateTime, nullable=True)
+    retired_by = Column(String(100), nullable=True)
+    retire_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CharacterReferenceSetItem(Base):
+    __tablename__ = "character_reference_set_items"
+    __table_args__ = (
+        UniqueConstraint("reference_set_id", "role", "sort_order", name="uq_reference_set_item_slot"),
+        UniqueConstraint("reference_set_id", "canonical_asset_id", name="uq_reference_set_item_asset"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    reference_set_id = Column(Integer, ForeignKey("character_reference_sets.id", ondelete="RESTRICT"),
+                              nullable=False, index=True)
+    canonical_asset_id = Column(Integer, ForeignKey("canonical_assets.id", ondelete="RESTRICT"), nullable=False,
+                                index=True)
+    asset_id = Column(String(50), nullable=False)  # canonical_assets.asset_id, for readable listings
+    role = Column(String(30), nullable=False)  # face_front, face_34, profile, body_full, body_34
+    sort_order = Column(Integer, nullable=False, default=0)
+    content_hash_sha256 = Column(String(64), nullable=True)  # copied from the asset at lock
+
+
+class ReferenceSetLockedError(Exception):
+    """A write tried to change a LOCKED / PRODUCTION reference set, its items, or the file of an asset in it."""
+
+
+def _previous(target, name):
+    history = sa.inspect(target).attrs[name].history
+    return history.deleted[0] if history.deleted else getattr(target, name)
+
+
+@sa.event.listens_for(CharacterReferenceSet, "before_update")
+def _check_reference_set_update(mapper, connection, target):
+    state = sa.inspect(target)
+    old_status = _previous(target, "status")
+    if state.attrs["status"].history.has_changes() and target.status != old_status:
+        if target.status not in REFERENCE_SET_TRANSITIONS.get(old_status, set()):
+            raise ReferenceSetLockedError(f"Reference set status cannot move from {old_status} to {target.status}.")
+    if old_status == "DRAFT":
+        return
+    changed = [a.key for a in state.attrs if a.history.has_changes() and a.key not in REFERENCE_SET_STATUS_FIELDS]
+    if changed:
+        raise ReferenceSetLockedError(
+            f"Reference set {target.reference_set_id} is {old_status} and cannot be changed ({', '.join(changed)}). "
+            "Create a new reference set version instead.")
+
+
+@sa.event.listens_for(CharacterReferenceSet, "before_delete")
+def _reject_reference_set_delete(mapper, connection, target):
+    raise ReferenceSetLockedError("Reference sets are never deleted; retire them instead.")
+
+
+def _set_status(connection, set_pk) -> Optional[str]:
+    return connection.execute(
+        sa.select(CharacterReferenceSet.__table__.c.status).where(CharacterReferenceSet.__table__.c.id == set_pk)
+    ).scalar()
+
+
+@sa.event.listens_for(CharacterReferenceSetItem, "before_insert")
+@sa.event.listens_for(CharacterReferenceSetItem, "before_update")
+@sa.event.listens_for(CharacterReferenceSetItem, "before_delete")
+def _check_reference_set_item_write(mapper, connection, target):
+    for set_pk in {target.reference_set_id, _previous(target, "reference_set_id")}:
+        status = _set_status(connection, set_pk)
+        if status not in (None, "DRAFT"):
+            raise ReferenceSetLockedError(f"The items of a {status} reference set cannot change.")
+
+
+def _frozen_set_status(connection, asset_pk) -> Optional[str]:
+    """The status of a non-DRAFT reference set holding this canonical asset, if any."""
+    sets, items = CharacterReferenceSet.__table__, CharacterReferenceSetItem.__table__
+    return connection.execute(
+        sa.select(sets.c.reference_set_id).select_from(items.join(sets, items.c.reference_set_id == sets.c.id))
+        .where(items.c.canonical_asset_id == asset_pk, sets.c.status != "DRAFT").limit(1)
+    ).scalar()
+
+
+@sa.event.listens_for(CanonicalAsset, "before_update")
+def _check_canonical_asset_update(mapper, connection, target):
+    state = sa.inspect(target)
+    changed = [f for f in CANONICAL_ASSET_FILE_FIELDS if state.attrs[f].history.has_changes()]
+    if changed:
+        holder = _frozen_set_status(connection, target.id)
+        if holder:
+            raise ReferenceSetLockedError(
+                f"Canonical asset {_previous(target, 'asset_id')} is in locked reference set {holder}; its file "
+                f"({', '.join(changed)}) cannot change. Register a new asset and a new reference set instead.")
+
+
+@sa.event.listens_for(CanonicalAsset, "before_delete")
+def _check_canonical_asset_delete(mapper, connection, target):
+    holder = _frozen_set_status(connection, target.id)
+    if holder:
+        raise ReferenceSetLockedError(
+            f"Canonical asset {target.asset_id} is in locked reference set {holder} and cannot be deleted.")
+
+
+@sa.event.listens_for(sa.orm.Session, "do_orm_execute")
+def _reject_bulk_reference_writes(orm_execute_state):
+    # Bulk UPDATE/DELETE would bypass the per-row rules above.
+    if not (orm_execute_state.is_update or orm_execute_state.is_delete):
+        return
+    mapper = orm_execute_state.bind_mapper
+    if mapper is None:
+        return
+    if mapper.class_ in (CharacterReferenceSet, CharacterReferenceSetItem):
+        raise ReferenceSetLockedError("Bulk UPDATE/DELETE of reference sets is not allowed; change them one at a time.")
+    if mapper.class_ is CanonicalAsset:
+        if orm_execute_state.is_delete:
+            raise ReferenceSetLockedError("Bulk DELETE of canonical assets is not allowed; delete them one at a time.")
+        values = getattr(orm_execute_state.statement, "_values", None) or {}
+        touched = {getattr(k, "key", str(k)) for k in values}
+        if touched & set(CANONICAL_ASSET_FILE_FIELDS):
+            raise ReferenceSetLockedError(
+                "Bulk UPDATE of canonical asset file fields is not allowed; update assets one at a time.")
+
+
 class CharacterVersionQA(Base):
     __tablename__ = "character_version_qa"
 

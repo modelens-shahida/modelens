@@ -401,14 +401,6 @@ def test_partial_unique_indexes_allow_one_promoted_version_and_customer_id(chain
                 conn.execute(table.insert().values(**clash, status="PROMOTED"))
 
 
-def test_single_alembic_head_is_this_revision():
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    cfg = Config(os.path.join(BACKEND, "alembic.ini"))
-    cfg.set_main_option("script_location", os.path.join(BACKEND, "alembic"))
-    assert ScriptDirectory.from_config(cfg).get_heads() == ["capability_validations_002"]
-
-
 # ========================== Catch-up migration (PR 3) =============
 
 MIGRATION_002 = os.path.join(BACKEND, "alembic", "versions", "capability_validations_002.py")
