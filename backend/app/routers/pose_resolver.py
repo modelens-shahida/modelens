@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api_docs import error_responses
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import PoseDefinition, User, get_db
+from app.services import customer_options
 from app.services import pose_resolver as svc
 
 PoseCategory = Literal["static", "motion", "detail", "portrait"]
@@ -51,14 +52,17 @@ router = APIRouter(prefix="/api/v1/characters", tags=["Poses"])
 
 
 class CustomerPose(BaseModel):
-    id: str = Field(..., examples=["walking"])
+    id: str = Field(..., description="Namespaced pose id (pose_*) to send to POST /api/v1/productions/dispatch.",
+                    examples=["pose_walking"])
     label: str = Field(..., examples=["Walking"])
     description: Optional[str] = Field(None, examples=["Mid-stride walk that shows how the product moves."])
     category: str = Field(..., description="static, motion, detail or portrait.", examples=["motion"])
     thumbnail_url: Optional[str] = Field(None, examples=["https://cdn.modelens.ai/poses/walking.jpg"])
     recommended_framing: str = Field(
         ..., description="full_body, three_quarter, half_body, close_up or detail.", examples=["full_body"])
+    group: Optional[str] = Field(None, description="UI group of the pose, if any.", examples=["Motion"])
     is_default: bool = Field(..., description="True for the one pose preselected in the UI.")
+    recommended: bool = Field(False, description="True for poses recommended for the character.")
 
 
 class CharacterPosesResponse(BaseModel):
@@ -73,8 +77,8 @@ class CharacterPosesResponse(BaseModel):
     summary="Get the poses for a character and product type",
     description=(
         "Poses a customer can pick for the character with a product type (garment, shoes, bags, eyewear, "
-        "headwear, jewelry). Poses are offered only when the character's capability pack for that product type "
-        "is in PRODUCTION for her current locked version; otherwise `poses` is empty. When the pack limits its "
+        "headwear, jewelry). Poses are offered only when the product type and the pose are validated and "
+        "promoted for her current locked version; otherwise `poses` is empty. When the pack limits its "
         "poses only those are returned. Exactly one returned pose has `is_default: true`. Using a pose never "
         "changes the character version. No technical fields (pose adapters, ControlNet / pose references, "
         "geometry, workflow params, status or internal keys) are returned. An unknown `product_type` returns "
@@ -91,16 +95,11 @@ async def get_character_poses(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    pairs = await _run(svc.customer_poses(db, character_id, product_type))
+    choices = await _run(customer_options.pose_choices(db, character_id, product_type))
     return CharacterPosesResponse(
         character_id=character_id,
         product_type=product_type,
-        poses=[
-            CustomerPose(id=pose.pose_id, label=pose.label, description=pose.description, category=pose.category,
-                         thumbnail_url=pose.thumbnail_url, recommended_framing=pose.recommended_framing,
-                         is_default=is_default)
-            for pose, is_default in pairs
-        ],
+        poses=[CustomerPose(**choice.item) for choice in choices],
     )
 
 

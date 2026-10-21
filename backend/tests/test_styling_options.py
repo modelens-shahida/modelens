@@ -11,11 +11,12 @@ from app.middleware.auth import create_access_token, hash_password
 from app.models.db import AppearanceOption, CharacterRegistryVersion, ModelArtifact, User
 from app.services import appearance_options as appearance_service
 from app.services import character_versions as version_service
+from customer_safety import assert_customer_safe, promote_live, promote_version
 
 CUSTOMER_URL = "/api/v1/characters/EE-F-002/styling-options"
 ADMIN = "/api/v1/admin/appearance"
 CATEGORY_KEYS = {"hair", "makeup", "expression", "nails", "jewelry", "beauty_direction"}
-OPTION_KEYS = {"id", "label", "description", "thumbnail_url", "is_default"}
+OPTION_KEYS = {"id", "label", "description", "thumbnail_url", "group", "is_default", "recommended"}
 TECHNICAL_TERMS = (
     "adapter", "checkpoint", "seed", "workflow", "provider", "lora", "strength", "validation",
     "score", "status", "internal", "production", "compatibility", "qa_rules", "_v1", "EE-F-002_",
@@ -42,6 +43,7 @@ async def users(db_session):
 async def seeded(db_session):
     version = await version_service.seed_ee_f_002_v1(db_session)
     await appearance_service.seed_ee_f_002_defaults(db_session)
+    await promote_live(db_session)
     return version
 
 
@@ -78,13 +80,16 @@ async def _status(client, admin, key, new_status):
     return await client.post(f"{ADMIN}/options/{key}/status", json={"status": new_status}, headers=admin)
 
 
-async def _to_production(client, admin, key):
+async def _to_production(client, admin, key, db=None):
+    """Walk the option to PRODUCTION; with ``db``, also promote it for the character (if it has no record)."""
     assert (await _status(client, admin, key, "VALIDATION")).status_code == 200
     resp = await client.patch(f"{ADMIN}/options/{key}", json={"validation": ALL_PASS}, headers=admin)
     assert resp.status_code == 200, resp.text
     assert (await _status(client, admin, key, "APPROVED")).status_code == 200
     resp = await _status(client, admin, key, "PRODUCTION")
     assert resp.status_code == 200, resp.text
+    if db is not None:
+        await promote_live(db)
     return resp.json()
 
 
@@ -101,11 +106,13 @@ async def test_customer_gets_seeded_defaults_in_exact_shape(client, customer, se
     for key in ("nails", "jewelry", "beauty_direction"):
         assert body["categories"][key] == []
     assert body["categories"]["hair"] == [{
-        "id": "canonical", "label": "Canonical Straight",
-        "description": "Sleek natural center-part editorial straight.", "thumbnail_url": None, "is_default": True,
+        "id": "hair_canonical", "label": "Canonical Straight",
+        "description": "Sleek natural center-part editorial straight.", "thumbnail_url": None, "group": None,
+        "is_default": True, "recommended": False,
     }]
-    assert [o["id"] for o in body["categories"]["makeup"]] == ["natural"]
-    assert [o["id"] for o in body["categories"]["expression"]] == ["neutral_editorial"]
+    assert [o["id"] for o in body["categories"]["makeup"]] == ["makeup_natural"]
+    assert [o["id"] for o in body["categories"]["expression"]] == ["expr_neutral_editorial"]
+    assert_customer_safe(resp.text)
     for options in body["categories"].values():
         for option in options:
             assert set(option) == OPTION_KEYS
@@ -118,17 +125,18 @@ async def test_customer_response_has_no_technical_fields(client, admin, customer
     await db_session.commit()
     option = await _create(client, admin, adapter_id="ADP-APP-1", compatibility_notes="Avoid with hats",
                            qa_rules={"fallback_option_id": "CANONICAL", "min_identity_score": 0.9})
-    await _to_production(client, admin, option["internal_key"])
+    await _to_production(client, admin, option["internal_key"], db_session)
 
     resp = await client.get(CUSTOMER_URL, headers=customer)
     raw = resp.text
     for term in TECHNICAL_TERMS:
         assert term.lower() not in raw.lower(), term
-    assert "soft_waves" in [o["id"] for o in resp.json()["categories"]["hair"]]
+    assert_customer_safe(raw)
+    assert "hair_soft_waves" in [o["id"] for o in resp.json()["categories"]["hair"]]
 
 
 @pytest.mark.asyncio
-async def test_non_production_options_are_hidden(client, admin, customer, seeded):
+async def test_non_production_options_are_hidden(client, admin, customer, db_session, seeded):
     for status_path, option_id in (([], "IN_DEV"), (["VALIDATION"], "IN_VALIDATION")):
         option = await _create(client, admin, option_id=option_id)
         for step in status_path:
@@ -140,43 +148,54 @@ async def test_non_production_options_are_hidden(client, admin, customer, seeded
     assert (await _status(client, admin, key, "APPROVED")).status_code == 200
     archived = await _create(client, admin, option_id="GONE")
     await _status(client, admin, archived["internal_key"], "ARCHIVED")
+    await promote_live(db_session)  # only live options get a record
 
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [o["id"] for o in hair] == ["canonical"]
+    assert [o["id"] for o in hair] == ["hair_canonical"]
 
 
 @pytest.mark.asyncio
-async def test_promoting_to_production_makes_option_appear(client, admin, customer, seeded):
+async def test_promoting_to_production_makes_option_appear(client, admin, customer, db_session, seeded):
     option = await _create(client, admin, option_id="SOFT_WAVES")
     assert option["internal_key"] == "EE-F-002_HAIR_SOFT-WAVES_V1"
     assert option["status"] == "IN_DEVELOPMENT"
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert "soft_waves" not in [o["id"] for o in hair]
+    assert "hair_soft_waves" not in [o["id"] for o in hair]
 
     await _to_production(client, admin, option["internal_key"])
+    # PRODUCTION alone is not enough: the option must also be promoted for the character.
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [o["id"] for o in hair] == ["canonical", "soft_waves"]  # sort_order 0, then 10
+    assert [o["id"] for o in hair] == ["hair_canonical"]
+    await promote_live(db_session)
+    hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
+    assert [o["id"] for o in hair] == ["hair_canonical", "hair_soft_waves"]  # sort_order 0, then 10
     assert hair[1] == {
-        "id": "soft_waves", "label": "Soft Waves", "description": "SOFT_WAVES look",
-        "thumbnail_url": "https://cdn.modelens.ai/styling/ee-f-002/soft_waves.jpg", "is_default": False,
+        "id": "hair_soft_waves", "label": "Soft Waves", "description": "SOFT_WAVES look",
+        "thumbnail_url": "https://cdn.modelens.ai/styling/ee-f-002/soft_waves.jpg", "group": None,
+        "is_default": False, "recommended": False,
     }
 
-    # Archiving removes it again.
+    # Archiving the definition removes it again, although its record stays PROMOTED.
     assert (await _status(client, admin, option["internal_key"], "ARCHIVED")).status_code == 200
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [o["id"] for o in hair] == ["canonical"]
+    assert [o["id"] for o in hair] == ["hair_canonical"]
 
 
 @pytest.mark.asyncio
-async def test_new_version_replaces_previous_production_version(client, admin, customer, seeded):
+async def test_new_version_replaces_previous_production_version(client, admin, customer, db_session, seeded):
     v1 = await _create(client, admin, option_id="SOFT_WAVES")
-    await _to_production(client, admin, v1["internal_key"])
+    await _to_production(client, admin, v1["internal_key"], db_session)
     v2 = await _create(client, admin, option_id="SOFT_WAVES", label="Soft Waves II")
     assert v2["version"] == 2 and v2["internal_key"] == "EE-F-002_HAIR_SOFT-WAVES_V2"
     await _to_production(client, admin, v2["internal_key"])
 
+    # v1's record is PROMOTED but v1 is archived; v2 is live but not promoted yet: nothing to offer.
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [(o["id"], o["label"]) for o in hair] == [("canonical", "Canonical Straight"), ("soft_waves", "Soft Waves II")]
+    assert [o["id"] for o in hair] == ["hair_canonical"]
+    await promote_version(db_session, "HAIR", "SOFT_WAVES", 2, "hair_soft_waves")
+    hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
+    assert [(o["id"], o["label"]) for o in hair] == [("hair_canonical", "Canonical Straight"),
+                                                     ("hair_soft_waves", "Soft Waves II")]
     old = (await client.get(f"{ADMIN}/options/{v1['internal_key']}", headers=admin)).json()
     assert old["status"] == "ARCHIVED"
 
@@ -185,9 +204,9 @@ async def test_new_version_replaces_previous_production_version(client, admin, c
 async def test_options_only_from_current_locked_version(client, admin, customer, db_session, seeded):
     await version_service.create_draft_version(db_session, "EE-F-002", "1.1")
     draft_option = await _create(client, admin, option_id="DRAFT_LOOK", character_version="1.1")
-    await _to_production(client, admin, draft_option["internal_key"])
+    await _to_production(client, admin, draft_option["internal_key"], db_session)
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [o["id"] for o in hair] == ["canonical"]
+    assert [o["id"] for o in hair] == ["hair_canonical"]
 
 
 @pytest.mark.asyncio
@@ -272,20 +291,20 @@ async def test_seeded_production_option_cannot_be_edited(client, admin, seeded):
 # ========================== Defaults ==============================
 
 @pytest.mark.asyncio
-async def test_only_one_default_per_category(client, admin, customer, seeded):
+async def test_only_one_default_per_category(client, admin, customer, db_session, seeded):
     key = (await _create(client, admin))["internal_key"]
     # Not live yet: cannot be the default.
     assert (await client.post(f"{ADMIN}/options/{key}/default", headers=admin)).status_code == 409
-    await _to_production(client, admin, key)
+    await _to_production(client, admin, key, db_session)
 
     resp = await client.post(f"{ADMIN}/options/{key}/default", headers=admin)
     assert resp.status_code == 200 and resp.json()["is_default"] is True
 
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [o["id"] for o in hair if o["is_default"]] == ["soft_waves"]
+    assert [o["id"] for o in hair if o["is_default"]] == ["hair_soft_waves"]
     # Other categories keep their own default.
     makeup = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["makeup"]
-    assert [o["id"] for o in makeup if o["is_default"]] == ["natural"]
+    assert [o["id"] for o in makeup if o["is_default"]] == ["makeup_natural"]
 
     defaults = (await client.get(f"{ADMIN}/options?character_id=EE-F-002&category=HAIR_STYLE", headers=admin)).json()["options"]
     assert [o["internal_key"] for o in defaults if o["is_default"]] == [key]
@@ -299,13 +318,14 @@ async def test_archiving_the_default_clears_it(client, admin, customer, seeded):
 
 
 @pytest.mark.asyncio
-async def test_new_version_inherits_default(client, admin, customer, seeded):
+async def test_new_version_inherits_default(client, admin, customer, db_session, seeded):
     v2 = await _create(client, admin, option_id="CANONICAL")
     assert v2["internal_key"] == "EE-F-002_HAIR_CANONICAL_V2"
     promoted = await _to_production(client, admin, v2["internal_key"])
     assert promoted["is_default"] is True
+    await promote_version(db_session, "HAIR", "CANONICAL", 2, "hair_canonical")
     hair = (await client.get(CUSTOMER_URL, headers=customer)).json()["categories"]["hair"]
-    assert [(o["id"], o["is_default"]) for o in hair] == [("canonical", True)]
+    assert [(o["id"], o["is_default"]) for o in hair] == [("hair_canonical", True)]
 
 
 # ========================== Seed ==================================

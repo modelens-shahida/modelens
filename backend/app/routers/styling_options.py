@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api_docs import error_responses
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import User, get_db
+from app.services import customer_options
 from app.services import appearance_options as svc
 
 Category = Literal["HAIR_STYLE", "MAKEUP_STYLE", "EXPRESSION", "NAILS", "JEWELRY", "BEAUTY_DIRECTION"]
@@ -44,11 +45,14 @@ router = APIRouter(prefix="/api/v1/characters", tags=["Styling Options"])
 
 
 class StylingOption(BaseModel):
-    id: str = Field(..., description="Lowercase option id, e.g. soft_waves.", examples=["soft_waves"])
+    id: str = Field(..., description="Namespaced option id (hair_*, makeup_*, expr_*, jewelry_*, beauty_*) to send "
+                                     "to POST /api/v1/productions/dispatch.", examples=["hair_soft_waves"])
     label: str = Field(..., examples=["Soft Waves"])
     description: Optional[str] = Field(None, examples=["Voluminous editorial haute couture waves."])
     thumbnail_url: Optional[str] = Field(None, examples=["https://cdn.modelens.ai/styling/ee-f-002/soft-waves.jpg"])
+    group: Optional[str] = Field(None, description="UI group of the option, if any.", examples=["Polished"])
     is_default: bool = Field(..., description="True for the option preselected in this category.")
+    recommended: bool = Field(False, description="True for options recommended for the character.")
 
 
 class StylingCategories(BaseModel):
@@ -71,8 +75,10 @@ class StylingOptionsResponse(BaseModel):
     summary="Get a character's styling options",
     description=(
         "Styling options (hair, makeup, expression, nails, jewelry, beauty direction) a customer can pick "
-        "for a character. Only options in PRODUCTION for the character's current locked version are returned; "
-        "categories without options are empty lists. Choosing an option never changes the character version. "
+        "for a character. Only options validated and promoted for the character's current locked version are "
+        "returned, with namespaced ids (`hair_*`, `makeup_*`, `expr_*`, `jewelry_*`, `beauty_*`); categories "
+        "without options are empty lists (`nails` is always empty for now). Choosing an option never changes "
+        "the character version. "
         "No technical fields (adapters, checkpoints, seeds, workflows, providers, LoRA strengths, validation "
         "scores, status or internal keys) are returned."
     ),
@@ -85,16 +91,11 @@ async def get_character_styling_options(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    grouped = await _run(svc.customer_styling_options(db, character_id))
+    grouped = await _run(customer_options.styling_choices(db, character_id))
     return StylingOptionsResponse(
         character_id=character_id,
         categories=StylingCategories(**{
-            key: [
-                StylingOption(id=o.option_id.lower(), label=o.label, description=o.description,
-                              thumbnail_url=o.thumbnail_url, is_default=bool(o.is_default))
-                for o in options
-            ]
-            for key, options in grouped.items()
+            key: [StylingOption(**choice.item) for choice in choices] for key, choices in grouped.items()
         }),
     )
 

@@ -51,6 +51,7 @@ from app.models.db import (
 from app.services import appearance_options as appearance_service
 from app.services import capability_packs as pack_service
 from app.services import character_versions as version_service
+from app.services import customer_options
 from app.services import pose_resolver as pose_service
 from app.services import presets_registry as preset_service
 from app.services import production_presets as presets
@@ -149,63 +150,74 @@ async def resolve_product_asset(db: AsyncSession, user: User, ref: str) -> Asset
     return asset
 
 
-async def _registry_preset(db: AsyncSession, preset_type: str, key: Optional[str], field: str):
-    """A PRODUCTION preset from the Presets Registry: the requested one (422 if
-    not offered) or, when none is requested, the type's default."""
+PRESET_LABELS = {"location_id": "location", "campaign_preset": "campaign", "lighting_id": "lighting"}
+
+
+async def _registry_preset(db: AsyncSession, character_id: str, preset_type: str, key: Optional[str], field: str):
+    """A preset the customer may pick (live and PROMOTED for the character): the requested one,
+    by its namespaced or old id (422 if not offered), or, when none is requested, the default."""
+    choices = await customer_options.preset_choices(db, preset_type, character_id)
     if key:
-        found = await preset_service.production_preset(db, preset_type, key)
+        found = next((c for c in choices if customer_options.matches(c.record, key, customer_options.preset_old_id(c))),
+                     None)
         if found is None:
-            offered = [p.preset_key for p in await preset_service.list_presets(db, preset_type,
-                                                                               preset_service.PRODUCTION)]
-            raise DispatchInvalid(field, f"Unknown {field} {key}. Available: {offered}.")
-        return found
-    found = await preset_service.default_preset(db, preset_type)
+            offered = [c.record.customer_id for c in choices]
+            raise DispatchInvalid(field, f"The {PRESET_LABELS[field]} {key} is not available. "
+                                         f"Please choose one of: {', '.join(offered) or 'none yet'}.")
+        return found.definition
+    found = next((c for c in choices if c.item["is_default"]), None)
     if found is None:
         raise DispatchUnavailable(f"No default {preset_type.lower()} preset is available. You have not been charged.")
-    return found
+    return found.definition
 
 
-async def _resolve_scene(db: AsyncSession, request: dict):
+async def _resolve_scene(db: AsyncSession, character_id: str, request: dict):
     """(location, campaign, lighting) presets. Lighting: the requested one, else
     the requested campaign's, else the location's recommended lighting, else
-    the default campaign's."""
-    location = await _registry_preset(db, preset_service.LOCATION, request.get("location_id"), "location_id")
-    campaign = await _registry_preset(db, preset_service.CAMPAIGN, request.get("campaign_preset"),
+    the default campaign's (each only if the customer could pick it)."""
+    location = await _registry_preset(db, character_id, preset_service.LOCATION, request.get("location_id"),
+                                      "location_id")
+    campaign = await _registry_preset(db, character_id, preset_service.CAMPAIGN, request.get("campaign_preset"),
                                       "campaign_preset")
     if request.get("lighting_id"):
-        return location, campaign, await _registry_preset(db, preset_service.LIGHTING, request["lighting_id"],
-                                                          "lighting_id")
+        return location, campaign, await _registry_preset(db, character_id, preset_service.LIGHTING,
+                                                          request["lighting_id"], "lighting_id")
     campaign_lighting = (campaign.technical_config or {}).get("lighting_id")
     candidates = ([campaign_lighting] if request.get("campaign_preset") else []) + [
         location.recommended_lighting_id, campaign_lighting]
+    lighting = {c.definition.preset_key: c.definition
+                for c in await customer_options.preset_choices(db, preset_service.LIGHTING, character_id)}
     for key in filter(None, candidates):
-        lighting = await preset_service.production_preset(db, preset_service.LIGHTING, key)
-        if lighting is not None:
-            return location, campaign, lighting
+        if key in lighting:
+            return location, campaign, lighting[key]
     raise DispatchUnavailable("No lighting preset is available for this selection. You have not been charged.")
 
 
-async def _resolve_appearance(db: AsyncSession, character_id: str, character_version: str,
-                              selected: dict[str, str]) -> list[AppearanceOption]:
-    """One PRODUCTION option per category: the selected one, or the default."""
+async def _resolve_appearance(db: AsyncSession, character_id: str, selected: dict[str, str]) -> list[AppearanceOption]:
+    """One option per category the customer may pick: the selected one (namespaced or old id),
+    or the default."""
     by_key = {key: category for category, (key, _) in appearance_service.CATEGORIES.items()}
     unknown = sorted(set(selected) - set(by_key))
     if unknown:
         raise DispatchInvalid("appearance", f"Unknown appearance categories {unknown}. Known: {sorted(by_key)}.")
-    live = await appearance_service.list_options(db, character_id, character_version,
-                                                 status=appearance_service.PRODUCTION)
+    choices = await customer_options.styling_choices(db, character_id)
     chosen = []
-    for key, category in by_key.items():
-        options = [o for o in live if o.category == category]
+    for key in by_key:
+        options = choices.get(key, [])
         if key in selected:
-            match = next((o for o in options if o.option_id.lower() == str(selected[key]).lower()), None)
+            match = next((c for c in options
+                          if customer_options.matches(c.record, selected[key], customer_options.appearance_old_id(c))),
+                         None)
             if match is None:
-                raise DispatchInvalid("appearance", f"{selected[key]} is not an available {key} option.")
-            chosen.append(match)
+                offered = [c.record.customer_id for c in options]
+                raise DispatchInvalid("appearance", f"The {key.replace('_', ' ')} option {selected[key]} is not "
+                                                    f"available. Please choose one of: "
+                                                    f"{', '.join(offered) or 'none yet'}.")
+            chosen.append(match.definition)
         else:
-            default = next((o for o in options if o.is_default), None)
+            default = next((c for c in options if c.item["is_default"]), None)
             if default is not None:
-                chosen.append(default)
+                chosen.append(default.definition)
     return chosen
 
 
@@ -268,26 +280,31 @@ async def resolve_runtime_profile(db: AsyncSession, user: User, request: dict) -
         known = [r.product_type for r in await pack_service.list_product_types(db)]
         raise DispatchInvalid("product_type", f"Unknown product type {product_type}. Known: {known}.")
     pack = await pack_service.resolve_production_pack(db, character_id, product_type)
-    if pack is None:
+    if pack is None or not await customer_options.product_type_promoted(db, character_id, product_type):
         raise DispatchUnavailable(
             f"{product.label} productions aren't available for {character_id} yet. Please choose another product "
             "type. You have not been charged.")
 
     asset = await resolve_product_asset(db, user, request["product_asset_url"])
-    appearance = await _resolve_appearance(db, character_id, version.version, request.get("appearance") or {})
+    appearance = await _resolve_appearance(db, character_id, request.get("appearance") or {})
 
-    pose_id = request.get("pose_id")
-    if not pose_id:
-        offered = await pose_service.customer_poses(db, character_id, product_type)
-        pose_id = next((p.pose_id for p, is_default in offered if is_default), None)
-        if pose_id is None:
+    poses = await customer_options.pose_choices(db, character_id, product_type)
+    requested_pose = request.get("pose_id")
+    if requested_pose:
+        choice = next((c for c in poses
+                       if customer_options.matches(c.record, requested_pose, customer_options.pose_old_id(c))), None)
+        if choice is None:
+            offered = [c.record.customer_id for c in poses]
+            raise DispatchInvalid("pose_id", f"The pose {requested_pose} is not available for {character_id} with "
+                                             f"{product.label}. Please choose one of: "
+                                             f"{', '.join(offered) or 'none yet'}.")
+    else:
+        choice = next((c for c in poses if c.item["is_default"]), None)
+        if choice is None:
             raise DispatchUnavailable(f"No poses are available for {product.label} yet. You have not been charged.")
-    try:
-        pose = await pose_service.resolve_pose(db, character_id, product_type, pose_id)
-    except pose_service.PoseNotAllowed:
-        raise DispatchInvalid("pose_id", f"Pose {pose_id} is not available for {character_id} with {product_type}.")
+    pose = await pose_service.resolve_pose(db, character_id, product_type, choice.definition.pose_id)
 
-    location, campaign, lighting = await _resolve_scene(db, request)
+    location, campaign, lighting = await _resolve_scene(db, character_id, request)
     campaign_config = campaign.technical_config or {}
     focal_length = request.get("focal_length_mm") or campaign_config["focal_length_mm"]
     quality = request.get("quality") or presets.DEFAULT_QUALITY

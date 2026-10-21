@@ -15,7 +15,7 @@ from app.config import settings
 from app.middleware import dispatch_rate_limit, rate_limit
 from app.models.db import AIJob, Brand, CreditTransaction, Production
 
-from test_production_dispatch import DISPATCH, _body, _count, _credits, queue, world  # noqa: F401 (fixtures)
+from test_production_dispatch import DISPATCH, _body, _count, _credits, bare_world, queue, world  # noqa: F401 (fixtures)
 
 ADMIN_SETTINGS = "/api/v1/admin/settings"
 

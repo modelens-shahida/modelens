@@ -1,12 +1,19 @@
 """Capability validation admin API (Character Runtime PR 2): platform-admin only, lifecycle over HTTP, 409 on
 invalid transitions, audit log per action, customer routes unchanged."""
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 
 from app.models.db import AuditLog, CapabilityValidation
 from app.services import capability_validations as cv
 from test_capability_validations import CUSTOMER_ROUTES, assert_no_forbidden_terms
-from test_production_dispatch import queue, world  # noqa: F401 (fixtures)
+from test_production_dispatch import bare_world, queue  # noqa: F401 (fixtures)
+
+
+@pytest_asyncio.fixture
+async def world(bare_world):
+    """Nothing promoted yet: these tests create the records themselves."""
+    return bare_world
 
 BASE = "/api/v1/admin/characters/EE-F-002/capabilities"
 HAIR = f"{BASE}/HAIR/SOFT_WAVES"
@@ -259,21 +266,24 @@ async def test_list_filters_and_includes_backfilled_records(client, db_session, 
 # ========================== Customers unchanged ===================
 
 @pytest.mark.asyncio
-async def test_admin_actions_leave_customer_responses_byte_identical(client, db_session, world):
-    viewer = world["h"]["viewer"]
-    before = {}
+async def test_admin_actions_drive_what_customers_see(client, db_session, world):
+    """Customer routes read PROMOTED records (PR 3): retiring hides an option, registering alone shows nothing."""
+    viewer, admin = world["h"]["viewer"], world["h"]["admin"]
+    await cv.backfill_promoted(db_session)
+    locations = lambda resp: [p["id"] for p in resp.json()["presets"]]  # noqa: E731
+    before = locations(await client.get("/api/v1/presets/locations", headers=viewer))
+    assert "scene_env-stu-0001" in before
+    await _registered(client, world, capability_type="POSE", capability_key="hand_on_hip",
+                      customer_id="pose_hand_on_hip")
+    poses = (await client.get("/api/v1/characters/EE-F-002/poses?product_type=garment", headers=viewer)).json()
+    assert "pose_hand_on_hip" not in [p["id"] for p in poses["poses"]]
+
+    retire = await client.post(f"{BASE}/SCENE/ENV-STU-0001/retire", json={"capability_version": 1, "reason": "x"},
+                               headers=admin)
+    assert retire.status_code == 200
+    after = locations(await client.get("/api/v1/presets/locations", headers=viewer))
+    assert after == [i for i in before if i != "scene_env-stu-0001"]
     for path in CUSTOMER_ROUTES:
         resp = await client.get(path, headers=viewer)
         assert resp.status_code == 200, path
-        before[path] = resp.content
-    await cv.backfill_promoted(db_session)
-    await _promoted(client, world, is_default=True, recommended=True)
-    await _registered(client, world, capability_type="POSE", capability_key="hand_on_hip",
-                      customer_id="pose_hand_on_hip")
-    retire = await client.post(f"{BASE}/SCENE/ENV-STU-0001/retire", json={"capability_version": 1, "reason": "x"},
-                               headers=world["h"]["admin"])
-    assert retire.status_code == 200
-    for path in CUSTOMER_ROUTES:
-        resp = await client.get(path, headers=viewer)
-        assert resp.content == before[path], path
         assert_no_forbidden_terms(resp.text)

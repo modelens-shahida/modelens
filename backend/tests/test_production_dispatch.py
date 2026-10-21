@@ -10,6 +10,7 @@ from app.models.db import (
 )
 from app.services import appearance_options as appearance_service
 from app.services import capability_packs as pack_service
+from app.services import capability_validations
 from app.services import character_versions as version_service
 from app.services import pose_resolver as pose_service
 from app.services import presets_registry as preset_service
@@ -30,8 +31,17 @@ def _headers(user: User) -> dict:
 
 
 @pytest_asyncio.fixture
-async def world(db_session):
-    """EE-F-002 V1.0 with a PRODUCTION garment pack, a provider route, two brands and their assets."""
+async def world(bare_world, db_session):
+    """``bare_world`` with everything live promoted for EE-F-002 (capability_validations backfill), so
+    customers can pick it."""
+    await capability_validations.backfill_promoted(db_session)
+    return bare_world
+
+
+@pytest_asyncio.fixture
+async def bare_world(db_session):
+    """EE-F-002 V1.0 with a PRODUCTION garment pack, a provider route, two brands and their assets.
+    Nothing is promoted in capability_validations yet."""
     users = {
         "admin": User(email="platform-admin@modelens.ai", hashed_password=hash_password("pw"), full_name="Admin", role="admin"),
         "owner": User(email="owner@brand.com", hashed_password=hash_password("pw"), full_name="Owner", role="user"),

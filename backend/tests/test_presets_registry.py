@@ -6,18 +6,23 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.db import Preset, Production
+from app.services import capability_validations
 from app.services import presets_registry as preset_service
-from test_production_dispatch import _assert_customer_safe, _body, queue, world  # noqa: F401 (fixtures)
+from test_production_dispatch import _assert_customer_safe, _body, bare_world, queue, world  # noqa: F401 (fixtures)
 
 CUSTOMER = "/api/v1/presets"
 ADMIN = "/api/v1/admin/presets"
 DISPATCH = "/api/v1/productions/dispatch"
-CUSTOMER_FIELDS = {"id", "label", "description", "thumbnail_url", "is_default"}
+CUSTOMER_FIELDS = {"id", "label", "description", "thumbnail_url", "group", "is_default", "recommended"}
 LOCATION_IDS = ["ENV-STU-0001", "ENV-STU-0002", "ENV-STU-0003", "ENV-STU-0004", "ENV-INT-0001", "ENV-INT-0002",
                 "ENV-BCH-0001", "ENV-URB-0001"]
 LIGHTING_IDS = ["STUDIO_SOFT_DIFFUSE", "EDITORIAL_HARD_HIGH_KEY", "NATURAL_GOLDEN_HOUR", "DRAMATIC_CHIAROSCURO",
                 "CYBERPUNK_NEON"]
 CAMPAIGN_IDS = ["ecommerce", "catalog", "editorial", "lookbook", "social"]
+# Customer (namespaced) ids, DESIGN.md 3.2: scene_ / lighting_ / campaign_ + lower(key).
+SCENE = {key: f"scene_{key.lower()}" for key in LOCATION_IDS + ["ENV-LFT-0001"]}
+LIGHT = {key: f"lighting_{key.lower()}" for key in LIGHTING_IDS + ["RING_LIGHT"]}
+CAMPAIGN = {key: f"campaign_{key}" for key in CAMPAIGN_IDS}
 PRESET_TERMS = ("technical_config", "workflow_params", "key_light", "focal_length", "taxonomy", "status",
                 "PRODUCTION", "SYSTEM_SEED", "created_by", "sort_order", "family", "LGT-")
 
@@ -49,12 +54,13 @@ async def test_locations_return_customer_fields_only(client, world):
     resp = await client.get(f"{CUSTOMER}/locations", headers=world["h"]["viewer"])
     assert resp.status_code == 200, resp.text
     presets = resp.json()["presets"]
-    assert [p["id"] for p in presets] == LOCATION_IDS
+    assert [p["id"] for p in presets] == [SCENE[k] for k in LOCATION_IDS]
     assert all(set(p) == CUSTOMER_FIELDS | {"recommended_lighting_id"} for p in presets)
-    assert [p["id"] for p in presets if p["is_default"]] == ["ENV-STU-0001"]
+    assert [p["id"] for p in presets if p["is_default"]] == ["scene_env-stu-0001"]
     by_id = {p["id"]: p for p in presets}
-    assert by_id["ENV-STU-0001"]["label"] == "White Seamless"
-    assert by_id["ENV-BCH-0001"]["recommended_lighting_id"] == "NATURAL_GOLDEN_HOUR"
+    assert by_id["scene_env-stu-0001"]["label"] == "White Seamless"
+    assert by_id["scene_env-bch-0001"]["recommended_lighting_id"] == "lighting_natural_golden_hour"
+    assert all((p["group"], p["recommended"]) == (None, False) for p in presets)
     for term in PRESET_TERMS:
         assert term.lower() not in resp.text.lower(), term
     _assert_customer_safe(resp.text)
@@ -62,8 +68,8 @@ async def test_locations_return_customer_fields_only(client, world):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path,ids,default", [
-    ("lighting", LIGHTING_IDS, "STUDIO_SOFT_DIFFUSE"),
-    ("campaigns", CAMPAIGN_IDS, "ecommerce"),
+    ("lighting", [LIGHT[k] for k in LIGHTING_IDS], "lighting_studio_soft_diffuse"),
+    ("campaigns", [CAMPAIGN[k] for k in CAMPAIGN_IDS], "campaign_ecommerce"),
 ])
 async def test_lighting_and_campaigns_return_customer_fields_only(client, world, path, ids, default):
     resp = await client.get(f"{CUSTOMER}/{path}", headers=world["h"]["viewer"])
@@ -84,20 +90,26 @@ async def test_customer_presets_require_login(client, world, path):
 
 
 @pytest.mark.asyncio
-async def test_only_production_presets_are_listed(client, world):
+async def test_only_production_presets_are_listed(client, db_session, world):
     admin = world["h"]["admin"]
     await _create(client, admin, preset_type="LOCATION", preset_key="ENV-LFT-0001", label="Concrete Loft",
                   description="Raw concrete and steel.", recommended_lighting_id="NATURAL_GOLDEN_HOUR",
                   technical_config={"family": "INTERIOR"}, sort_order=20)
     for step in LIVE:
-        assert "ENV-LFT-0001" not in _ids(await client.get(f"{CUSTOMER}/locations", headers=world["h"]["owner"]))
+        await capability_validations.backfill_promoted(db_session)  # promotes only what is live
+        assert SCENE["ENV-LFT-0001"] not in _ids(await client.get(f"{CUSTOMER}/locations",
+                                                                  headers=world["h"]["owner"]))
         await _walk(client, admin, "LOCATION", "ENV-LFT-0001", step)
+    # PRODUCTION alone is not enough: the preset must also be promoted for the character.
+    assert SCENE["ENV-LFT-0001"] not in _ids(await client.get(f"{CUSTOMER}/locations", headers=world["h"]["owner"]))
+    await capability_validations.backfill_promoted(db_session)
     resp = await client.get(f"{CUSTOMER}/locations", headers=world["h"]["owner"])
-    loft = next(p for p in resp.json()["presets"] if p["id"] == "ENV-LFT-0001")
-    assert loft == {"id": "ENV-LFT-0001", "label": "Concrete Loft", "description": "Raw concrete and steel.",
-                    "thumbnail_url": None, "is_default": False, "recommended_lighting_id": "NATURAL_GOLDEN_HOUR"}
+    loft = next(p for p in resp.json()["presets"] if p["id"] == SCENE["ENV-LFT-0001"])
+    assert loft == {"id": "scene_env-lft-0001", "label": "Concrete Loft", "description": "Raw concrete and steel.",
+                    "thumbnail_url": None, "group": None, "is_default": False, "recommended": False,
+                    "recommended_lighting_id": "lighting_natural_golden_hour"}
     assert (await client.post(f"{ADMIN}/LOCATION/ENV-LFT-0001/archive", headers=admin)).status_code == 200
-    assert "ENV-LFT-0001" not in _ids(await client.get(f"{CUSTOMER}/locations", headers=world["h"]["owner"]))
+    assert SCENE["ENV-LFT-0001"] not in _ids(await client.get(f"{CUSTOMER}/locations", headers=world["h"]["owner"]))
 
 
 # ========================== Admin auth ============================
@@ -170,9 +182,10 @@ async def test_production_presets_freeze_technical_config(client, world):
                                     "recommended_lighting_id": "EDITORIAL_HARD_HIGH_KEY"})
     assert resp.status_code == 200, resp.text
     customer = (await client.get(f"{CUSTOMER}/locations", headers=world["h"]["owner"])).json()["presets"][0]
-    assert customer == {"id": "ENV-STU-0001", "label": "Pure White", "description": "Infinite white cyc.",
-                        "thumbnail_url": "https://cdn.modelens.ai/presets/white.jpg", "is_default": True,
-                        "recommended_lighting_id": "EDITORIAL_HARD_HIGH_KEY"}
+    assert customer == {"id": "scene_env-stu-0001", "label": "Pure White", "description": "Infinite white cyc.",
+                        "thumbnail_url": "https://cdn.modelens.ai/presets/white.jpg", "group": None,
+                        "is_default": True, "recommended": False,
+                        "recommended_lighting_id": "lighting_editorial_hard_high_key"}
     # A live location may only recommend live lighting.
     await _create(client, admin, preset_type="LIGHTING", preset_key="RING_LIGHT", label="Ring Light",
                   technical_config={"workflow_params": {"key_light": "ring"}})
@@ -202,7 +215,7 @@ async def test_lifecycle_cannot_skip_steps(client, world, skip_to):
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_walk_rework_and_archive_is_final(client, world):
+async def test_lifecycle_walk_rework_and_archive_is_final(client, db_session, world):
     admin = world["h"]["admin"]
     await _create(client, admin, preset_type="LIGHTING", preset_key="RING_LIGHT", label="Ring Light",
                   technical_config={"workflow_params": {"key_light": "ring"}})
@@ -211,7 +224,8 @@ async def test_lifecycle_walk_rework_and_archive_is_final(client, world):
     assert resp.status_code == 409  # APPROVED only moves forward
     resp = await _walk(client, admin, "LIGHTING", "RING_LIGHT", "PRODUCTION")
     assert resp.json()["status_changed_by"] == "platform-admin@modelens.ai"
-    assert "RING_LIGHT" in _ids(await client.get(f"{CUSTOMER}/lighting", headers=world["h"]["owner"]))
+    await capability_validations.backfill_promoted(db_session)
+    assert LIGHT["RING_LIGHT"] in _ids(await client.get(f"{CUSTOMER}/lighting", headers=world["h"]["owner"]))
     await _walk(client, admin, "LIGHTING", "RING_LIGHT", "ARCHIVED")
     for step in ("IN_DEVELOPMENT", "PRODUCTION"):
         resp = await client.post(f"{ADMIN}/LIGHTING/RING_LIGHT/status", json={"status": step}, headers=admin)
@@ -266,8 +280,8 @@ async def test_default_moves_and_cannot_be_archived(client, db_session, world):
     assert (await client.post(f"{ADMIN}/CAMPAIGN/catalog/default", headers=admin)).status_code == 200
     assert (await client.post(f"{ADMIN}/CAMPAIGN/ecommerce/archive", headers=admin)).status_code == 200
     campaigns = (await client.get(f"{CUSTOMER}/campaigns", headers=world["h"]["owner"])).json()["presets"]
-    assert [p["id"] for p in campaigns if p["is_default"]] == ["catalog"]
-    assert "ecommerce" not in [p["id"] for p in campaigns]
+    assert [p["id"] for p in campaigns if p["is_default"]] == ["campaign_catalog"]
+    assert "campaign_ecommerce" not in [p["id"] for p in campaigns]
     await _create(client, admin, preset_type="CAMPAIGN", preset_key="draft", label="Draft",
                   technical_config={"lighting_id": "STUDIO_SOFT_DIFFUSE", "focal_length_mm": 50})
     assert (await client.post(f"{ADMIN}/CAMPAIGN/draft/default", headers=admin)).status_code == 409
@@ -283,6 +297,12 @@ async def test_dispatch_accepts_a_newly_promoted_location(client, db_session, wo
     resp = await client.post(DISPATCH, json=_body(world, location_id="ENV-LFT-0001"), headers=world["h"]["owner"])
     assert resp.status_code == 422 and resp.json()["detail"][0]["loc"] == ["body", "location_id"]
     await _walk(client, admin, "LOCATION", "ENV-LFT-0001", *LIVE)
+    # Live but not promoted for the character: still 422, with a customer-safe message.
+    resp = await client.post(DISPATCH, json=_body(world, location_id="ENV-LFT-0001"), headers=world["h"]["owner"])
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["msg"].startswith("The location ENV-LFT-0001 is not available.")
+    _assert_customer_safe(resp.text)
+    await capability_validations.backfill_promoted(db_session)
     resp = await client.post(DISPATCH, json=_body(world, location_id="ENV-LFT-0001"), headers=world["h"]["owner"])
     assert resp.status_code == 202, resp.text
     production = (await db_session.execute(select(Production))).scalars().one()

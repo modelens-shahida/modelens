@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api_docs import error_responses
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import User, get_db
+from app.services import customer_options
 from app.services import presets_registry as svc
 
 PresetType = Literal["LOCATION", "LIGHTING", "CAMPAIGN"]
@@ -44,17 +45,20 @@ router = APIRouter(prefix="/api/v1/presets", tags=["Presets"])
 
 
 class CustomerPreset(BaseModel):
-    id: str = Field(..., description="Preset id to send to POST /api/v1/productions/dispatch.")
+    id: str = Field(..., description="Namespaced preset id (scene_*, lighting_*, campaign_*) to send to "
+                                     "POST /api/v1/productions/dispatch.", examples=["scene_env-stu-0001"])
     label: str
     description: Optional[str] = None
     thumbnail_url: Optional[str] = None
+    group: Optional[str] = Field(None, description="UI group of the preset, if any.")
     is_default: bool = Field(..., description="True for the preset preselected for this type.")
+    recommended: bool = Field(False, description="True for presets recommended for the character.")
 
 
 class LocationPreset(CustomerPreset):
     recommended_lighting_id: Optional[str] = Field(
         None, description="Lighting preset id (GET /api/v1/presets/lighting) that suits this location.",
-        examples=["STUDIO_SOFT_DIFFUSE"])
+        examples=["lighting_studio_soft_diffuse"])
 
 
 class LocationPresets(BaseModel):
@@ -70,7 +74,8 @@ class CampaignPresets(BaseModel):
 
 
 _CUSTOMER_NOTE = (
-    " Only presets in PRODUCTION are returned, sorted for display. No technical fields (technical config, "
+    " Only presets validated and promoted for the character are returned, with namespaced ids, sorted for "
+    "display. No technical fields (technical config, "
     "workflow params, providers, seeds, status or internal fields) are returned."
 )
 
@@ -86,7 +91,7 @@ _CUSTOMER_NOTE = (
     responses=error_responses(401),
 )
 async def list_location_presets(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return {"presets": await svc.customer_presets(db, svc.LOCATION)}
+    return {"presets": [c.item for c in await customer_options.preset_choices(db, svc.LOCATION)]}
 
 
 @router.get(
@@ -99,7 +104,7 @@ async def list_location_presets(current_user: User = Depends(get_current_user), 
     responses=error_responses(401),
 )
 async def list_lighting_presets(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return {"presets": await svc.customer_presets(db, svc.LIGHTING)}
+    return {"presets": [c.item for c in await customer_options.preset_choices(db, svc.LIGHTING)]}
 
 
 @router.get(
@@ -113,7 +118,7 @@ async def list_lighting_presets(current_user: User = Depends(get_current_user), 
     responses=error_responses(401),
 )
 async def list_campaign_presets(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return {"presets": await svc.customer_presets(db, svc.CAMPAIGN)}
+    return {"presets": [c.item for c in await customer_options.preset_choices(db, svc.CAMPAIGN)]}
 
 
 # ========================== Admin =================================

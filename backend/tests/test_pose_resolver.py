@@ -14,10 +14,12 @@ from app.services import capability_packs as pack_service
 from app.services import character_versions as version_service
 from app.services import pose_resolver as pose_service
 from app.services.compatibility import load_framing_rules, validate_compatibility
+from customer_safety import assert_customer_safe, promote_live
 
 PACKS = "/api/v1/admin/capability-packs"
 ADMIN = "/api/v1/admin/poses"
-POSE_KEYS = {"id", "label", "description", "category", "thumbnail_url", "recommended_framing", "is_default"}
+POSE_KEYS = {"id", "label", "description", "category", "thumbnail_url", "recommended_framing", "group", "is_default",
+             "recommended"}
 TECHNICAL_TERMS = (
     "adapter", "ADP-", "geometry", "ML-POSE", "control", "openpose", "controlnet", "workflow", "WF-", "status",
     "ACTIVE", "internal", "sort_order", "compatib", "reference", "pack", "FOOTWEAR", "_V1", "s3://",
@@ -33,6 +35,19 @@ EXPECTED = {
     "jewelry": ["portrait", "ear_detail", "neck_detail", "wrist_detail", "hand_detail"],
     "headwear": ["portrait", "head_turn_45", "head_profile"],
 }
+
+
+def P(*pose_ids):
+    """Customer (namespaced) pose ids."""
+    return [f"pose_{pose_id}" for pose_id in pose_ids]
+
+
+_DB = {}
+
+
+@pytest.fixture(autouse=True)
+def _db(db_session):
+    _DB["session"] = db_session
 
 
 def _url(product_type, character_id="EE-F-002"):
@@ -89,7 +104,11 @@ async def _pack(client, admin, product_type="shoes", production=True, **override
 
 
 async def _poses(client, customer, product_type):
+    """Customer poses, after promoting for EE-F-002 whatever is live without a record (customer routes
+    only offer PROMOTED poses and product types; that gate is tested in test_option_shape.py)."""
+    await promote_live(_DB["session"])
     resp = await client.get(_url(product_type), headers=customer)
+    assert_customer_safe(resp.text)
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -101,8 +120,8 @@ async def _poses(client, customer, product_type):
 async def test_correct_poses_per_product_type_when_pack_is_production(client, admin, customer, seeded, product_type):
     await _pack(client, admin, product_type)
     body = await _poses(client, customer, product_type)
-    assert [p["id"] for p in body["poses"]] == EXPECTED[product_type]
-    assert [p["id"] for p in body["poses"] if p["is_default"]] == [EXPECTED[product_type][0]]
+    assert [p["id"] for p in body["poses"]] == P(*EXPECTED[product_type])
+    assert [p["id"] for p in body["poses"] if p["is_default"]] == P(EXPECTED[product_type][0])
 
 
 @pytest.mark.asyncio
@@ -124,12 +143,13 @@ async def test_exact_response_shape_without_technical_fields(client, admin, cust
     assert (body["character_id"], body["product_type"]) == ("EE-F-002", "garment")
     for pose in body["poses"]:
         assert set(pose) == POSE_KEYS
-    walking = next(p for p in body["poses"] if p["id"] == "walking")
+    walking = next(p for p in body["poses"] if p["id"] == "pose_walking")
     assert walking == {
-        "id": "walking", "label": "Walking", "description": "Mid-stride walk that shows how the product moves.",
+        "id": "pose_walking", "label": "Walking", "description": "Mid-stride walk that shows how the product moves.",
         "category": "motion", "thumbnail_url": "https://cdn.modelens.ai/poses/walking.jpg",
-        "recommended_framing": "full_body", "is_default": False,
+        "recommended_framing": "full_body", "group": None, "is_default": False, "recommended": False,
     }
+    await promote_live(_DB["session"])
     raw = (await client.get(_url("garment"), headers=customer)).text
     for term in TECHNICAL_TERMS:
         assert term.lower() not in raw.lower(), term
@@ -152,9 +172,9 @@ async def test_empty_list_when_pack_is_not_production(client, admin, customer, s
 async def test_pack_compatibility_subset_is_respected(client, admin, customer, seeded):
     await _pack(client, admin, "shoes", compatible_poses=["shoe_detail", "walking"])
     poses = (await _poses(client, customer, "shoes"))["poses"]
-    assert [p["id"] for p in poses] == ["walking", "shoe_detail"]  # mapping order, not the pack's list order
+    assert [p["id"] for p in poses] == P("walking", "shoe_detail")  # mapping order, not the pack's list order
     # The stored default (foot_forward) is filtered out, so the first offered pose is the default.
-    assert [p["id"] for p in poses if p["is_default"]] == ["walking"]
+    assert [p["id"] for p in poses if p["is_default"]] == P("walking")
 
 
 @pytest.mark.asyncio
@@ -204,7 +224,7 @@ async def test_one_default_per_product_type(client, admin, customer, db_session,
     assert resp.status_code == 200, resp.text
     await _pack(client, admin, "shoes")
     poses = (await _poses(client, customer, "shoes"))["poses"]
-    assert [p["id"] for p in poses if p["is_default"]] == ["walking"]
+    assert [p["id"] for p in poses if p["is_default"]] == P("walking")
     # walking stays non-default for the other product types.
     db_session.expire_all()
     defaults = {r.product_type: r.pose_definition_id for r in (await db_session.execute(
@@ -227,8 +247,8 @@ async def test_archived_poses_are_hidden(client, admin, customer, seeded):
     assert not any(m["is_default"] for m in resp.json()["product_types"])
 
     poses = (await _poses(client, customer, "shoes"))["poses"]
-    assert [p["id"] for p in poses] == ["full_body_profile", "walking", "shoe_detail"]
-    assert [p["id"] for p in poses if p["is_default"]] == ["full_body_profile"]
+    assert [p["id"] for p in poses] == P("full_body_profile", "walking", "shoe_detail")
+    assert [p["id"] for p in poses if p["is_default"]] == P("full_body_profile")
     # Archived poses are frozen.
     assert (await client.patch(f"{ADMIN}/foot_forward", json={"label": "X"}, headers=admin)).status_code == 409
     assert (await client.post(f"{ADMIN}/foot_forward/archive", headers=admin)).status_code == 409
@@ -332,10 +352,10 @@ async def test_admin_create_map_list_get_unmap(client, admin, customer, seeded):
     assert got["workflow_params"] == {"denoise": 0.4} and got["created_by"] == "platform-admin@modelens.ai"
 
     await _pack(client, admin, "garment")
-    assert "runway_turn" in [p["id"] for p in (await _poses(client, customer, "garment"))["poses"]]
+    assert "pose_runway_turn" in [p["id"] for p in (await _poses(client, customer, "garment"))["poses"]]
     resp = await client.delete(f"{ADMIN}/runway_turn/product-types/garment", headers=admin)
     assert resp.status_code == 200 and resp.json()["product_types"] == []
-    assert "runway_turn" not in [p["id"] for p in (await _poses(client, customer, "garment"))["poses"]]
+    assert "pose_runway_turn" not in [p["id"] for p in (await _poses(client, customer, "garment"))["poses"]]
     assert (await client.delete(f"{ADMIN}/runway_turn/product-types/garment", headers=admin)).status_code == 404
     assert (await client.get(f"{ADMIN}/NOPE", headers=admin)).status_code == 404
     assert (await client.get(f"{ADMIN}?product_type=spaceships", headers=admin)).status_code == 422

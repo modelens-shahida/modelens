@@ -8,7 +8,7 @@ from app.models.db import AIJob, Production, User
 from app.services import production_dispatch as dispatch_service
 from app.services.production_metrics import production_metrics
 
-from test_production_dispatch import DISPATCH, _body, queue, world  # noqa: F401 (fixtures)
+from test_production_dispatch import DISPATCH, _body, bare_world, queue, world  # noqa: F401 (fixtures)
 
 SETTINGS = "/api/v1/admin/settings"
 PRODUCTION_FIELDS = ("productions_total", "productions_success", "productions_failed", "productions_retries",

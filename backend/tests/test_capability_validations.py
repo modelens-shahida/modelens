@@ -7,6 +7,7 @@ import importlib.util
 import os
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -18,7 +19,14 @@ from app.migration_guard import table_differences
 from app.models.db import AppearanceOption, CapabilityValidation, CapabilityValidationRuleError
 from app.services import capability_validations as cv
 from app.services import pose_resolver as pose_service
-from test_production_dispatch import queue, world  # noqa: F401 (fixtures)
+from customer_safety import assert_customer_safe
+from test_production_dispatch import bare_world, queue  # noqa: F401 (fixtures)
+
+
+@pytest_asyncio.fixture
+async def world(bare_world):
+    """Nothing promoted yet: these tests create the records themselves."""
+    return bare_world
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIGRATION = os.path.join(BACKEND, "alembic", "versions", "capability_validations_001.py")
@@ -33,18 +41,10 @@ CUSTOMER_ROUTES = (
     "/api/v1/presets/lighting",
     "/api/v1/presets/campaigns",
 )
-# Never in a customer response (DESIGN.md section 0), plus this table's internals.
-FORBIDDEN_TERMS = (
-    "lora", "adapter", "checkpoint", "strength", "seed", "cfg", "provider", "comfyui", "workflow", "training",
-    "safetensors", "validated_by", "promoted_by", "SYSTEM_BACKFILL", "capability_key", "capability_version",
-)
 ALL_PASS = {"identity": "PASS", "face": "PASS", "body": "PASS", "product": "PASS"}
 
 
-def assert_no_forbidden_terms(raw: str):
-    lowered = raw.lower()
-    for term in FORBIDDEN_TERMS:
-        assert term.lower() not in lowered, f"customer response contains {term!r}: {raw[:300]}"
+assert_no_forbidden_terms = assert_customer_safe
 
 
 def _migration():
@@ -146,18 +146,16 @@ async def test_backfill_is_idempotent_and_never_changes_existing_records(db_sess
 
 
 @pytest.mark.asyncio
-async def test_backfill_leaves_customer_responses_byte_identical(client, db_session, world):
+async def test_customers_see_only_promoted_options(client, db_session, world):
+    """Customer routes read PROMOTED records (PR 3): nothing before the backfill, everything live after."""
     headers = world["h"]["viewer"]
-    before = {}
-    for path in CUSTOMER_ROUTES:
-        resp = await client.get(path, headers=headers)
-        assert resp.status_code == 200, (path, resp.text)
-        before[path] = resp.content
+    styling = f"/api/v1/characters/{CHARACTER}/styling-options"
+    before = (await client.get(styling, headers=headers)).json()["categories"]
+    assert all(options == [] for options in before.values())
+    assert (await client.get("/api/v1/presets/locations", headers=headers)).json()["presets"] == []
     assert await cv.backfill_promoted(db_session)
-    for path in CUSTOMER_ROUTES:
-        resp = await client.get(path, headers=headers)
-        assert resp.status_code == 200
-        assert resp.content == before[path], path
+    after = (await client.get(styling, headers=headers)).json()["categories"]
+    assert [o["id"] for o in after["hair"]] == ["hair_canonical"]
 
 
 @pytest.mark.asyncio
@@ -408,4 +406,60 @@ def test_single_alembic_head_is_this_revision():
     from alembic.script import ScriptDirectory
     cfg = Config(os.path.join(BACKEND, "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(BACKEND, "alembic"))
-    assert ScriptDirectory.from_config(cfg).get_heads() == ["capability_validations_001"]
+    assert ScriptDirectory.from_config(cfg).get_heads() == ["capability_validations_002"]
+
+
+# ========================== Catch-up migration (PR 3) =============
+
+MIGRATION_002 = os.path.join(BACKEND, "alembic", "versions", "capability_validations_002.py")
+
+
+def _run_002(engine, step):
+    spec = importlib.util.spec_from_file_location("capability_validations_002", MIGRATION_002)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with engine.begin() as conn:
+        with Operations.context(MigrationContext.configure(conn)):
+            getattr(module, step)()
+
+
+def _option(conn, option_id, status="PRODUCTION"):
+    conn.execute(sa.text(
+        "INSERT INTO appearance_options (internal_key, character_id, character_version, category, option_id, "
+        "version, label, is_default, sort_order, status) VALUES (:k, 'EE-F-002', '1.0', 'HAIR_STYLE', :o, 1, :o, "
+        "0, 0, :s)"), {"k": f"EE-F-002_HAIR_{option_id}_V1", "o": option_id, "s": status})
+
+
+def _records(engine):
+    with engine.connect() as conn:
+        return sorted(tuple(r) for r in conn.execute(sa.text(
+            "SELECT capability_key, capability_version, customer_id, status FROM capability_validations")))
+
+
+def test_catch_up_migration_promotes_only_what_went_live_since_001(chain_db):
+    with chain_db.begin() as conn:
+        conn.execute(sa.text("INSERT INTO character_registry_versions (character_id, version, status, locked) "
+                             "VALUES ('EE-F-002', '1.0', 'LOCKED', 1)"))
+        _option(conn, "CANONICAL")
+    _run(chain_db, "upgrade")  # 001: table + backfill
+    assert _records(chain_db) == [("CANONICAL", 1, "hair_canonical", "PROMOTED")]
+    with chain_db.begin() as conn:  # after 001: one option goes live, an admin retires CANONICAL, one is a draft
+        _option(conn, "SOFT_WAVES")
+        _option(conn, "DRAFT_LOOK", status="IN_DEVELOPMENT")
+        conn.execute(sa.text("UPDATE capability_validations SET status = 'RETIRED' WHERE capability_key = 'CANONICAL'"))
+    _run_002(chain_db, "upgrade")
+    after = _records(chain_db)
+    assert after == [("CANONICAL", 1, "hair_canonical", "RETIRED"), ("SOFT_WAVES", 1, "hair_soft_waves", "PROMOTED")]
+    _run_002(chain_db, "upgrade")  # re-run: nothing new, nothing changed
+    assert _records(chain_db) == after
+    _run_002(chain_db, "downgrade")  # no-op: records are kept
+    assert _records(chain_db) == after
+
+
+def test_catch_up_migration_follows_001_in_the_chain():
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    cfg = Config(os.path.join(BACKEND, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(BACKEND, "alembic"))
+    assert ScriptDirectory.from_config(cfg).get_revision("capability_validations_002").down_revision == (
+        "capability_validations_001")

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api_docs import error_responses
 from app.middleware.auth import get_current_user, require_platform_admin
 from app.models.db import CapabilityPack, User, get_db
+from app.services import customer_options
 from app.services import capability_packs as svc
 
 PackType = Literal["BEAUTY_STYLING", "GARMENT", "FOOTWEAR", "BAGS", "EYEWEAR", "JEWELRY", "HEADWEAR", "MOTION",
@@ -51,7 +52,9 @@ class ProductTypeCapability(BaseModel):
     label: str = Field(..., examples=["Footwear"])
     description: Optional[str] = Field(None, examples=["Validated footwear capability for EE-F-002."])
     thumbnail_url: Optional[str] = Field(None, examples=["https://cdn.modelens.ai/capabilities/ee-f-002/footwear.jpg"])
+    group: Optional[str] = Field(None, description="UI group of the product type, if any.", examples=["Accessories"])
     is_default: bool = Field(..., description="True for the product type preselected in the UI.")
+    recommended: bool = Field(False, description="True for product types recommended for the character.")
 
 
 class CapabilitiesResponse(BaseModel):
@@ -65,8 +68,8 @@ class CapabilitiesResponse(BaseModel):
     summary="Get a character's capabilities",
     description=(
         "Product types (garment, shoes, bags, eyewear, headwear, jewelry) a customer can use the character "
-        "with. Only product types whose capability pack is in PRODUCTION for the character's current locked "
-        "version are returned. Using a capability never changes the character version. No technical fields "
+        "with. Only product types validated and promoted for the character's current locked version are "
+        "returned. Using a capability never changes the character version. No technical fields "
         "(adapters, LoRA weights, triggers, checkpoints, workflow routes, validation scores, status or internal "
         "keys) are returned."
     ),
@@ -79,14 +82,10 @@ async def get_character_capabilities(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    pairs = await _run(svc.customer_capabilities(db, character_id))
+    choices = await _run(customer_options.product_type_choices(db, character_id))
     return CapabilitiesResponse(
         character_id=character_id,
-        product_types=[
-            ProductTypeCapability(id=pt.product_type, label=pack.label, description=pack.description,
-                                  thumbnail_url=pack.thumbnail_url, is_default=bool(pt.is_default))
-            for pt, pack in pairs
-        ],
+        product_types=[ProductTypeCapability(**choice.item) for choice in choices],
     )
 
 

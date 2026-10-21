@@ -12,10 +12,11 @@ from app.models.db import CapabilityPack, CharacterRegistryVersion, ModelArtifac
 from app.services import appearance_options as appearance_service
 from app.services import capability_packs as pack_service
 from app.services import character_versions as version_service
+from customer_safety import assert_customer_safe, promote_live
 
 CUSTOMER_URL = "/api/v1/characters/EE-F-002/capabilities"
 ADMIN = "/api/v1/admin/capability-packs"
-PRODUCT_TYPE_KEYS = {"id", "label", "description", "thumbnail_url", "is_default"}
+PRODUCT_TYPE_KEYS = {"id", "label", "description", "thumbnail_url", "group", "is_default", "recommended"}
 TECHNICAL_TERMS = (
     "adapter", "ADP-", "checkpoint", "lora", "trigger", "workflow", "WF-", "validation", "score", "status",
     "internal", "production", "compatib", "qa_rules", "reference", "pack_type", "FOOTWEAR", "_V1", "EE-F-002_",
@@ -38,8 +39,21 @@ async def users(db_session):
     return created
 
 
+_DB = {}
+
+
+async def _customer(client, customer):
+    """GET the customer capabilities after promoting for EE-F-002 whatever is live without a record
+    (customer routes only offer PROMOTED product types; that gate is tested in test_option_shape.py)."""
+    await promote_live(_DB["session"])
+    resp = await client.get(CUSTOMER_URL, headers=customer)
+    assert_customer_safe(resp.text)
+    return resp
+
+
 @pytest_asyncio.fixture
 async def seeded(db_session):
+    _DB["session"] = db_session
     version = await version_service.seed_ee_f_002_v1(db_session)
     await appearance_service.seed_ee_f_002_defaults(db_session)
     await pack_service.seed_product_types(db_session)
@@ -105,7 +119,7 @@ async def _to_production(client, admin, key):
 @pytest.mark.asyncio
 async def test_no_pack_is_seeded_as_production(client, customer, db_session, seeded):
     assert (await db_session.execute(select(CapabilityPack))).scalars().all() == []
-    resp = await client.get(CUSTOMER_URL, headers=customer)
+    resp = await _customer(client, customer)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"character_id": "EE-F-002", "product_types": []}
 
@@ -126,13 +140,14 @@ async def test_customer_gets_only_production_packs_in_exact_shape(client, admin,
     await _to_production(client, admin, jewelry["internal_key"])
     assert (await _status(client, admin, jewelry["internal_key"], "ARCHIVED")).status_code == 200
 
-    resp = await client.get(CUSTOMER_URL, headers=customer)
+    resp = await _customer(client, customer)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {
         "character_id": "EE-F-002",
         "product_types": [{
             "id": "shoes", "label": "Footwear", "description": "Validated footwear capability.",
-            "thumbnail_url": "https://cdn.modelens.ai/capabilities/ee-f-002/footwear.jpg", "is_default": False,
+            "thumbnail_url": "https://cdn.modelens.ai/capabilities/ee-f-002/footwear.jpg", "group": None,
+            "is_default": False, "recommended": False,
         }],
     }
 
@@ -152,7 +167,7 @@ async def test_customer_response_has_no_technical_fields(client, admin, customer
     assert link.status_code == 200, link.text
     await _to_production(client, admin, pack["internal_key"])
 
-    resp = await client.get(CUSTOMER_URL, headers=customer)
+    resp = await _customer(client, customer)
     for term in TECHNICAL_TERMS:
         assert term.lower() not in resp.text.lower(), term
     (item,) = resp.json()["product_types"]
@@ -164,7 +179,7 @@ async def test_customer_response_has_no_technical_fields(client, admin, customer
 async def test_non_product_pack_types_never_appear_as_product_types(client, admin, customer, seeded):
     for pack_type in ("MOTION", "CAMPAIGN_LOCATION", "BEAUTY_STYLING"):
         await _to_production(client, admin, (await _create(client, admin, pack_type))["internal_key"])
-    assert (await client.get(CUSTOMER_URL, headers=customer)).json()["product_types"] == []
+    assert (await _customer(client, customer)).json()["product_types"] == []
 
 
 @pytest.mark.asyncio
@@ -173,7 +188,7 @@ async def test_customer_order_and_default_come_from_data(client, admin, customer
     await _to_production(client, admin, (await _create(client, admin, "GARMENT", sort_order=1))["internal_key"])
     await db_session.execute(text("UPDATE capability_product_types SET is_default = 1 WHERE product_type = 'garment'"))
     await db_session.commit()
-    items = (await client.get(CUSTOMER_URL, headers=customer)).json()["product_types"]
+    items = (await _customer(client, customer)).json()["product_types"]
     assert [(i["id"], i["is_default"]) for i in items] == [("garment", True), ("bags", False)]
 
 
@@ -212,7 +227,7 @@ async def test_promoting_new_version_archives_previous_production(client, admin,
     live = (await client.get(f"{ADMIN}?character_id=EE-F-002&pack_type=FOOTWEAR&status=PRODUCTION",
                              headers=admin)).json()["packs"]
     assert [p["internal_key"] for p in live] == ["EE-F-002_FOOTWEAR_V2"]
-    items = (await client.get(CUSTOMER_URL, headers=customer)).json()["product_types"]
+    items = (await _customer(client, customer)).json()["product_types"]
     assert [(i["id"], i["label"]) for i in items] == [("shoes", "Footwear V2")]
 
 
@@ -239,7 +254,7 @@ async def test_draft_version_pack_cannot_go_live(client, admin, customer, db_ses
     resp = await _status(client, admin, key, "PRODUCTION")
     assert resp.status_code == 409, resp.text
     assert (await client.get(f"{ADMIN}/{live['internal_key']}", headers=admin)).json()["status"] == "PRODUCTION"
-    assert [i["id"] for i in (await client.get(CUSTOMER_URL, headers=customer)).json()["product_types"]] == ["shoes"]
+    assert [i["id"] for i in (await _customer(client, customer)).json()["product_types"]] == ["shoes"]
 
 
 # ========================== Lifecycle =============================
@@ -406,7 +421,7 @@ async def test_packs_never_change_character_version(client, admin, customer, db_
     v2 = await _create(client, admin)
     await _to_production(client, admin, v2["internal_key"])
     await _status(client, admin, v2["internal_key"], "ARCHIVED")
-    await client.get(CUSTOMER_URL, headers=customer)
+    await _customer(client, customer)
 
     db_session.expire_all()
     assert await _version_row(db_session) == before
