@@ -20,6 +20,10 @@ it is not enforced.
 use today. It only inserts what is missing and never changes an existing
 record, so it is safe to run again. Alembic ``capability_validations_001``
 holds a frozen copy of the same rules.
+
+Every write (register, start validation, record validation, promote, retire)
+adds an ``audit_logs`` entry in the same transaction: who (user id + email),
+what (action + capability), from/to status, and when (``created_at``).
 """
 import re
 from datetime import datetime
@@ -39,6 +43,7 @@ from app.models.db import (
 )
 from app.services import character_versions as version_service
 from app.services import pose_resolver as pose_service
+from app.services.audit import write_audit_log
 
 REGISTERED = "REGISTERED"
 VALIDATING = "VALIDATING"
@@ -90,11 +95,34 @@ async def _first(db: AsyncSession, stmt):
     return (await db.execute(stmt)).scalars().first()
 
 
+def _label(record: CapabilityValidation) -> str:
+    return f"{record.capability_type} {record.capability_key} v{record.capability_version}"
+
+
 def _move(record: CapabilityValidation, new_status: str) -> None:
-    if new_status not in TRANSITIONS[record.status]:
-        raise CapabilityConflict(f"{record.capability_type} {record.capability_key} v{record.capability_version} "
-                                 f"is {record.status} and cannot move to {new_status}.")
+    allowed = TRANSITIONS[record.status]
+    if new_status not in allowed:
+        next_steps = ", ".join(sorted(allowed)) or "none (final)"
+        raise CapabilityConflict(f"{_label(record)} is {record.status} and cannot move to {new_status}. "
+                                 f"Allowed next statuses: {next_steps}.")
     record.status = new_status
+
+
+async def _audit(db: AsyncSession, action: str, record: CapabilityValidation, actor: Optional[str],
+                 actor_user_id: Optional[int], from_status: Optional[str], **extra: Any) -> None:
+    """One audit_logs entry, flushed with the change it describes (the caller commits)."""
+    await write_audit_log(db, action, user_id=actor_user_id, details={
+        "actor_email": actor,
+        "character_id": record.character_id,
+        "character_version": record.character_version,
+        "capability_type": record.capability_type,
+        "capability_key": record.capability_key,
+        "capability_version": record.capability_version,
+        "customer_id": record.customer_id,
+        "from_status": from_status,
+        "to_status": record.status,
+        **extra,
+    })
 
 
 # ========================== Reads =================================
@@ -155,7 +183,8 @@ async def _customer_id_holder(db: AsyncSession, record: CapabilityValidation) ->
 
 async def register(db: AsyncSession, *, character_id: str, character_version: str, capability_type: str,
                    capability_key: str, capability_version: int, customer_id: str, group: Optional[str] = None,
-                   sort_order: int = 0) -> CapabilityValidation:
+                   sort_order: int = 0, registered_by: Optional[str] = None,
+                   actor_user_id: Optional[int] = None) -> CapabilityValidation:
     try:
         await version_service.get_version(db, character_id, character_version)
     except version_service.CharacterVersionNotFound as exc:
@@ -186,42 +215,54 @@ async def register(db: AsyncSession, *, character_id: str, character_version: st
         raise CapabilityConflict(f"customer_id {customer_id} is already used by {holder.capability_type} "
                                  f"{holder.capability_key}.")
     db.add(record)
+    await db.flush()
+    await _audit(db, "capability_registered", record, registered_by, actor_user_id, None)
     await db.commit()
     await db.refresh(record)
     return record
 
 
-async def start_validation(db: AsyncSession, record: CapabilityValidation) -> CapabilityValidation:
+async def start_validation(db: AsyncSession, record: CapabilityValidation, started_by: Optional[str] = None,
+                           actor_user_id: Optional[int] = None) -> CapabilityValidation:
+    from_status = record.status
     _move(record, VALIDATING)
+    await _audit(db, "capability_validation_started", record, started_by, actor_user_id, from_status)
     await db.commit()
     await db.refresh(record)
     return record
 
 
 async def record_validation(db: AsyncSession, record: CapabilityValidation, checks: dict[str, str],
-                            evidence: Optional[dict[str, Any]], validated_by: str) -> CapabilityValidation:
+                            evidence: Optional[dict[str, Any]], validated_by: str,
+                            actor_user_id: Optional[int] = None) -> CapabilityValidation:
     """VALIDATED when every check is PASS, REJECTED otherwise."""
     if set(checks) != set(VALIDATION_CHECKS) or any(v not in ("PASS", "FAIL") for v in checks.values()):
         raise CapabilityInvalid(f"checks must give PASS or FAIL for each of {', '.join(VALIDATION_CHECKS)}.")
+    if record.status not in (REGISTERED, VALIDATING):
+        raise CapabilityConflict(f"{_label(record)} is {record.status}; validation results can be recorded only "
+                                 f"for REGISTERED or VALIDATING records (start validation again first).")
     passed = all(v == "PASS" for v in checks.values())
+    from_status = record.status
     _move(record, VALIDATED if passed else REJECTED)
     record.validation = {"checks": dict(checks), "evidence": evidence or {}}
     record.validated_by = validated_by
     record.validated_at = datetime.utcnow()
+    await _audit(db, "capability_validated" if passed else "capability_rejected", record, validated_by,
+                 actor_user_id, from_status, checks=dict(checks))
     await db.commit()
     await db.refresh(record)
     return record
 
 
 async def promote(db: AsyncSession, record: CapabilityValidation, promoted_by: str, *, is_default: bool = False,
-                  recommended: bool = False) -> tuple[CapabilityValidation, Optional[CapabilityValidation]]:
+                  recommended: bool = False,
+                  actor_user_id: Optional[int] = None) -> tuple[CapabilityValidation, Optional[CapabilityValidation]]:
     """Promote a VALIDATED record. Retires the previously promoted version of the
     same capability and, for a default, clears the old default of the type.
     Returns (record, replaced record or None). The promoter may be the validator
     (four-eyes rule pending, DESIGN.md 7.7)."""
     if record.status != VALIDATED:
-        raise CapabilityConflict(f"{record.capability_type} {record.capability_key} v{record.capability_version} "
-                                 f"is {record.status}; only VALIDATED records can be promoted.")
+        raise CapabilityConflict(f"{_label(record)} is {record.status}; only VALIDATED records can be promoted.")
     holder = await _customer_id_holder(db, record)
     if holder:
         raise CapabilityConflict(f"customer_id {record.customer_id} is already used by {holder.capability_type} "
@@ -234,6 +275,8 @@ async def promote(db: AsyncSession, record: CapabilityValidation, promoted_by: s
         replaced.retired_by, replaced.retired_at = promoted_by, now
         replaced.retire_reason = f"Replaced by version {record.capability_version}."
         replaced.is_default = False
+        await _audit(db, "capability_retired", replaced, promoted_by, actor_user_id, PROMOTED,
+                     reason=replaced.retire_reason, replaced_by_version=record.capability_version)
     if is_default:
         for other in live:
             if other.is_default:
@@ -242,17 +285,23 @@ async def promote(db: AsyncSession, record: CapabilityValidation, promoted_by: s
     _move(record, PROMOTED)
     record.promoted_by, record.promoted_at = promoted_by, now
     record.is_default, record.recommended = is_default, recommended
+    await _audit(db, "capability_promoted", record, promoted_by, actor_user_id, VALIDATED,
+                 is_default=is_default, recommended=recommended,
+                 replaced_version=replaced.capability_version if replaced else None)
     await db.commit()
     await db.refresh(record)
     return record, replaced
 
 
-async def retire(db: AsyncSession, record: CapabilityValidation, retired_by: str, reason: str) -> CapabilityValidation:
+async def retire(db: AsyncSession, record: CapabilityValidation, retired_by: str, reason: str,
+                 actor_user_id: Optional[int] = None) -> CapabilityValidation:
     if not (reason or "").strip():
         raise CapabilityInvalid("A reason is required to retire a capability.")
+    from_status = record.status
     _move(record, RETIRED)
     record.retired_by, record.retired_at, record.retire_reason = retired_by, datetime.utcnow(), reason.strip()
     record.is_default = False
+    await _audit(db, "capability_retired", record, retired_by, actor_user_id, from_status, reason=record.retire_reason)
     await db.commit()
     await db.refresh(record)
     return record
