@@ -512,13 +512,13 @@ export default function GenerationPage() {
               {submitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Dispatching to ComfyUI Cluster...</span>
+                  <span>Dispatching to Studio Pipeline...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
                   <span>
-                    {selectedPipeline === "rosanne-v1" ? "Run Rosanne Pipeline" : "Generate Master Image"}
+                    Generate Master Image
                     {" "}• ({requiredCredits} {requiredCredits === 1 ? "Credit" : "Credits"})
                   </span>
                 </>

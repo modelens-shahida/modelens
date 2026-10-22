@@ -161,9 +161,9 @@ export default function CharacterReferenceSetManager({ characterId = null, class
         epochs: 100,
       });
 
-      toast.success(`LoRA Training Job #${res?.job_id || "101"} dispatched on GPU worker!`);
+      toast.success(`Character Training Job #${res?.job_id || "101"} dispatched on GPU worker!`);
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Failed to trigger LoRA training");
+      toast.error(err?.response?.data?.detail || "Failed to trigger character training");
     } finally {
       setTraining(false);
     }
@@ -181,7 +181,7 @@ export default function CharacterReferenceSetManager({ characterId = null, class
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-white">Multi-Viewpoint Reference Sets (`REFSET-*`)</h3>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-pink-950 text-pink-300 border border-pink-800">
-                LoRA Conditioning Engine
+                Identity Conditioning Engine
               </span>
             </div>
             <p className="text-xs text-zinc-400">
@@ -204,7 +204,7 @@ export default function CharacterReferenceSetManager({ characterId = null, class
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-pink-600/25"
           >
             {training ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cpu className="w-3.5 h-3.5" />}
-            {training ? "Training LoRA..." : "Train LoRA Model (WF-TRAIN-001)"}
+            {training ? "Training Identity..." : "Train Identity Model (WF-TRAIN-001)"}
           </button>
         </div>
       </div>

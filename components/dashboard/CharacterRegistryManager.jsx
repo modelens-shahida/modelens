@@ -279,7 +279,7 @@ export default function CharacterRegistryManager({ initialCharacterId = null }) 
               </span>
             </h2>
             <p className="text-xs text-zinc-400">
-              Manage multi-profile character parameters across Identity, Body, Skin, Hair DNA, and Runtime LoRAs.
+              Manage multi-profile character parameters across Identity, Body, Skin, Hair DNA, and Runtime Models.
             </p>
           </div>
         </div>
@@ -428,7 +428,7 @@ export default function CharacterRegistryManager({ initialCharacterId = null }) 
                   }`}
                 >
                   <Cpu size={14} />
-                  Runtime & LoRA
+                  Runtime & Architecture
                 </button>
               </div>
 
@@ -550,7 +550,7 @@ export default function CharacterRegistryManager({ initialCharacterId = null }) 
               {activeTab === "runtime" && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Production Model & LoRA Runtime</h4>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Production Model & Execution Runtime</h4>
                     <button
                       onClick={() => openProfileEditor("runtime")}
                       className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-semibold text-purple-300 transition"
@@ -561,7 +561,7 @@ export default function CharacterRegistryManager({ initialCharacterId = null }) 
 
                   {!runtime.runtime_profile_id ? (
                     <div className="p-8 text-center bg-zinc-900/40 rounded-xl border border-dashed border-zinc-800 text-zinc-500 text-xs">
-                      No Runtime Profile registered. Click above to configure production LoRA alias & default strength.
+                      No Runtime Profile registered. Click above to configure production model alias & execution parameters.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

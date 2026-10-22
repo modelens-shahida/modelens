@@ -283,7 +283,7 @@ export default function BillingPage() {
               </div>
             )}
             <p className="text-zinc-500 text-[10px] leading-relaxed max-w-sm">
-              Each generated photo consumes 1 credit. Each custom LoRA character model training consumes 10 credits. Rollover applies automatically on active subscriptions.
+              Each generated photo consumes 1 credit. Each custom character identity model training consumes 10 credits. Rollover applies automatically on active subscriptions.
             </p>
           </div>
           <div className="mt-6 pt-4 border-t border-zinc-900 relative z-10">
@@ -359,7 +359,7 @@ export default function BillingPage() {
               </span>
               <h4 className="text-sm font-semibold text-white">Need higher generation capacity?</h4>
               <p className="text-zinc-400 text-xs leading-relaxed">
-                Contact your account team for custom GPU quotas, dedicated LoRA training clusters, and invoicing terms.
+                Contact your account team for custom GPU quotas, dedicated character training clusters, and invoicing terms.
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-zinc-900 flex items-center justify-between">

@@ -197,7 +197,7 @@ export default function EliskaCharacterDetailPage() {
               </div>
               <div className="absolute bottom-3 left-3 right-3 z-20 flex justify-between items-center text-[10px] font-mono text-zinc-400 bg-zinc-900/80 px-3 py-1.5 rounded-lg backdrop-blur-sm border border-zinc-800">
                 <span>Height: {char.canonical_height_cm}cm</span>
-                <span className="text-emerald-400 font-bold">100% LORAS LOCKED</span>
+                <span className="text-emerald-400 font-bold">100% IDENTITY LOCKED</span>
               </div>
             </div>
           </div>
@@ -522,7 +522,7 @@ export default function EliskaCharacterDetailPage() {
                   <div className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between text-zinc-400">
                     <div>
                       <span className="font-medium text-zinc-300">Version 0.9 (Pre-Production Golden Candidate)</span>
-                      <p className="text-[10px] text-zinc-500">Full 10-Angle Rig & LoRA Validation Cleared</p>
+                      <p className="text-[10px] text-zinc-500">Full 10-Angle Rig & Identity Master Cleared</p>
                     </div>
                     <span className="text-[10px] font-mono text-zinc-500">ARCHIVED</span>
                   </div>
