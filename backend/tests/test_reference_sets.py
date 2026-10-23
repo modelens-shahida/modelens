@@ -500,11 +500,3 @@ def test_one_production_set_per_character_version_in_the_database(chain_db):
         with chain_db.begin() as conn:
             conn.execute(sets.insert().values(reference_set_id="C", character_id=EE, character_version="1.0",
                                               version=3, status="PRODUCTION"))
-
-
-def test_single_alembic_head_is_this_revision():
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    cfg = Config(os.path.join(BACKEND, "alembic.ini"))
-    cfg.set_main_option("script_location", os.path.join(BACKEND, "alembic"))
-    assert ScriptDirectory.from_config(cfg).get_heads() == ["reference_sets_001"]

@@ -1258,6 +1258,7 @@ class CharacterHairProfile(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+# Legacy: never read for runtime strategy or adapter strength; RuntimeProfile (runtime_profiles) is.
 class CharacterRuntimeProfile(Base):
     __tablename__ = "character_runtime_profiles"
 
@@ -2451,6 +2452,97 @@ def _reject_bulk_reference_writes(orm_execute_state):
                 "Bulk UPDATE of canonical asset file fields is not allowed; update assets one at a time.")
 
 
+# ========================== Runtime Profiles ======================
+# The approved way to run one character version: strategy, pinned reference
+# set, adapter and its strengths, QA profile, retry policy
+# (docs/character-runtime/APPEARANCE_STATUS.md 1.3, PR AC-1). Versioned; a
+# PRODUCTION or RETIRED profile never changes except its status (forward) and
+# the promote/retire fields; profiles are never deleted. Adapter strengths are
+# data on these rows, never a constant in code. Admin/internal only. Replaces
+# the legacy character_runtime_profiles / character_runtime_v2 tables for
+# strategy and strength; those are never read for either.
+
+RUNTIME_PROFILE_TRANSITIONS: dict[str, set[str]] = {
+    "DRAFT": {"PRODUCTION", "RETIRED"},
+    "PRODUCTION": {"RETIRED"},
+    "RETIRED": set(),
+}
+RUNTIME_PROFILE_STATUS_FIELDS = ("status", "promoted_at", "promoted_by", "retired_at", "retired_by", "retire_reason")
+
+
+class RuntimeProfile(Base):
+    __tablename__ = "runtime_profiles"
+    __table_args__ = (
+        UniqueConstraint("character_id", "character_version", "version", name="uq_runtime_profile_version"),
+        # At most one PRODUCTION profile per character version.
+        Index("uq_runtime_profile_production", "character_id", "character_version", unique=True,
+              postgresql_where=sa.text("status = 'PRODUCTION'"), sqlite_where=sa.text("status = 'PRODUCTION'")),
+        sa.CheckConstraint("adapter_strength > 0 AND adapter_strength <= 1", name="ck_runtime_profile_strength"),
+        sa.CheckConstraint("fallback_adapter_strength > adapter_strength AND fallback_adapter_strength <= 1",
+                           name="ck_runtime_profile_fallback_strength"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    runtime_profile_id = Column(String(60), unique=True, nullable=False)  # EE-F-002_V1.0_RT_V1
+    character_id = Column(String(50), nullable=False, index=True)
+    character_version = Column(String(10), nullable=False)
+    version = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default="DRAFT")
+    default_strategy = Column(String(30), nullable=False, default="REFERENCE_ONLY")
+    allowed_strategies = Column(JSONB, nullable=False)  # ["REFERENCE_ONLY"] or [..., "REFERENCE_PLUS_ADAPTER"]
+    reference_set_id = Column(Integer, ForeignKey("character_reference_sets.id", ondelete="RESTRICT"), nullable=True)
+    adapter_id = Column(String(50), nullable=True)  # model_artifacts.model_id
+    adapter_strength = Column(Float, nullable=True)
+    fallback_adapter_strength = Column(Float, nullable=True)
+    qa_profile_id = Column(String(100), nullable=True)  # qa_profiles.qa_profile_id
+    # When true, an output failing the identity gate under REFERENCE_PLUS_ADAPTER is regenerated once at
+    # fallback_adapter_strength. Off until decided (APPEARANCE_STATUS.md section 6, blocker 3).
+    fallback_retry_enabled = Column(Boolean, nullable=False, default=False)
+    notes = Column(Text, nullable=True)
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    promoted_by = Column(String(100), nullable=True)
+    promoted_at = Column(DateTime, nullable=True)
+    retired_by = Column(String(100), nullable=True)
+    retired_at = Column(DateTime, nullable=True)
+    retire_reason = Column(Text, nullable=True)
+
+
+class RuntimeProfileFrozenError(Exception):
+    """A write tried to change or delete a PRODUCTION / RETIRED runtime profile, or delete any profile."""
+
+
+@sa.event.listens_for(RuntimeProfile, "before_update")
+def _check_runtime_profile_update(mapper, connection, target):
+    state = sa.inspect(target)
+    old_status = _previous(target, "status")
+    if state.attrs["status"].history.has_changes() and target.status != old_status:
+        if target.status not in RUNTIME_PROFILE_TRANSITIONS.get(old_status, set()):
+            raise RuntimeProfileFrozenError(f"Runtime profile status cannot move from {old_status} to {target.status}.")
+    if old_status == "DRAFT":
+        return
+    changed = [a.key for a in state.attrs if a.history.has_changes() and a.key not in RUNTIME_PROFILE_STATUS_FIELDS]
+    if changed:
+        raise RuntimeProfileFrozenError(
+            f"Runtime profile {target.runtime_profile_id} is {old_status} and cannot be changed ({', '.join(changed)}). "
+            "Create a new runtime profile version instead.")
+
+
+@sa.event.listens_for(RuntimeProfile, "before_delete")
+def _reject_runtime_profile_delete(mapper, connection, target):
+    raise RuntimeProfileFrozenError("Runtime profiles are never deleted; retire them instead.")
+
+
+@sa.event.listens_for(sa.orm.Session, "do_orm_execute")
+def _reject_bulk_runtime_profile_writes(orm_execute_state):
+    # Bulk UPDATE/DELETE would bypass the per-row rules above.
+    if not (orm_execute_state.is_update or orm_execute_state.is_delete):
+        return
+    mapper = orm_execute_state.bind_mapper
+    if mapper is not None and mapper.class_ is RuntimeProfile:
+        raise RuntimeProfileFrozenError("Bulk UPDATE/DELETE of runtime profiles is not allowed; change them one at a time.")
+
+
 class CharacterVersionQA(Base):
     __tablename__ = "character_version_qa"
 
@@ -2472,6 +2564,7 @@ class CharacterVersionQA(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+# Legacy: never read for runtime strategy or adapter strength; RuntimeProfile (runtime_profiles) is.
 class CharacterRuntimeV2(Base):
     __tablename__ = "character_runtime_v2"
 

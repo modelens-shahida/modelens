@@ -26,9 +26,11 @@ from app.models.db import (
     ExperimentRun,
     ModelArtifact,
     RuntimePromotion,
+    RuntimeProfile,
     TrainingCheckpoint,
     TrainingExport,
 )
+from app.services.audit import write_audit_log
 
 # ========================== Vocabularies ==========================
 
@@ -64,6 +66,22 @@ ADAPTER_REFERENCE_KEYS = {
 }
 
 EVALUATION_DECISIONS = ("PASS", "FAIL")
+
+# Adapter lifecycle in the P3 model status column: EXPERIMENTAL -> EVALUATION -> PRODUCTION -> ARCHIVED
+# (APPEARANCE_STATUS.md 1.3). The status endpoint moves an adapter into and out of EVALUATION and archives
+# it; PRODUCTION is reached only through ``promote_run`` (a PASSED run). An EVALUATION adapter may be used
+# in admin validation runs only, never in a customer production.
+ADAPTER_EXPERIMENTAL, ADAPTER_EVALUATION, ADAPTER_PRODUCTION = "EXPERIMENTAL", "EVALUATION", "PRODUCTION"
+ADAPTER_ARCHIVED = "ARCHIVED"
+ADAPTER_STATUS_TARGETS = (ADAPTER_EXPERIMENTAL, ADAPTER_EVALUATION, ADAPTER_PRODUCTION, ADAPTER_ARCHIVED)
+ADAPTER_TRANSITIONS: dict[str, set[str]] = {
+    ADAPTER_EXPERIMENTAL: {ADAPTER_EVALUATION, ADAPTER_ARCHIVED},
+    ADAPTER_EVALUATION: {ADAPTER_EXPERIMENTAL, ADAPTER_ARCHIVED},
+    ADAPTER_PRODUCTION: {ADAPTER_ARCHIVED},
+    ADAPTER_ARCHIVED: set(),
+    "DEPRECATED": {ADAPTER_ARCHIVED},
+    "RETIRED": set(),
+}
 
 
 class TrainingNotFound(Exception):
@@ -406,6 +424,41 @@ async def get_adapter(db: AsyncSession, adapter_id: str) -> ModelArtifact:
     return found
 
 
+async def set_adapter_status(db: AsyncSession, adapter_id: str, new_status: str, *, changed_by: str,
+                             reason: Optional[str] = None, actor_user_id: Optional[int] = None) -> ModelArtifact:
+    """Move an adapter along ADAPTER_TRANSITIONS, with an audit entry. A TRAINED_MODEL adapter needs its
+    storage_path and checksum to enter EVALUATION. An adapter named by a PRODUCTION runtime profile cannot
+    be archived; retire the profile first."""
+    adapter = await get_adapter(db, adapter_id)
+    current = adapter.status or ADAPTER_EXPERIMENTAL
+    if new_status == ADAPTER_PRODUCTION:
+        route = f"POST /api/v1/admin/training/runs/{adapter.run_id}/promote" if adapter.run_id else \
+            "POST /api/v1/admin/training/runs/{run_id}/promote (this adapter has no training run)"
+        raise TrainingConflict(f"Adapter {adapter_id} goes to PRODUCTION only through a PASSED training run: {route}.")
+    if new_status not in ADAPTER_TRANSITIONS.get(current, {ADAPTER_ARCHIVED}):
+        allowed = sorted(ADAPTER_TRANSITIONS.get(current, {ADAPTER_ARCHIVED}))
+        raise TrainingConflict(f"Adapter {adapter_id} is {current} and cannot move to {new_status}. "
+                               f"Allowed: {', '.join(allowed) or 'none (final)'}.")
+    if new_status == ADAPTER_EVALUATION and adapter.kind == "TRAINED_MODEL" and not (
+            adapter.storage_path and adapter.checksum_sha256):
+        raise TrainingInvalid(f"Adapter {adapter_id} needs its storage_path and checksum_sha256 before EVALUATION.")
+    if new_status == ADAPTER_ARCHIVED:
+        profile = await _first(db, select(RuntimeProfile).where(
+            RuntimeProfile.adapter_id == adapter_id, RuntimeProfile.status == "PRODUCTION"))
+        if profile is not None:
+            raise TrainingConflict(f"Adapter {adapter_id} is used by PRODUCTION runtime profile "
+                                   f"{profile.runtime_profile_id}; retire that profile first.")
+    adapter.status = new_status
+    await write_audit_log(db, "adapter_status_changed", user_id=actor_user_id, details={
+        "actor_email": changed_by, "adapter_id": adapter_id, "character_id": adapter.character_id,
+        "character_version": adapter.character_version, "from_status": current, "to_status": new_status,
+        "reason": reason,
+    })
+    await db.commit()
+    await db.refresh(adapter)
+    return adapter
+
+
 # ========================== Promotion =============================
 
 async def promote_run(db: AsyncSession, run_id: str, *, adapter_id: str, checkpoint_id: Optional[str],
@@ -417,6 +470,8 @@ async def promote_run(db: AsyncSession, run_id: str, *, adapter_id: str, checkpo
         raise TrainingConflict(f"Only PASSED training runs can be promoted (run {run_id} is {run.status}).")
 
     adapter = await get_adapter(db, adapter_id)
+    if adapter.status == ADAPTER_ARCHIVED:
+        raise TrainingConflict(f"Adapter {adapter_id} is ARCHIVED and cannot be promoted.")
     if adapter.run_id != run_id:
         raise TrainingInvalid(f"Adapter {adapter_id} was not produced by training run {run_id}.")
     checkpoint_id = checkpoint_id or adapter.checkpoint_id

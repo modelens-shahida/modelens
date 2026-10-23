@@ -33,6 +33,7 @@ HASH_FIELD = dict(pattern=SHA256, description="Lowercase hex SHA-256 of the arti
 RunStatus = Literal["PREPARING", "TRAINING", "EVALUATING", "PASSED", "FAILED", "ARCHIVED", "PROMOTED"]
 AdapterLayer = Literal["IDENTITY", "BODY", "APPEARANCE", "PRODUCT", "POSE", "CAMERA", "SCENE"]
 AdapterKind = Literal["TRAINED_MODEL", "WORKFLOW", "REFERENCE_SET", "CONFIGURATION"]
+AdapterStatusTarget = Literal["EXPERIMENTAL", "EVALUATION", "PRODUCTION", "ARCHIVED"]
 
 
 async def _run(coro):
@@ -258,11 +259,17 @@ class AdapterOut(BaseModel):
     storage_path: Optional[str]
     checksum_sha256: Optional[str]
     reference: Optional[dict[str, Any]]
-    status: Optional[str] = Field(None, description="P3 model lifecycle status (EXPERIMENTAL … PRODUCTION, DEPRECATED).")
+    status: Optional[str] = Field(None, description="Adapter lifecycle status (EXPERIMENTAL, EVALUATION, PRODUCTION, DEPRECATED, ARCHIVED).")
     production_alias: Optional[str]
     supersedes_adapter_id: Optional[str]
     created_by: Optional[str]
     created_at: Optional[datetime]
+
+
+class AdapterStatusChange(BaseModel):
+    status: AdapterStatusTarget = Field(..., description="EXPERIMENTAL <-> EVALUATION, or ARCHIVED. PRODUCTION is "
+                                        "refused here (409): it goes through a PASSED training run.")
+    reason: Optional[str] = Field(None, max_length=1000, examples=["Registered for identity evaluation."])
 
 
 class PromotionCreate(BaseModel):
@@ -639,3 +646,31 @@ async def list_adapters(
 )
 async def get_adapter(adapter_id: str, db: AsyncSession = Depends(get_db)):
     return _adapter_out(await _run(svc.get_adapter(db, adapter_id)))
+
+
+@router.post(
+    "/adapters/{adapter_id}/status",
+    response_model=AdapterOut,
+    summary="Change an adapter's status",
+    description="EXPERIMENTAL -> EVALUATION (a TRAINED_MODEL adapter needs its storage_path and checksum), "
+                "EVALUATION -> EXPERIMENTAL, or any status -> ARCHIVED (final). PRODUCTION is reached only through "
+                "POST /api/v1/admin/training/runs/{run_id}/promote (409 here). An EVALUATION adapter is used in "
+                "admin validation runs only, never in a customer production. An adapter named by a PRODUCTION "
+                "runtime profile cannot be archived (409). Audit-logged.",
+    response_description="The adapter with its new status.",
+    operation_id="change_adapter_status",
+    responses=error_responses(400, 401, 403, 404, 409, 422),
+)
+async def change_adapter_status(
+    adapter_id: str,
+    payload: AdapterStatusChange,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_platform_admin),
+):
+    try:
+        adapter = await _run(svc.set_adapter_status(db, adapter_id, payload.status, changed_by=_actor(admin),
+                                                    reason=payload.reason, actor_user_id=admin.id))
+    except HTTPException:
+        await db.rollback()
+        raise
+    return _adapter_out(adapter)

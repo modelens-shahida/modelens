@@ -548,7 +548,7 @@ TRAINING_ROUTES = sorted(_training_routes())
 
 
 def test_training_routes_discovered():
-    assert len(TRAINING_ROUTES) == 20
+    assert len(TRAINING_ROUTES) == 21
 
 
 @pytest.mark.asyncio
