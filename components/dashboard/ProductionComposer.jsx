@@ -81,6 +81,18 @@ function getProductTypeFromCategory(category = "") {
 
 const SAMPLE_BEAUTY_DIRECTIONS = [
   {
+    id: "beauty_canonical_control",
+    name: "Canonical Control",
+    desc: "Baseline reference hair and natural poise for identity verification and catalogue continuity.",
+    defaults: {
+      hair_id: "hair_canonical",
+      makeup_id: "makeup_natural",
+      expression_id: "expr_neutral_editorial",
+    },
+    tag: "Canonical",
+    is_default: false,
+  },
+  {
     id: "beauty_quiet_luxury",
     name: "Quiet Luxury",
     desc: "Sleek low bun or polished chignon, luminous nude makeup, soft sculpting, neutral lip, clean manicure, restrained jewelry, calm confident expression.",
@@ -93,19 +105,8 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
     is_default: true,
   },
   {
-    id: "beauty_european_editorial",
-    name: "European Editorial",
-    desc: "Slick-back or wet-look hair, stronger eye definition, sculpted cheekbones, minimal lip, architectural jewelry, angular poise.",
-    defaults: {
-      hair_id: "hair_wet_look",
-      makeup_id: "makeup_editorial",
-      expression_id: "expr_serious",
-    },
-    tag: "High Fashion",
-  },
-  {
-    id: "beauty_soft_luxury",
-    name: "Soft Luxury",
+    id: "beauty_luxury_waves",
+    name: "Luxury Waves",
     desc: "Brushed-out waves, glowing skin, soft bronzed makeup, subtle eye definition, natural lip, delicate jewelry, relaxed elegance.",
     defaults: {
       hair_id: "hair_soft_waves",
@@ -113,6 +114,17 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
       expression_id: "expr_soft_confidence",
     },
     tag: "Soft Glamour",
+  },
+  {
+    id: "beauty_runway_editorial",
+    name: "Runway Editorial",
+    desc: "Slick-back or wet-look hair, stronger eye definition, sculpted cheekbones, minimal lip, architectural jewelry, angular poise.",
+    defaults: {
+      hair_id: "hair_wet_look",
+      makeup_id: "makeup_editorial",
+      expression_id: "expr_serious",
+    },
+    tag: "High Fashion",
   },
   {
     id: "beauty_classic_evening",
@@ -135,17 +147,6 @@ const SAMPLE_BEAUTY_DIRECTIONS = [
       expression_id: "expr_neutral_editorial",
     },
     tag: "Contemporary",
-  },
-  {
-    id: "beauty_resort_luxury",
-    name: "Resort Luxury",
-    desc: "Sunkissed skin, relaxed texture or effortless low knot, golden warmth, glossy lip, vacation ease.",
-    defaults: {
-      hair_id: "hair_hair_down",
-      makeup_id: "makeup_bronzed",
-      expression_id: "expr_soft_confidence",
-    },
-    tag: "Resort & Cruise",
   },
 ];
 
@@ -256,7 +257,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
     const charId = selectedCharacter.code || selectedCharacter.id || "EE-F-002";
     const productType = getProductTypeFromCategory(selectedProduct?.category || "");
 
-    // 1. Styling Options
+    // 1. Styling Options & Appearance Capabilities
     api.get(`/api/v1/characters/${charId}/styling-options`)
       .then((data) => {
         if (data && data.categories) {
@@ -269,10 +270,47 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           if (Array.isArray(data.categories.expression) && data.categories.expression.length > 0) {
             setExpressionOptions(data.categories.expression.map((e) => ({ id: e.id, name: e.label || e.name, desc: e.description || e.desc, is_default: e.is_default, recommended: e.recommended })));
           }
+          if (Array.isArray(data.categories.beauty_direction) && data.categories.beauty_direction.length > 0) {
+            const list = data.categories.beauty_direction.map((b) => ({
+              id: b.id,
+              name: b.label || b.name,
+              desc: b.description || b.desc,
+              defaults: b.recommended_defaults || b.defaults,
+              tag: b.group || "Beauty Direction",
+              is_default: b.is_default,
+              recommended: b.recommended,
+            }));
+            setBeautyDirections(list);
+            const def = list.find((b) => b.is_default) || list[0];
+            setSelectedBeautyDirection((prev) => (list.some((b) => b.id === prev?.id) ? prev : def));
+          }
         }
       })
       .catch(() => {
         // Graceful fallback to rich studio presets
+      });
+
+    // 1b. Dedicated Beauty Directions (AC-6 forward-compatibility)
+    api.get(`/api/v1/characters/${charId}/beauty-directions`)
+      .then((data) => {
+        const rawList = Array.isArray(data) ? data : data?.beauty_directions || [];
+        if (rawList.length > 0) {
+          const list = rawList.map((b) => ({
+            id: b.id,
+            name: b.label || b.name,
+            desc: b.description || b.desc,
+            defaults: b.recommended_defaults || b.defaults,
+            tag: b.group || "Beauty Direction",
+            is_default: b.is_default,
+            recommended: b.recommended,
+          }));
+          setBeautyDirections(list);
+          const def = list.find((b) => b.is_default) || list[0];
+          setSelectedBeautyDirection((prev) => (list.some((b) => b.id === prev?.id) ? prev : def));
+        }
+      })
+      .catch(() => {
+        // Safe 404 fallback before AC-6 lands
       });
 
     // 2. Capability Packs / Supported Product Types
