@@ -800,11 +800,11 @@ Each PR is small, additive, independently testable, and keeps the existing endpo
 - 3 = #59 (in review)
 - 4 = #60 (in review, stacked on #59)
 
-From 5 on, the order is replaced by `APPEARANCE_STATUS.md` section 7 (AC-1 … AC-10):
+From 5 on, the order is replaced by `APPEARANCE_STATUS.md` section 7 (AC-1 … AC-11):
 - 5 and 6 become AC-1 to AC-5;
 - 7 becomes AC-6 (`/appearance`);
 - 11 is partly AC-7;
-- 8–10 and 12–14 follow AC-10.
+- 8–10 and 12–14 follow AC-11.
 
 1. **Capability validation table + backfill** — `capability_validations` (add-if-missing
    migration), service, ORM rules; backfill a PROMOTED row for every option already in PRODUCTION.
@@ -868,6 +868,9 @@ Full detail is in `APPEARANCE_STATUS.md`. What changes in this document:
     0.6 as the stronger fallback; both values are data on the runtime profile or capability record,
     never code constants.
   - Customer productions only ever use a `PRODUCTION` adapter. `strategy_eligible` is dropped.
+  - An automatic retry at 0.6 after an identity QA failure is **not decided**. It is a
+    per-runtime-profile policy (`fallback_retry_enabled`), off by default, pending Shahida (cost
+    and compute).
 - **Lifecycle mapping.** Shahida's IN_DEVELOPMENT → VALIDATION → APPROVED → PRODUCTION → RETIRED
   is our REGISTERED → VALIDATING → VALIDATED → PROMOTED → RETIRED (definition statuses
   IN_DEVELOPMENT / VALIDATION / APPROVED / PRODUCTION / ARCHIVED). Promotion records `qa_notes` and
@@ -880,6 +883,13 @@ Full detail is in `APPEARANCE_STATUS.md`. What changes in this document:
   `appearance.{beauty_direction, hair_style, makeup_style, expression}` and
   `camera/scene/lighting_profile_id`. It refuses `lora_strength`, `checkpoint`, `workflow_node` and
   `reference_weight` with a 422.
+- **Phases 8 and 9.** Phase 8 is the Admin Promotion Workflow, recording who validated and
+  promoted, when, `qa_notes` and the approved `runtime_profile`. Phase 9 is the Frontend
+  Integration Contract: appearance renders entirely from API results, with no frontend deploy when
+  a style is promoted (`APPEARANCE_STATUS.md` 2.3).
+- **Worker input.** `run_production` sends the AI worker no reference images, adapter or product
+  image, so current generations are not identity-locked. The worker input contract is owned by
+  Aryan.
 - **Beauty direction list.** `CANONICAL_CONTROL`, `QUIET_LUXURY`, `LUXURY_WAVES`,
   `RUNWAY_EDITORIAL`, `CLASSIC_EVENING`, `MODERN_MINIMAL` (open question 1 resolved). The six in
   sections 4.3 and 6 are superseded.

@@ -22,7 +22,11 @@ File references are to `backend/`. "Today" means `main` plus the open PRs #58–
 - **Runtime.** `REFERENCE_ONLY` is the default. `REFERENCE_PLUS_ADAPTER` uses the EE-F-002 adapter
   `EE-F-002_CK0750` at strength **0.4**, with **0.6** as the stronger fallback. Both numbers live in
   data (the runtime profile and the capability record), never in a code constant. All of this is
-  internal and never reaches a customer response.
+  internal and never reaches a customer response. An automatic retry at the fallback strength is
+  **not decided**: it is a per-runtime-profile policy, off by default (section 6, blocker 3).
+- **Current generations are not identity-locked.** `run_production` sends the AI worker no reference
+  images, no adapter and no product image (section 4.3). Fixing that needs the worker input contract
+  from Aryan (section 6, blocker 1).
 - **Lifecycle.** Shahida's `IN_DEVELOPMENT → VALIDATION → APPROVED → PRODUCTION → RETIRED` maps onto
   what we already have (section 1.2). Promotion also records `qa_notes` and the approved runtime
   profile.
@@ -107,6 +111,7 @@ New table `runtime_profiles`: the approved way to run one character version.
 | adapter_strength | float null | `0.4`; CHECK `0 < x <= 1` |
 | fallback_adapter_strength | float null | `0.6`; CHECK `adapter_strength < x <= 1` |
 | qa_profile_id | varchar(100) null | `qa_profiles.qa_profile_id`, the character's default QA profile |
+| fallback_retry_enabled | bool, default **false** | the automatic-retry policy: when true, an output that fails the identity gate under `REFERENCE_PLUS_ADAPTER` is regenerated once at `fallback_adapter_strength`. Off until Shahida decides (blocker 3) |
 | notes | text null | |
 | created_by, created_at | | |
 | promoted_by, promoted_at, retired_by, retired_at, retire_reason | | |
@@ -172,7 +177,7 @@ named by a PRODUCTION runtime profile (or a promoted capability's runtime snapsh
 
    Unique `(character_id, character_version, subject_type, subject_key, object_type, object_key)`
    among non-retired rows (partial index). Lookups check both directions. The table and model land in
-   AC-2 (P0 schema); the rules are used from AC-9 (P2).
+   AC-2 (P0 schema); the rules are used from AC-11 (P2).
 
 4. `qa_profiles`, new columns: `capability_type varchar(30) null` and `character_id varchar(50)
    null`. That turns a QA profile into a `CapabilityQAProfile` (for example
@@ -194,7 +199,7 @@ beauty-direction defaults), returned on the generation response and kept for var
 internal plan stays in the admin-only `productions.runtime_profile`.
 
 **No migration:** the CapabilityResolver (AC-4), the strategy in the resolver (AC-5), the read APIs
-(AC-6), promotion (AC-8), recommendation/fallback/QA logic (AC-9) and the E2E run (AC-10).
+(AC-6), promotion (AC-8), the frontend contract (AC-9), the E2E run (AC-10) and recommendation/fallback/QA logic (AC-11).
 
 ### 1.4 What is never written by appearance
 
@@ -226,6 +231,18 @@ need `require_platform_admin` and return internal fields.
 Unknown character: 404 (same message as today). A character with no promoted appearance yet: 200
 with empty lists.
 
+> **The frontend already calls `/appearance` and `/beauty-directions`, and both 404 until AC-6.**
+> They're called in `lib/characterRegistryApi.js` (`getAppearance`, `getBeautyDirections`, main
+> commit 2235f5e). Until AC-6 is deployed, and on any 404 from them later, the frontend must fall
+> back gracefully:
+> - **Appearance:** use `GET /characters/{id}/styling-options`, which exists and returns the same
+>   option objects under `hair`, `makeup`, `expression` and `beauty_direction`.
+> - **Beauty directions:** if they aren't available, hide the section.
+> - **No error state:** don't show an error banner and don't block the page.
+>
+> A 404 for an unknown *character* has the same status code. The frontend tells the two apart by
+> whether `/styling-options` for that character also returns 404.
+
 ### 2.2 Admin (platform admin)
 
 | Route | State | Notes |
@@ -237,12 +254,45 @@ with empty lists.
 | `POST /admin/characters/{id}/capabilities` (register), `…/validation/start`, `…/validation`, `…/retire` | exist (#57) | unchanged |
 | `POST /admin/characters/{id}/capabilities/{type}/{key}/promote` | exists (#57) | AC-8: body gains required `qa_notes`; the response returns the promotion record with the approved `runtime_profile` |
 | `POST /admin/characters/{id}/capabilities/{type}/{key}/resolve` | **new (AC-4)** | dry run of the CapabilityResolver for one capability (section 4.2); writes nothing |
-| `POST /admin/characters/{id}/compatibility`, `GET …/compatibility`, `POST …/compatibility/{rule_id}/retire` | **new (AC-9)** | compatibility rules |
+| `POST /admin/characters/{id}/compatibility`, `GET …/compatibility`, `POST …/compatibility/{rule_id}/retire` | **new (AC-11)** | compatibility rules |
 | `POST /admin/characters/{id}/runtime-profiles`, `GET …`, `POST …/{runtime_profile_id}/promote`, `POST …/retire` | **new (AC-1)** | runtime profiles; promote refuses `REFERENCE_PLUS_ADAPTER` in `allowed_strategies` unless the adapter is `PRODUCTION` |
 | `POST /admin/training/adapters/{adapter_id}/status` | **new (AC-1)** | `EXPERIMENTAL → EVALUATION → PRODUCTION / ARCHIVED`; registers `EE-F-002_CK0750` at `EVALUATION` |
 | `POST /admin/characters/EE-F-002/appearance/seed` | **new (AC-3)** | Phase 3 seed; idempotent; never promotes |
 | `POST /admin/productions/plan` | **new (AC-5)** | dry-run the runtime resolver for a generation request and return the internal plan; nothing charged or queued |
 | `/admin/characters/{id}/reference-sets/*` | #60 in review | unchanged |
+
+### 2.3 Frontend integration contract (Phase 9)
+
+Goal: Hair, Makeup, Expression and Beauty Direction render **entirely from API results**. Promoting a
+new style (register → validate → promote, all admin API) makes it appear for customers with **no
+frontend deploy and no backend deploy**.
+
+**Backend promises** (enforced by tests in AC-9):
+- **Fixed keys.** The list keys are fixed: `hair_styles`, `makeup_styles`, `expressions`,
+  `beauty_directions`; later `nails` and `jewelry`, added only additively.
+- **Every option carries what the UI needs.** That's `id`, `label`, `thumbnail_url`, `group`,
+  `is_default`, `recommended` and `description`. Array order is the display order (`sort_order`).
+  Exactly one `is_default: true` per list when the list isn't empty.
+- **Beauty directions carry their defaults.** `recommended_defaults` holds `hair_id`, `makeup_id`,
+  `expression_id` and `grooming_id` (each a promoted id from the same response, or null) and
+  `overridable`.
+- **Only additive changes.** New fields may appear; existing fields never change meaning or type.
+  A retired option simply stops being listed. An empty list means "nothing to offer".
+- **Ids are opaque and stable.** The id a customer saw is accepted by dispatch unchanged. Old ids
+  stay accepted as aliases.
+
+**Frontend rules** (Indra):
+- **No hard-coded styles.** No style ids, labels, thumbnails or per-style code. The only names the
+  frontend knows are the list keys and option fields above.
+- **Render from the response.** Groups come from `group`, preselection from `is_default`, badges
+  from `recommended`. Choosing a beauty direction preselects its `recommended_defaults` and allows
+  changing only the `overridable` pieces.
+- **Send ids back exactly as received.** Today `characterRegistryApi.dispatchProduction` strips the
+  `hair_` / `makeup_` / `expr_` / `pose_` / `scene_` / `lighting_` / `campaign_` prefixes and
+  upper-cases scene and lighting ids (main commit 8988554). Dispatch accepts that for now, but the
+  contract is to send the namespaced id unchanged.
+- **Ignore what you don't know.** Ignore unknown fields. Hide a section whose list is empty or
+  whose route 404s (section 2.1).
 
 ## 3. Example payloads
 
@@ -361,7 +411,7 @@ the frontend can preselect it without another check. `CANONICAL_CONTROL`'s defau
 ```json
 POST /api/v1/admin/characters/EE-F-002/capabilities/HAIR/LOW_CHIGNON/promote
 { "capability_version": 1, "is_default": false, "recommended": true,
-  "qa_notes": "Identity 96.1 / face 95.4 across 24 samples at 0.4; no drift at 3/4. Two hairline artefacts at 4K fixed by 0.6 fallback." }
+  "qa_notes": "Identity 96.1 / face 95.4 across 24 samples at 0.4; no drift at 3/4. Two hairline artefacts at 4K; re-run at 0.6 by hand, both clean." }
 
 200
 {
@@ -377,7 +427,7 @@ POST /api/v1/admin/characters/EE-F-002/capabilities/HAIR/LOW_CHIGNON/promote
   "promoted_by": "anshu@modelens.ai",
   "promoted_at": "2026-11-03T10:00:00Z",
   "replaced_version": null,
-  "qa_notes": "Identity 96.1 / face 95.4 across 24 samples at 0.4; no drift at 3/4. Two hairline artefacts at 4K fixed by 0.6 fallback.",
+  "qa_notes": "Identity 96.1 / face 95.4 across 24 samples at 0.4; no drift at 3/4. Two hairline artefacts at 4K; re-run at 0.6 by hand, both clean.",
   "runtime_profile": {
     "runtime_profile_id": "EE-F-002_V1.0_RT_V1",
     "runtime_profile_version": 1,
@@ -459,7 +509,7 @@ For `(character, version, capability_type, id)`, with `id` being the namespaced 
 | Does it need an adapter? | the promoted snapshot's `strategy == REFERENCE_PLUS_ADAPTER` |
 | Preferred strategy | the snapshot's `strategy`; for a not-yet-promoted record (admin dry run), the definition's `runtime_strategy`, otherwise the runtime profile's `default_strategy` |
 | Fallback | strength: snapshot `fallback_adapter_strength`; capability: snapshot `fallback_customer_id` (must itself be production-ready, checked here) |
-| Compatible with the rest of the selection? | `capability_compatibility` (AC-9): `BLOCKED` → not allowed; `DISCOURAGED` → allowed, flagged on the plan |
+| Compatible with the rest of the selection? | `capability_compatibility` (AC-11): `BLOCKED` → not allowed; `DISCOURAGED` → allowed, flagged on the plan |
 
 Customer callers only ever get yes/no as "available / not available". Admin callers (the `/resolve`
 dry run) get the full answer.
@@ -502,7 +552,9 @@ dry run) get the full answer.
      silent swap to `fallback_customer_id`**: the customer chose that look (decision in section 6).
    - **`strength`:** the highest `adapter_strength` among the selected capabilities' snapshots, else
      the runtime profile's (`0.4`).
-   - **`fallback_strength`:** likewise from `fallback_adapter_strength` (`0.6`).
+   - **`fallback_strength`:** likewise from `fallback_adapter_strength` (`0.6`). It is recorded on the
+     plan but used automatically only when the runtime profile's `fallback_retry_enabled` is true
+     (default false). Otherwise it's there for an admin re-run.
    - Both values are always taken from those records. There is no constant in code; a missing value
      with `REFERENCE_PLUS_ADAPTER` is a 503 and an admin alert.
 10. **Pose, camera, scene, lighting, campaign.** Resolved through `customer_options` as #59 does today
@@ -538,17 +590,24 @@ dry run) get the full answer.
        (Redis broker).
     2. `run_production` sends the plan to the AI worker.
     3. Outputs are registered as brand assets and QA is scored with the plan's profiles.
-    4. If the identity gate fails under `REFERENCE_PLUS_ADAPTER`, the worker retries **once** at
-       `fallback_strength`.
-    5. If it still fails, the output is marked for review and not delivered. A failed production
-       refunds once (existing helper).
-    6. Then comes review.
+    4. If the identity gate fails, the output is marked for review and not delivered.
+    5. **Automatic retry, only if enabled.** If the runtime profile's `fallback_retry_enabled` is true
+       (default **false**) and the strategy is `REFERENCE_PLUS_ADAPTER`, the worker first regenerates
+       that output once at `fallback_strength`, and only then marks it for review if it still fails.
+       Whether to enable this is blocker 3: each retry is a full extra generation (compute cost),
+       and who pays for it is open.
+    6. A failed production refunds once (existing helper).
+    7. Then comes review.
 
-**Gap for Phase 10.** `run_production` today sends ComfyUI only `scene_description`,
-`pose_filename`, `aspect_ratio` and `resolution` (`production_dispatch.py` `_comfyui` →
-`generation_pipeline.run_with_timeout`). The reference set, adapter, strength, product image and
-appearance never reach the worker. AC-5 adds them to the worker input, but that needs the AI worker's
-input contract (section 6).
+**Current generations are not identity-locked (blocker 1).** `run_production` today sends ComfyUI
+only `scene_description`, `pose_filename`, `aspect_ratio` and `resolution` (`production_dispatch.py`
+`_comfyui` → `generation_pipeline.run_with_timeout`).
+- **Nothing that carries identity reaches the worker:** no reference images, no adapter and no
+  product image. Appearance and strength don't either.
+- **The plan is ignored.** Whatever the resolver puts in the plan, the image comes from the base
+  workflow plus a scene text.
+
+AC-5 adds them to the worker input, but needs the AI worker's input contract from **Aryan**.
 
 ## 5. Status of the 10 phases
 
@@ -563,9 +622,12 @@ PR states: #55, #56 and #57 are merged; #58, #59 and #60 are open (in review).
 | 5 | CapabilityResolver | **Partly in review.** "Valid and promoted for the character" plus old/new id matching is `customer_options` (#59). Planned: production-ready via runtime snapshot, adapter need, strategy, fallback, compatibility. | #59; planned AC-4 |
 | 6 | Runtime resolver | **Partly.** `resolve_runtime_profile` builds an admin-only plan today (pre-runtime code). The PRODUCTION reference set read with hash re-check is ready (#60) but not wired in. Planned: runtime profile, strategy, adapter gate, QA profiles, worker input. | #60; planned AC-5 |
 | 7 | Generation request | **Partly in review.** Dispatch takes option ids and accepts namespaced or old ids with a customer-safe 422 (#59). Planned: `appearance.beauty_direction` / `hair_style` / `makeup_style` / `expression`, `character_version`, `product_id`, `*_profile_id` names, refusing technical fields, `selection`. | #59; planned AC-7 |
-| 8 | Promotion with QA notes and runtime profile *(assumed: the direction I have names phases 1–7 and 10)* | **Partly done.** Register / validate / promote / retire with audit log (#57). Planned: `qa_notes`, approved runtime snapshot, definition status synced on promote. | #57; planned AC-8 |
-| 9 | Recommendation, fallback/compatibility, QA automation *(assumed, from the P2 list)* | **Planned.** | planned AC-9 |
-| 10 | End to end | **Planned, blocked.** Eliska + Quiet Luxury + Low Chignon + Polished Nude + an approved standing pose + one test garment + controlled studio, through API → resolvers → job → Celery/Redis → AI worker → result → QA → review. Needs the AI worker endpoint and staging (section 6). | planned AC-10 |
+| 8 | Admin Promotion Workflow: IN_DEVELOPMENT → VALIDATION → APPROVED → PRODUCTION, recording `validated_by`, `validated_at`, `promoted_by`, `promoted_at`, `qa_notes`, `runtime_profile` ("why it entered Production and what runtime config was approved") | **Partly done.** The lifecycle (as REGISTERED → VALIDATING → VALIDATED → PROMOTED), register / validate / promote / retire, `validated_by` / `validated_at` / `promoted_by` / `promoted_at` and the audit log exist (#55, #57). Planned: `qa_notes` (required at promote), the approved runtime snapshot frozen on the record, definition status synced on promote. | #55, #57; planned AC-2 (columns), AC-8 |
+| 9 | Frontend Integration Contract: Hair, Makeup, Expression and Beauty Direction render entirely from API results, with no frontend deploy when a new style is promoted | **Partly in review.** `/styling-options` already returns promoted options with label, thumbnail, group, default and recommended (#59), so a promoted style appears without a backend or frontend code change today. Planned: the written contract (section 2.3), `/appearance` and `/beauty-directions` as its routes, a contract test, and the frontend dropping hard-coded ids and prefix stripping. | #59; planned AC-6, AC-9 |
+| 10 | End to end | **Planned, blocked.** Eliska + Quiet Luxury + Low Chignon + Polished Nude + an approved standing pose + one test garment + controlled studio, through API → resolvers → job → Celery/Redis → AI worker → result → QA → review. Needs the AI worker input contract and endpoint from Aryan, and staging (section 6, blocker 1). | planned AC-10 |
+
+The P2 items (recommendation logic, fallback/compatibility, QA automation) have no phase of their
+own. They extend phases 5 and 6 and land as AC-11.
 
 Related but separate: #56 (merged) removed strength/seed/workflow fields from Rosanne responses
 (`DESIGN.md` gap 12).
@@ -574,17 +636,17 @@ Related but separate: #56 (merged) removed strength/seed/workflow fields from Ro
 
 | # | Topic | Needed from | Blocks | My recommendation |
 |---|---|---|---|---|
-| 1 | **APPROVED visibility.** Do customers also see `APPROVED` (= our `VALIDATED`) capabilities? | Shahida | AC-6 | No. Promoted only, as `DESIGN.md` section 0. If yes, they'd need a "preview" flag and dispatch must still refuse them. |
-| 2 | **Hair list.** <ul><li>Is `HAIR_DOWN` different from `CANONICAL` (canonical is straight, worn down)?</li><li>Are `SLEEK_LOW_BUN` and `LOW_CHIGNON` both needed?</li><li>Does `CANONICAL` keep the customer id `hair_canonical`? It's already promoted; renaming it means a new capability.</li></ul> | Shahida, Aryan | AC-3 | Keep `hair_canonical`. Drop `HAIR_DOWN` if it equals `CANONICAL`. |
-| 3 | **Expressions.** `QUIET_LUXURY` recommends `SOFT_CONFIDENCE`, which isn't in any seed list. Which expressions are seeded? | Shahida | AC-3 | Seed `SOFT_CONFIDENCE` at validation stage. Add others only when a direction needs them. |
-| 4 | **Recommended defaults** of `CANONICAL_CONTROL`, `LUXURY_WAVES`, `RUNWAY_EDITORIAL`, `CLASSIC_EVENING` and `MODERN_MINIMAL` (only `QUIET_LUXURY` is given). | Shahida | AC-3 | `CANONICAL_CONTROL` = `CANONICAL` + `NATURAL` + `NEUTRAL_EDITORIAL`; the others from Shahida. |
-| 5 | **Grooming.** What is "recommended grooming"? It's not one of the six types. Is it `NAILS`, a new `GROOMING` type, or later? | Shahida | AC-2 FK category, AC-6 `grooming_id` | Keep the column and `grooming_id: null` until it's defined. |
-| 6 | **The `EE-F-002_CK0750` adapter.** <ul><li>May an `EVALUATION` adapter be used for admin **validation** generations?</li><li>What must it pass to become `PRODUCTION` (`DESIGN.md` question 11)?</li><li>Which capabilities need `REFERENCE_PLUS_ADAPTER`?</li></ul> | Shahida, Aryan | AC-1, AC-8, Phase 10 if the E2E uses the adapter | EVALUATION adapters only in admin validation runs, never in customer productions. The E2E can run `REFERENCE_ONLY` if the adapter isn't promoted yet. |
-| 7 | **Silent fallback.** When a chosen capability isn't usable at resolve time, or still fails QA at 0.6, may the system swap in `fallback_capability_id` (e.g. `LOW_CHIGNON → CANONICAL`)? | Shahida | AC-5, AC-9 | No silent swap. At resolve time return 503 (nothing charged). At QA time, mark the output for review; `fallback_capability_id` is offered to the customer as a suggestion. |
-| 8 | **Field names.** Shahida's request uses camelCase (`characterId`, `hairStyles`); every route we have is snake_case. | Shahida, Indra (frontend) | AC-6, AC-7 | Use snake_case. The frontend already sends snake_case to dispatch. |
-| 9 | **AI worker endpoint and staging for the E2E.** <ul><li>Where is the worker (ComfyUI / RunPod URL) for staging?</li><li>What's its input contract for reference images, adapter + strength, product image and appearance (section 4.3 gap)?</li><li>Is there a staging environment with its own database, Redis and storage? `COMFYUI_MOCK_MODE` defaults to on.</li></ul> | Indra | AC-5 worker input, AC-10 | A staging deploy of the API + worker with its own Postgres/Redis, never production. |
-| 10 | **Railway / #58.** Merging #58 needs a production backup, P0 (`SELECT version_num FROM alembic_version`) shared, P2/P3/P4 returning 0 rows and P6 returning 0 rows (P1/P5 informational). Every new migration here depends on migrations running on deploy. | Indra | everything after #60 | No change: #58 → #59 → #60, then AC-1. |
-| 11 | **Phases 8 and 9.** The direction I received names phases 1–7 and 10. I assumed 8 = promotion and 9 = the P2 items. | Shahida | planning only | Confirm or correct. |
+| 1 | **⚠ Current generations are not identity-locked.** `run_production` sends the AI worker no reference images, no adapter and no product image (section 4.3). We need: <ul><li>the worker's input contract for reference images, adapter + strength, product image and appearance;</li><li>the staging worker endpoint (ComfyUI / RunPod URL);</li><li>a staging environment with its own Postgres, Redis and storage (`COMFYUI_MOCK_MODE` defaults to on).</li></ul> | **Aryan** (AI worker); Indra for the staging environment | AC-5 worker input, AC-10, and every customer generation's identity | Agree the contract before AC-5 starts. Use a staging deploy of the API + worker, never production. |
+| 2 | **APPROVED visibility.** Do customers also see `APPROVED` (= our `VALIDATED`) capabilities? | Shahida | AC-6 | No. Promoted only, as `DESIGN.md` section 0. If yes, they'd need a "preview" flag and dispatch must still refuse them. |
+| 3 | **Automatic retry at 0.6 after an identity QA failure.** Enable it, and when? <ul><li>Each retry is a full extra generation (GPU time, and a longer wait).</li><li>Is the retry charged to the customer or absorbed?</li><li>Retry once, or more?</li></ul> | Shahida | AC-11 (the policy flag exists from AC-1, default off) | Keep it off until the cost per production is measured on staging, then decide. Admins can re-run at 0.6 by hand meanwhile. |
+| 4 | **Hair list.** <ul><li>Is `HAIR_DOWN` different from `CANONICAL` (canonical is straight, worn down)?</li><li>Are `SLEEK_LOW_BUN` and `LOW_CHIGNON` both needed?</li><li>Does `CANONICAL` keep the customer id `hair_canonical`? It's already promoted; renaming it means a new capability.</li></ul> | Shahida, Aryan | AC-3 | Keep `hair_canonical`. Drop `HAIR_DOWN` if it equals `CANONICAL`. |
+| 5 | **Expressions.** `QUIET_LUXURY` recommends `SOFT_CONFIDENCE`, which isn't in any seed list. Which expressions are seeded? | Shahida | AC-3 | Seed `SOFT_CONFIDENCE` at validation stage. Add others only when a direction needs them. |
+| 6 | **Recommended defaults** of `CANONICAL_CONTROL`, `LUXURY_WAVES`, `RUNWAY_EDITORIAL`, `CLASSIC_EVENING` and `MODERN_MINIMAL` (only `QUIET_LUXURY` is given). | Shahida | AC-3 | `CANONICAL_CONTROL` = `CANONICAL` + `NATURAL` + `NEUTRAL_EDITORIAL`; the others from Shahida. |
+| 7 | **Grooming.** What is "recommended grooming"? It's not one of the six types. Is it `NAILS`, a new `GROOMING` type, or later? | Shahida | AC-2 FK category, AC-6 `grooming_id` | Keep the column and `grooming_id: null` until it's defined. |
+| 8 | **The `EE-F-002_CK0750` adapter.** <ul><li>May an `EVALUATION` adapter be used for admin **validation** generations?</li><li>What must it pass to become `PRODUCTION` (`DESIGN.md` question 11)?</li><li>Which capabilities need `REFERENCE_PLUS_ADAPTER`?</li></ul> | Shahida, Aryan | AC-1, AC-8, Phase 10 if the E2E uses the adapter | EVALUATION adapters only in admin validation runs, never in customer productions. The E2E can run `REFERENCE_ONLY` if the adapter isn't promoted yet. |
+| 9 | **Silent fallback.** When a chosen capability isn't usable at resolve time, or fails identity QA, may the system swap in `fallback_capability_id` (e.g. `LOW_CHIGNON → CANONICAL`)? | Shahida | AC-5, AC-11 | No silent swap. At resolve time return 503 (nothing charged). At QA time, mark the output for review; `fallback_capability_id` is offered to the customer as a suggestion. |
+| 10 | **Field names.** Shahida's request uses camelCase (`characterId`, `hairStyles`); every route we have is snake_case. | Shahida, Indra (frontend) | AC-6, AC-7 | Use snake_case. The frontend already sends snake_case to dispatch. |
+| 11 | **Railway / #58.** Merging #58 needs a production backup, P0 (`SELECT version_num FROM alembic_version`) shared, P2/P3/P4 returning 0 rows and P6 returning 0 rows (P1/P5 informational). Every new migration here depends on migrations running on deploy. | Indra | everything after #60 | No change: #58 → #59 → #60, then AC-1. |
 | 12 | **One lifecycle.** Should promote/retire of a capability record also move the appearance definition to `PRODUCTION` / `ARCHIVED` (section 1.2)? | Shahida | AC-8 | Yes. |
 | 13 | **Reference set roles and seed matching** (from #60) | Aryan, Shahida | promoting `EE-F-002_V1.0_REF_V1`, so AC-5 and Phase 10 | — |
 | 14 | **Four-eyes rule** (validator ≠ promoter, `DESIGN.md` question 7) | Shahida | AC-8 (optional) | Still not enforced. |
@@ -607,12 +669,13 @@ No code until #58, #59 and #60 are merged, in that order. After #60, `alembic he
 | **AC-2** Appearance capability schema | 1, 2 | P0 | **`appearance_capabilities_001`** (down: `runtime_profiles_001`) | `feat/appearance-capabilities`, stacked on `feat/runtime-profiles` | `appearance_options` runtime columns, `beauty_directions`, `capability_compatibility`, `qa_profiles` columns, `capability_validations.qa_notes` / `runtime_profile`, `NAILS` capability type, admin create/patch fields, beauty direction defaults endpoint. Tests: Character rows byte-identical, FK category rules, migration parity/re-run/downgrade, the old migrations' guard pattern. | part of 6 |
 | **AC-3** Phase 3 seed | 3 | P0 | none (admin seed action) | from main after AC-2 | `POST /admin/characters/EE-F-002/appearance/seed`. <ul><li>**Beauty directions:** `CANONICAL_CONTROL`, `QUIET_LUXURY`, `LUXURY_WAVES`, `RUNWAY_EDITORIAL`, `CLASSIC_EVENING`, `MODERN_MINIMAL`.</li><li>**Hair:** `LOW_CHIGNON`, `SOFT_WAVES`, `SLICK_BACK`, `POLISHED_UPDO`, `HAIR_DOWN` at VALIDATION / VALIDATING; `SLEEK_LOW_BUN`, `PONYTAIL`, `WET_LOOK` at IN_DEVELOPMENT / REGISTERED.</li><li>**Makeup:** `POLISHED_NUDE`, `BRONZED_LUXURY`, `EDITORIAL`, `CLASSIC_EVENING`, `MODERN_MINIMAL` at validation stage; `SOFT_GLAM` in development.</li><li>**Defaults:** `QUIET_LUXURY` → `LOW_CHIGNON` + `POLISHED_NUDE` + `SOFT_CONFIDENCE`.</li><li>**Already promoted:** `CANONICAL` and `NATURAL` stay PROMOTED and aren't touched (insert-only).</li></ul> Never promotes; idempotent. Tests: nothing customer-visible changes. | part of 6 |
 | **AC-4** CapabilityResolver | 5 | P0 | none | from main after AC-2 (parallel with AC-3) | `capability_resolver.py` (section 4.2), admin `/resolve` dry run; `customer_options` uses it. Tests: each question × each status, adapter gate, fallback must be production-ready. | — |
-| **AC-5** Runtime resolver strategy | 6 | P0 | none (the plan is JSON on the existing `productions.runtime_profile`) | from main after AC-4 | Section 4.3 steps 2–12 and the admin plan dry run; worker input gains reference set + adapter (contract from blocker 9). Tests: EVALUATION / EXPERIMENTAL never in a plan, strength only from data, no silent fallback, plan never in a customer response, hash failure is a 503. | 5 |
+| **AC-5** Runtime resolver strategy | 6 | P0 | none (the plan is JSON on the existing `productions.runtime_profile`) | from main after AC-4 | Section 4.3 steps 2–12 and the admin plan dry run; worker input gains reference set + adapter + product image (contract from Aryan, blocker 1). Tests: EVALUATION / EXPERIMENTAL never in a plan, strength only from data, no silent fallback, plan never in a customer response, hash failure is a 503. | 5 |
 | **AC-6** Read APIs | 4 | P1 | none | from main after AC-3 | `/appearance`, `/beauty-directions`, `/capabilities` `appearance_types`, admin `/appearance?status=`; `/styling-options` kept. Tests: promoted only, `recommended_defaults` all promoted, `grooming_id` key present, forbidden terms. | 6, 7 |
 | **AC-7** Generation request | 7 | P1 | **`production_selection_001`** (down: `appearance_capabilities_001`) | `feat/generation-request` from main after AC-5 | Section 4.1 fields with old aliases, technical fields refused with 422, `productions.selection`. Tests: full validation matrix, beauty-direction defaults/overrides, idempotency. | 11 (partly) |
 | **AC-8** Promotion record | 8 | P1 | none (columns from AC-2) | from main after AC-5 | Promote requires `qa_notes`, builds and freezes the runtime snapshot, refuses unsatisfiable strategies, syncs the definition status (blocker 12). Tests: snapshot frozen, audit, 409 cases. | 2 (extension) |
-| **AC-9** Recommendation, fallback, compatibility, QA | 9 | P2 | none (tables from AC-2) | from main after AC-8 | Compatibility rules in the resolver and admin API; worker QA retry at the fallback strength; per-capability QA profiles in scoring; fallback suggestions. | — |
-| **AC-10** End to end | 10 | P1 for the run | none | from main after AC-7 + AC-8 | Admin runbook + a test-mode E2E test (mock worker in CI). A staging run with the real worker: Eliska + Quiet Luxury + Low Chignon + Polished Nude + approved standing pose + one test garment + controlled studio. Needs blockers 6 and 9 and the reference set promoted. Never against production. | — |
+| **AC-9** Frontend integration contract | 9 | P1 | none | from main after AC-6 | Section 2.3 as a tested contract: an OpenAPI snapshot test for `/appearance` and `/beauty-directions`; a test that registers → validates → promotes a new hair style and sees it in `/appearance` with no code change; ids returned unchanged by dispatch. Frontend handover (Indra): render from the API only, send ids back unchanged, fall back on 404. | — |
+| **AC-10** End to end | 10 | P1 for the run | none | from main after AC-7 + AC-8 | Admin runbook + a test-mode E2E test (mock worker in CI). A staging run with the real worker: Eliska + Quiet Luxury + Low Chignon + Polished Nude + approved standing pose + one test garment + controlled studio. Needs blockers 1 and 8 and the reference set promoted. Never against production. | — |
+| **AC-11** Recommendation, fallback, compatibility, QA | P2 items (extend 5, 6) | P2 | none (tables from AC-2) | from main after AC-8 and AC-10 | Compatibility rules in the resolver and admin API; the automatic retry at the fallback strength behind `fallback_retry_enabled` (stays off unless blocker 3 decides otherwise); per-capability QA profiles in scoring; fallback suggestions. | — |
 
 Then the rest of `DESIGN.md` section 8, unchanged in substance:
 - poses by group + `dress` (8);
