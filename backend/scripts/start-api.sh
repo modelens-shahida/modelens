@@ -12,7 +12,33 @@
 #   waits and then finds the database already at head.
 # * Extra arguments go to uvicorn (docker-compose passes --reload in dev).
 #   --reload is refused when APP_ENV is production.
+# * This is the image's default command, so a worker service deployed from the
+#   same image with no start command of its own would land here and run a
+#   second API instead of Celery. The script refuses (exit 3, before migrating)
+#   when the container says it is not the API:
+#     - SERVICE_ROLE is set to anything other than "api" (explicit, wins), or
+#     - SERVICE_ROLE is unset and RAILWAY_SERVICE_NAME (set by Railway on every
+#       deployment) contains "worker", e.g. modelens-worker.
+#   Workers start with scripts/start-worker.sh.
 set -eu
+
+ROLE="${SERVICE_ROLE:-}"
+if [ -n "$ROLE" ]; then
+    if [ "$ROLE" != "api" ]; then
+        echo "[start-api] SERVICE_ROLE=$ROLE, but this is the API start script; refusing to start." >&2
+        echo "[start-api] Workers start with: sh scripts/start-worker.sh (set it as the service's start command)." >&2
+        exit 3
+    fi
+else
+    case "$(printf '%s' "${RAILWAY_SERVICE_NAME:-}" | tr '[:upper:]' '[:lower:]')" in
+        *worker*)
+            echo "[start-api] RAILWAY_SERVICE_NAME=$RAILWAY_SERVICE_NAME looks like a worker service, but it is running the API start script (the image's default command); refusing to start." >&2
+            echo "[start-api] Set the service's Start Command to: sh scripts/start-worker.sh" >&2
+            echo "[start-api] If this service really is the API, set SERVICE_ROLE=api." >&2
+            exit 3
+            ;;
+    esac
+fi
 
 PORT="${PORT:-8000}"
 

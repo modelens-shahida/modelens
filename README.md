@@ -196,6 +196,15 @@ docker compose exec api python seed_workflow_templates.py
 ### 4. If local migrations fail
 The API container runs `backend/scripts/start-api.sh` (docker-compose, and the image's default command), which runs `alembic upgrade head` before starting the API on `${PORT:-8000}`. If the upgrade fails, the API is not started. The script prints the revision your database has recorded and the repository head, then exits. Two containers starting at once are safe: the upgrade holds a Postgres advisory lock, so the second waits and then finds nothing to do.
 
+**API and worker share one image.** Its default command is the API script, so every other service must set its own start command:
+
+| Service | Start command | Runs migrations |
+|---|---|---|
+| API (`modelens-api`) | none (image default) or `sh scripts/start-api.sh` | yes |
+| Celery worker (`modelens-worker`) | `sh scripts/start-worker.sh` | no |
+
+`start-api.sh` refuses to start (exit 3, before migrating) when the container says it is not the API: `SERVICE_ROLE` set to anything other than `api`, or, with `SERVICE_ROLE` unset, a `RAILWAY_SERVICE_NAME` containing `worker`. Railway sets `RAILWAY_SERVICE_NAME` to the service's name on every deployment. A worker service with an empty start command therefore fails its deploy with a clear message instead of quietly running a second API that processes no jobs. Set `SERVICE_ROLE=api` or `SERVICE_ROLE=worker` to make a service's role explicit; it overrides the name. `start-worker.sh` refuses `SERVICE_ROLE` values other than `worker`.
+
 1. **Rebuild the image first.** The API image contains a copy of the code; it does not mount it. A stale image still has old migrations:
    ```bash
    docker compose build api
