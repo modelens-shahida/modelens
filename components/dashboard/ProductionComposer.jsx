@@ -180,12 +180,13 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
 
   const handleSelectBeautyDirection = (dir) => {
     setSelectedBeautyDirection(dir);
-    if (dir?.defaults) {
-      const h = hairOptions.find((item) => item.id === dir.defaults.hair_id || item.id === dir.defaults.hair_id?.replace(/^hair_/, ""));
+    const defs = dir?.recommended_defaults || dir?.defaults;
+    if (defs) {
+      const h = hairOptions.find((item) => item.id === defs.hair_id || item.id === defs.hair_id?.replace(/^hair_/, ""));
       if (h) setSelectedHair(h);
-      const m = makeupOptions.find((item) => item.id === dir.defaults.makeup_id || item.id === dir.defaults.makeup_id?.replace(/^makeup_/, ""));
+      const m = makeupOptions.find((item) => item.id === defs.makeup_id || item.id === defs.makeup_id?.replace(/^makeup_/, ""));
       if (m) setSelectedMakeup(m);
-      const e = expressionOptions.find((item) => item.id === dir.defaults.expression_id || item.id === dir.defaults.expression_id?.replace(/^expr_/, ""));
+      const e = expressionOptions.find((item) => item.id === defs.expression_id || item.id === defs.expression_id?.replace(/^expr_/, ""));
       if (e) setSelectedExpression(e);
     }
   };
