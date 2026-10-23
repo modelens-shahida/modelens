@@ -46,16 +46,52 @@ celery_app.conf.update(
     task_time_limit=300,
     task_soft_time_limit=270,
     broker_connection_retry_on_startup=True,
+    # A worker started without -Q (docker-compose, Kubernetes, scripts/start-worker.sh) consumes
+    # exactly these queues. Every task is routed below, and anything unrouted falls back to
+    # task_default_queue, so nothing lands on Celery's built-in "celery" queue that no worker reads.
+    # tests/test_celery_routing.py checks every registered task against this list.
     task_queues=[
         Queue("high_priority"),
         Queue("default"),
         Queue("processing"),
+        Queue("bulk_batch"),
     ],
+    task_default_queue="default",
     task_routes={
+        # Generation and other long-running jobs.
         "app.worker.process_generation_job": {"queue": "processing"},
         "app.worker.process_workflow_job": {"queue": "processing"},
+        "app.worker.process_production_job": {"queue": "processing"},
+        "app.worker.process_training_job": {"queue": "processing"},
+        "app.worker.process_ghost_job": {"queue": "processing"},
+        "app.worker.process_sketch_job": {"queue": "processing"},
+        "app.worker.process_catalog_job": {"queue": "processing"},
+        "app.worker.process_catalog_item": {"queue": "processing"},
+        "app.worker.process_custom_angle_shot": {"queue": "processing"},
+        "app.worker.run_touchup_job": {"queue": "processing"},
+        "app.worker.process_video_generation": {"queue": "processing"},
+        "app.worker.process_video_render": {"queue": "processing"},
+        # Short, user-facing work.
         "app.worker.dispatch_webhook": {"queue": "high_priority"},
+        "app.worker.send_low_credit_warning_email": {"queue": "high_priority"},
+        "app.worker.send_invitation_email": {"queue": "high_priority"},
+        "app.worker.on_batch_complete": {"queue": "high_priority"},
+        # Previously set on the task decorators; unchanged.
+        "app.worker.run_character_training_job": {"queue": "high_priority"},
+        "app.worker.run_video_generation_job": {"queue": "high_priority"},
+        "app.worker.run_fluid_generation_job": {"queue": "high_priority"},
+        "app.worker.run_volumetric_ghost_job": {"queue": "high_priority"},
+        "app.worker.run_sketch_generation_job": {"queue": "high_priority"},
+        # Large batches (batch_concurrency.QUEUE_BULK_BATCH); a dedicated worker can take this queue later.
+        "app.worker.process_catalog_item_single": {"queue": "bulk_batch"},
+        "app.worker.run_campaign_generation_job": {"queue": "bulk_batch"},
+        # Uploads, Celery Beat maintenance and the smoke-test task.
         "app.worker.process_asset_upload": {"queue": "default"},
+        "app.worker.purge_deleted_assets": {"queue": "default"},
+        "app.worker.weekly_usage_report": {"queue": "default"},
+        "app.worker.prune_old_webhook_delivery_logs": {"queue": "default"},
+        "app.worker.reset_monthly_brand_credits": {"queue": "default"},
+        "app.worker.test_task": {"queue": "default"},
     },
 )
 
@@ -2943,7 +2979,6 @@ def _build_correction_prompt(defect_code: str) -> str:
     name="app.worker.process_catalog_item_single",
     bind=True,
     max_retries=2,
-    queue="bulk_batch",
 )
 def process_catalog_item_single(self, item_id: int, job_id: int):
     """Process a single catalog item with priority queue support."""
@@ -3001,7 +3036,6 @@ async def _process_single_catalog_item_async(task_self, item_id: int, job_id: in
 @celery_app.task(
     name="app.worker.on_batch_complete",
     bind=True,
-    queue="high_priority",
 )
 def on_batch_complete(self, results, job_id: int, brand_id: int, start_time_iso: str):
     """Callback task triggered when all batch items complete."""
@@ -3054,7 +3088,6 @@ async def _on_batch_complete_async(job_id: int, brand_id: int, start_time_iso: s
     name="app.worker.run_character_training_job",
     bind=True,
     max_retries=1,
-    queue="high_priority",
 )
 def run_character_training_job(
     self,
@@ -3194,7 +3227,6 @@ async def _run_character_training_async(
     name="app.worker.run_video_generation_job",
     bind=True,
     max_retries=2,
-    queue="high_priority",
 )
 def run_video_generation_job(
     self,
@@ -3335,7 +3367,6 @@ async def _run_video_generation_async(
     name="app.worker.run_fluid_generation_job",
     bind=True,
     max_retries=2,
-    queue="high_priority",
 )
 def run_fluid_generation_job(
     self,
@@ -3469,7 +3500,6 @@ async def _run_fluid_generation_async(
     name="app.worker.run_campaign_generation_job",
     bind=True,
     max_retries=2,
-    queue="bulk_batch",
 )
 def run_campaign_generation_job(
     self,
@@ -3627,7 +3657,6 @@ async def _run_campaign_generation_async(
     name="app.worker.run_volumetric_ghost_job",
     bind=True,
     max_retries=2,
-    queue="high_priority",
 )
 def run_volumetric_ghost_job(
     self,
@@ -3763,7 +3792,6 @@ async def _run_volumetric_ghost_async(
     name="app.worker.run_sketch_generation_job",
     bind=True,
     max_retries=2,
-    queue="high_priority",
 )
 def run_sketch_generation_job(
     self,
