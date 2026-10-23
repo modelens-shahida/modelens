@@ -3,6 +3,12 @@
 Status: design, for review by Shahida and Indra. No code, migrations or settings change with this
 document; the implementation lands as the small PRs in section 8.
 
+Update 2026-10-23: PRs 1–4 of section 8 are built (#55, #57 merged; #59, #60 in review), plus #56
+(Rosanne) and #58 (migrations on deploy). Section 10 records where they deviate from this design.
+Shahida's Appearance / Styling Capability direction (10 phases) changes parts of sections 2, 3, 5, 6
+and 8; section 9 summarises the changes and `APPEARANCE_STATUS.md` holds the schema, routes,
+payloads, resolver flow, phase status, blockers and the revised PR order.
+
 ## 0. Principles
 
 - **One Eliska.** `EE-F-002`, Eliska Novak, Core **V1.0**, **LOCKED**, 178 cm, High-Fashion / Luxury
@@ -213,7 +219,9 @@ The existing per-table lifecycles stay as the definition store (what a pose/pres
 `capability_validations` records whether it is validated and promoted *for this character*. PR 3
 backfills a `PROMOTED` row for every option already in `PRODUCTION` today so nothing disappears.
 
-**`beauty_directions`** — versioned bundles.
+**`beauty_directions`** — versioned bundles. *Superseded (section 9): a beauty direction stays an
+`appearance_options` row of category `BEAUTY_DIRECTION`; `beauty_directions` becomes a 1:1 extension
+holding only the recommended hair/makeup/expression/grooming option ids.*
 
 | column | type | notes |
 |---|---|---|
@@ -250,12 +258,12 @@ Per-character availability is a `capability_validations` row (type `BEAUTY_DIREC
 | table | columns | why |
 |---|---|---|
 | `characters_v2` | `positioning varchar(80)` (High-Fashion / Luxury Editorial), `entitled_brand_ids jsonb null` (see open questions) | profile, entitlement |
-| `character_runtime_v2` | `default_strategy varchar(30) default 'REFERENCE_ONLY'`, `allowed_strategies jsonb`, `reference_set_id varchar(60)` | strategy |
-| `model_artifacts` | status vocabulary gains `EVALUATION` (no schema change; service + CHECK in code), `strategy_eligible bool default false` | adapter gate |
-| `appearance_options` | `customer_id varchar(80)`, `group varchar(30)`, `recommended bool default false` | contract shape |
-| `pose_definitions` | `customer_id varchar(80)` (`pose_<pose_id>`), `attitude varchar(30)` | ids, beauty direction "pose attitude" |
+| `character_runtime_v2` | ~~`default_strategy varchar(30) default 'REFERENCE_ONLY'`, `allowed_strategies jsonb`, `reference_set_id varchar(60)`~~ *superseded: a new versioned `runtime_profiles` table (section 9)* | strategy |
+| `model_artifacts` | status vocabulary gains `EVALUATION` (no schema change; service + CHECK in code), ~~`strategy_eligible bool default false`~~ *dropped (section 9)* | adapter gate |
+| `appearance_options` | ~~`customer_id varchar(80)`, `group varchar(30)`, `recommended bool default false`~~ *not added: these live on `capability_validations` (#59, section 10)* | contract shape |
+| `pose_definitions` | ~~`customer_id varchar(80)` (`pose_<pose_id>`)~~ *(on `capability_validations`, #59)*, `attitude varchar(30)` | ids, beauty direction "pose attitude" |
 | `pose_product_types` | `group varchar(30)` | Recommended / Catalog / Editorial / Motion / Seated / Product-Specific |
-| `presets` | `customer_id varchar(80)`, `group varchar(30)`; `preset_type` gains `CAMERA_SHOT, CAMERA_HEIGHT, CAMERA_ANGLE, LENS` | camera + scene groups |
+| `presets` | ~~`customer_id varchar(80)`, `group varchar(30)`~~ *(on `capability_validations`, #59)*; `preset_type` gains `CAMERA_SHOT, CAMERA_HEIGHT, CAMERA_ANGLE, LENS` | camera + scene groups |
 | `capability_product_types` | `aliases jsonb` (e.g. `dress → garment`) | `product_type=dress` |
 | `productions` | `strategy varchar(30)`, `selection jsonb` (resolved customer ids), `stage varchar(20)`, `parent_production_id varchar(40) null`, `variation_of_output_id varchar(40) null`, `kept jsonb` | progress, variations |
 
@@ -703,6 +711,7 @@ Beauty Direction definitions and reference sets:
 - Adapters: existing `/api/v1/admin/training/adapters`; new `POST /{adapter_id}/status` with `EVALUATION` (and promotion only through `promote_run`).
 
 Every admin write is audit-logged (`app/services/audit_service.py`) with actor and before/after.
+*As built (#57, #60): `app/services/audit.write_audit_log`, in the same transaction as the change.*
 
 ## 6. EE-F-002 seed record
 
@@ -737,9 +746,21 @@ The seed is idempotent and never changes a locked row (as `seed_ee_f_002_v1` and
 `seed_ee_f_002_defaults` today). The adapter id above is a placeholder until the real artifact path
 and checksum are registered.
 
+*Changed since:*
+- The reference set is built and **LOCKED** by the admin seed action and never auto-promoted to
+  PRODUCTION (#60).
+- The adapter is `EE-F-002_CK0750`. When used, it runs at strength 0.4 with a 0.6 fallback, taken
+  from the runtime profile and capability records (section 9).
+- The beauty directions are `CANONICAL_CONTROL`, `QUIET_LUXURY`, `LUXURY_WAVES`,
+  `RUNWAY_EDITORIAL`, `CLASSIC_EVENING` and `MODERN_MINIMAL` (section 9).
+- The canonical defaults have the customer ids `hair_canonical`, `makeup_natural` and
+  `expr_neutral_editorial` (#59).
+
 ## 7. Open questions
 
-1. **Beauty Direction list mismatch.** Agreed set: Quiet Luxury, European Editorial, Soft Luxury,
+1. **Beauty Direction list mismatch.** *Resolved 2026-10-23 by Shahida's direction: `CANONICAL_CONTROL`,
+   `QUIET_LUXURY`, `LUXURY_WAVES`, `RUNWAY_EDITORIAL`, `CLASSIC_EVENING`, `MODERN_MINIMAL` (section 9).*
+   Agreed set: Quiet Luxury, European Editorial, Soft Luxury,
    Classic Evening, Modern Minimal, Resort Luxury. Shahida's frontend mail lists Clean, Polished,
    Bronzed, Editorial, After Dark, Resort. Which list ships, and are the frontend names labels for
    the same packs or different packs?
@@ -772,6 +793,18 @@ and checksum are registered.
 ## 8. Implementation PR order
 
 Each PR is small, additive, independently testable, and keeps the existing endpoints working.
+
+*Status 2026-10-23:*
+- 1 = #55 (merged)
+- 2 = #57 (merged)
+- 3 = #59 (in review)
+- 4 = #60 (in review, stacked on #59)
+
+From 5 on, the order is replaced by `APPEARANCE_STATUS.md` section 7 (AC-1 … AC-10):
+- 5 and 6 become AC-1 to AC-5;
+- 7 becomes AC-6 (`/appearance`);
+- 11 is partly AC-7;
+- 8–10 and 12–14 follow AC-10.
 
 1. **Capability validation table + backfill** — `capability_validations` (add-if-missing
    migration), service, ORM rules; backfill a PROMOTED row for every option already in PRODUCTION.
@@ -810,3 +843,70 @@ Each PR is small, additive, independently testable, and keeps the existing endpo
     unchanged elements, brand scoping on campaign, role matrix.
 14. **Legacy cleanup** — freeze/retire v1 character registry and brand-character routes after the
     frontend moves (per open question 10).
+
+## 9. Appearance / Styling Capabilities (Shahida, 2026-10-23)
+
+Full detail is in `APPEARANCE_STATUS.md`. What changes in this document:
+
+- **Three layers:** CHARACTER (locked) / APPEARANCE (styling) / PRODUCTION (photography). Appearance
+  never creates a Character version and never changes EE-F-002 Core V1.0, the golden identity, the
+  178 cm body profile or the reference set.
+- **No duplicate registries.**
+  - Appearance capabilities stay in `appearance_options` (definition, extended with runtime
+    strategy, adapter strength, fallback strength, fallback capability, QA profile and thumbnail
+    asset) plus `capability_validations` (per-character promotion, extended with `qa_notes` and the
+    approved runtime snapshot).
+  - Beauty directions stay `appearance_options` rows with a 1:1 `beauty_directions` extension for
+    the recommended options. This replaces the global `beauty_directions` table in section 3.1.
+  - QA profiles extend the existing `qa_profiles`.
+  - New tables only where nothing fits: `runtime_profiles` and `capability_compatibility`.
+- **Runtime profile.** A versioned `runtime_profiles` table, frozen once PRODUCTION, replaces the
+  strategy columns planned on `character_runtime_v2` (section 3.2).
+  - The legacy `character_runtime_profiles` / `character_runtime_v2`, with their 0.78
+    `default_strength`, are not read by the resolver.
+  - `REFERENCE_ONLY` is the default. `REFERENCE_PLUS_ADAPTER` uses `EE-F-002_CK0750` at 0.4, with
+    0.6 as the stronger fallback; both values are data on the runtime profile or capability record,
+    never code constants.
+  - Customer productions only ever use a `PRODUCTION` adapter. `strategy_eligible` is dropped.
+- **Lifecycle mapping.** Shahida's IN_DEVELOPMENT → VALIDATION → APPROVED → PRODUCTION → RETIRED
+  is our REGISTERED → VALIDATING → VALIDATED → PROMOTED → RETIRED (definition statuses
+  IN_DEVELOPMENT / VALIDATION / APPROVED / PRODUCTION / ARCHIVED). Promotion records `qa_notes` and
+  the approved runtime profile.
+- **Customer routes.** `GET /characters/{id}/appearance` (`hair_styles`, `makeup_styles`,
+  `expressions`, `beauty_directions`) and `GET /characters/{id}/beauty-directions`, with
+  `recommended_defaults: {hair_id, makeup_id, expression_id, grooming_id}`. These replace the
+  planned `/style-options` (section 4.2); `/capabilities` and `/poses` stay.
+- **Generation request.** It gains `character_version`, `product_id`,
+  `appearance.{beauty_direction, hair_style, makeup_style, expression}` and
+  `camera/scene/lighting_profile_id`. It refuses `lora_strength`, `checkpoint`, `workflow_node` and
+  `reference_weight` with a 422.
+- **Beauty direction list.** `CANONICAL_CONTROL`, `QUIET_LUXURY`, `LUXURY_WAVES`,
+  `RUNWAY_EDITORIAL`, `CLASSIC_EVENING`, `MODERN_MINIMAL` (open question 1 resolved). The six in
+  sections 4.3 and 6 are superseded.
+
+## 10. Deviations of PRs #55–#60 from this design
+
+| PR | Section | Design said | Built | Why |
+|---|---|---|---|---|
+| #55 capability validations | 3.1 | unique `customer_id` among non-retired rows | unique `customer_id` among **PROMOTED** rows, plus one PROMOTED version per capability (partial unique indexes) | a REGISTERED v2 shares the customer id of the PROMOTED v1 it will replace |
+| #55 | 3.1 | lifecycle REGISTERED → VALIDATING → VALIDATED → PROMOTED → RETIRED (+ REJECTED) | plus REGISTERED → VALIDATED (record a validation without "start"), VALIDATED → VALIDATING, REJECTED → VALIDATING | rework without a new version |
+| #55 | 3.1 | — | identity fields (character, version, type, key, capability version, customer id) are immutable; records are never deleted; bulk UPDATE/DELETE refused | same guard pattern as `character_registry_versions` |
+| #55 | 3.1, Q12 | backfill everything in PRODUCTION | `NAILS` options are not backfilled (no capability type) | open question 12 |
+| #55 | Q7 | four-eyes "if decided" | validator and promoter recorded separately, not enforced | open question 7 still open |
+| #55 | 3.1 | backfill in a migration | `capability_validations_001` holds a frozen copy of the backfill rules; insert-only | migrations must not import app code |
+| #56 Rosanne | 1.2 gap 12 | not in the PR order | strength / seed / workflow fields removed from `/api/v1/rosanne/*` responses | customer leakage |
+| #57 admin API | 5 | register / validation / promote / retire / list | plus `POST …/validation/start`; `character_version` defaults to the current locked version; `is_default` / `recommended` set at promote | explicit VALIDATING step |
+| #57 | 5 | promote "demotes" the previous version | the previous PROMOTED version is **RETIRED** (`replaced_version` in the response) | one PROMOTED version, no extra state |
+| #57 | 5 | audit via `app/services/audit_service.py` | `app/services/audit.write_audit_log`, same transaction | `audit_service.log` doesn't work with the async session |
+| #58 migrations on deploy | — | not in this design | the image runs `alembic upgrade head` before uvicorn (advisory lock); older migrations 36–42 guarded add-if-missing | production schema was behind the models |
+| #59 option shape | 3.2, 8 (PR 3) | `customer_id` / `group` / `recommended` columns on `appearance_options`, `pose_definitions`, `presets`, with backfill | **no columns added**; these come from the PROMOTED `capability_validations` record; `capability_validations_002` re-runs the frozen backfill (insert-only) | one registry for per-character data; no definition-table migration |
+| #59 | 4 | ids like `hair_canonical_straight`, `makeup_natural_minimal`, `scene_studio_white`, `campaign_ecommerce` | ids from existing keys: `hair_canonical`, `makeup_natural`, `expr_neutral_editorial`, `pose_walking`, `scene_env-stu-0001`, `lighting_<key>`, `campaign_ecommerce`; product types keep `garment`, `shoes`, `bags` … (no `dress` alias yet) | deterministic from existing data; renames are new capabilities |
+| #59 | 4.2–4.6 | new `/style-options`, grouped `/poses`, `/scene-options`, `/campaign-options` | the existing routes (`/styling-options`, `/capabilities`, `/poses`, `/presets/*`) return the option shape; poses stay flat | smallest change; new routes come later (section 9) |
+| #59 | 4 | `is_default` per character on the record | `is_default` from the definition tables (record value stored for later) | existing admin "set default" endpoints keep working |
+| #59 | 2 | — | an option live in the definition table but not PROMOTED is **not offered** and dispatch refuses it (customer-safe 422); dispatch accepts the namespaced or the old id | fail closed |
+| #60 reference sets | 6 | seed the set as PRODUCTION | the admin seed **locks** `EE-F-002_V1.0_REF_V1` and never promotes; promotion is a separate admin step; no migration writes it | Aryan/Shahida check the set first |
+| #60 | 3.1 | `locked_*`, `content_hash` | plus `created_by`, `promoted_*`, `retired_*`, `retire_reason`; items carry `asset_id` and an FK to `canonical_assets` with `RESTRICT`; one item per asset per set | audit trail; no orphaned items |
+| #60 | 1.2 gap 3 | canonical assets' role / QA / status mutable after lock | only the **file identity** (`asset_id`, `character_id`, `version`, `asset_role`, `storage_path`, `content_hash_sha256`) is frozen while the asset is in a non-DRAFT set; QA fields stay editable | QA can still be recorded |
+| #60 | 5 | create / lock / promote | plus retire, `verify` (re-reads files from storage) and the seed endpoint; hashes re-checked on every resolve | tamper detection |
+| #60 | 6 | roles face front, 3/4, profile, full body front, 3/4 | `face_front`, `face_34`, `profile`, `body_full`, `body_34`; `face_front` + `body_full` required to lock | **to be confirmed by Aryan/Shahida** |
+
