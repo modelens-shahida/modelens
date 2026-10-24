@@ -1,12 +1,38 @@
 # AI worker input contract (proposal)
 
-Status: **proposal for Aryan to review** (2026-10-23). Docs only: no code, migrations or settings
-change with this document, and it contains no secrets. Every point still to be agreed is marked
-**[to confirm with Aryan]**.
+Status: **proposal, updated with Aryan's confirmed facts** (2026-10-24; first draft 2026-10-23).
+Docs only: no code, migrations or settings change with this document, and it contains no secrets.
+Section 0 lists what Aryan has confirmed. Every point still to be agreed is marked
+**[to confirm with Aryan]** and collected in section 3, "Open items".
 
 This is blocker 1 in `APPEARANCE_STATUS.md` section 6, "current generations are not
 identity-locked". It is the input contract AC-5 (strategy in the resolver) needs before it can
 start. File references are to `backend/` on `main`.
+
+## 0. Confirmed by Aryan (2026-10-24)
+
+1. **Reference arrangement (tested).** Three images, in this order:
+   1. **Image 1, `body_full_front`:** the corrected, approved full-body front of the locked
+      character. It is the reference for body proportions and for pose/framing.
+   2. **Image 2, `face_golden_crop`:** the golden face crop. It is the facial reference.
+   3. **Image 3, `product`:** the product image. It is the garment reference.
+
+   The order is part of the contract (section 2.2).
+2. **Strategy.**
+   - **Reference-only is the default**, with no active adapter.
+   - **The 750-step adapter (`EE-F-002_CK0750`) at 0.4** is optional assistance. It is used only
+     when a tested condition benefits from it.
+   - **0.6** is a stronger fallback / evaluation setting, and it comes with watch items.
+   - **Neither is ever applied automatically to every job.** An adapter is used only when the plan
+     says so, from data (runtime profile or promoted capability). The automatic retry at 0.6 stays
+     off (`APPEARANCE_STATUS.md` blocker 3).
+3. **Runtime: ComfyUI.** Aryan will share the workflow JSON. The node mapping in section 2.2 waits
+   for it.
+4. **Still open:**
+   - There is no staging worker endpoint yet.
+   - Automated QA scores are not validated yet.
+
+   Both stay open until deployment and the result / QA format are agreed (section 3).
 
 ## 1. What is sent to the worker today
 
@@ -105,6 +131,8 @@ These affect the contract, and AC-5 should fix them:
    - A worker started as in `docker-compose.yml:69` and `kubernetes/deployments.yaml:86` (no `-Q`)
      consumes only `default`, `high_priority` and `processing`. I checked both in the API image:
      the route resolves to `celery`, and a fresh process's queues don't include it.
+   - **Fix in review: #63** routes every task to a consumed queue (`process_production_job` →
+     `processing`) and sets `task_default_queue = "default"`.
    - The Railway worker command isn't in the repo **[to confirm with Indra]**.
 5. **The time limit is shorter than the work.**
    - Celery's `task_time_limit` is 300 s (`app/worker.py:46`) with `acks_late`, but one image may
@@ -131,14 +159,16 @@ API (Celery task, short)           AI worker (GPU)                     API (call
   sweeper: past deadline and no callback → GET /v1/jobs/{id}; still nothing → fail + refund once
 ```
 
-- **Transport: HTTPS JSON**, contract version `2026-11.v1`. **[to confirm with Aryan]** The worker
-  might instead be:
-  - ComfyUI with our own wrapper;
-  - a RunPod serverless endpoint (`/run` + `/status`);
-  - a custom service;
-  - or a Celery consumer on a dedicated queue.
+- **Runtime: ComfyUI (confirmed).** The payload below is what the API sends. A thin wrapper next to
+  ComfyUI maps it onto Aryan's workflow JSON and submits it to ComfyUI's own `/prompt` API. The API
+  stops building or sending a graph.
+- **Transport: HTTPS JSON**, contract version `2026-11.v1`. These points are
+  **[to confirm with Aryan]**:
+  - who runs the wrapper;
+  - where it is hosted (a GPU host, or a RunPod serverless endpoint with `/run` + `/status`);
+  - the staging endpoint, which doesn't exist yet.
 
-  The payload below fits any of them; only the envelope changes.
+  The payload fits any of these hosts; only the envelope changes.
 - **Worker API (proposed):**
   - `POST /v1/jobs` (submit);
   - `GET /v1/jobs/{job_id}` (status, for reconciliation);
@@ -189,18 +219,14 @@ No workflow route is seeded today.
 
   "references": {
     "reference_set_id": "EE-F-002_V1.0_REF_V1",
-    "content_hash": "<sha256 of the ordered (asset_id, sha256) pairs>",
+    "content_hash": "<sha256 of the ordered (asset_id, sha256) pairs of the reference set items>",
     "images": [
-      { "role": "face_front", "asset_id": "EE-F-002_V1.0_CAN_001", "url": "<presigned GET>",
-        "sha256": "<64 hex>", "mime": "image/png", "width": 2048, "height": 2048 },
-      { "role": "face_34", "asset_id": "EE-F-002_V1.0_CAN_002", "url": "<presigned GET>", "sha256": "<64 hex>",
-        "mime": "image/png", "width": 2048, "height": 2048 },
-      { "role": "profile", "asset_id": "EE-F-002_V1.0_CAN_003", "url": "<presigned GET>", "sha256": "<64 hex>",
-        "mime": "image/png", "width": 2048, "height": 2048 },
-      { "role": "body_full", "asset_id": "EE-F-002_V1.0_CAN_010", "url": "<presigned GET>", "sha256": "<64 hex>",
-        "mime": "image/png", "width": 1536, "height": 2048 },
-      { "role": "body_34", "asset_id": "EE-F-002_V1.0_CAN_011", "url": "<presigned GET>", "sha256": "<64 hex>",
-        "mime": "image/png", "width": 1536, "height": 2048 }
+      { "order": 1, "role": "body_full_front", "source": "reference_set", "asset_id": "EE-F-002_V1.0_CAN_010",
+        "url": "<presigned GET>", "sha256": "<64 hex>", "mime": "image/png", "width": 1536, "height": 2048 },
+      { "order": 2, "role": "face_golden_crop", "source": "reference_set", "asset_id": "EE-F-002_V1.0_CAN_001",
+        "url": "<presigned GET>", "sha256": "<64 hex>", "mime": "image/png", "width": 1024, "height": 1024 },
+      { "order": 3, "role": "product", "source": "product", "asset_id": null,
+        "url": "<presigned GET>", "sha256": "<64 hex>", "mime": "image/jpeg" }
     ]
   },
 
@@ -208,8 +234,7 @@ No workflow route is seeded today.
 
   "product": {
     "product_type": "garment",
-    "image": { "url": "<presigned GET>", "sha256": "<64 hex>", "mime": "image/jpeg" },
-    "required_reference_roles": ["body_full"]
+    "reference_role": "product"
   },
 
   "appearance": {
@@ -261,7 +286,35 @@ No workflow route is seeded today.
 }
 ```
 
-With `REFERENCE_PLUS_ADAPTER`, `adapter` is set:
+**Reference order (confirmed by Aryan).** `references.images` always has exactly these three
+entries, in this order. The worker feeds them to the workflow in `order`, and the API never reorders
+or adds images:
+
+| `order` | `role` | `source` | What it is | Used for |
+|---|---|---|---|---|
+| 1 | `body_full_front` | `reference_set` | the corrected, approved full-body front of the locked character | body proportions, pose and framing |
+| 2 | `face_golden_crop` | `reference_set` | the golden face crop | face identity |
+| 3 | `product` | `product` | the brand's product image for this production (`productions.product_asset_id`) | garment |
+
+- **Images 1 and 2** are the items of the PRODUCTION reference set, and `content_hash` covers only
+  those two.
+- **Image 3** is per production, so it is not part of the reference set or its hash. Its sha256 is
+  computed by the API when the job is built.
+- A job that can't fill all three roles is refused by the API before anything is charged (503 for
+  the reference set, 422 for a missing product). It is never sent with fewer images.
+
+**Default: no adapter (confirmed by Aryan).** `adapter` is `null` and the strategy is
+`REFERENCE_ONLY` unless the plan says otherwise. The plan says otherwise only when one of these
+selects `REFERENCE_PLUS_ADAPTER`:
+- the PRODUCTION runtime profile;
+- or a promoted capability whose tested condition benefits from the adapter.
+
+That decision is data, never a worker default, and the adapter is never added to every job.
+
+With `REFERENCE_PLUS_ADAPTER`, `adapter` is set. `strength` is 0.4, the optional assistance
+setting. `fallback_strength` is 0.6, the stronger fallback / evaluation setting with watch items.
+0.6 is used only for an admin re-run or evaluation, or by the retry policy once it is enabled. It
+is off today, so it is never used automatically.
 
 ```json
 "adapter": {
@@ -283,18 +336,18 @@ Field rules:
 | `deadline_at` | submit time + job timeout (setting) | the worker stops and reports `TIMEOUT` after it | value **[to confirm with Aryan]** |
 | `character.*` | current LOCKED `character_registry_versions` row | informational for the worker; identity comes from `references` | |
 | `runtime.strategy` | resolver step 8 | `REFERENCE_ONLY` or `REFERENCE_PLUS_ADAPTER` | |
-| `runtime.workflow` | the capability pack's `workflow_route` / `workflow_version` | the worker maps the route to its own graph; **we stop sending a graph** | route names **[to confirm with Aryan]** |
-| `references.images[]` | the PRODUCTION reference set (#60): role, `asset_id`, `content_hash_sha256` | the worker must check each file's sha256 before use, and fail with `REFERENCE_HASH_MISMATCH` otherwise; roles as in #60 | how many references and which roles each workflow uses, size limits, whether face crops are wanted **[to confirm with Aryan]** |
-| `adapter` | runtime profile / promoted capability snapshot; `PRODUCTION` only | `null` for `REFERENCE_ONLY`; strengths come only from data (never a worker default) | whether the worker loads adapters from its own store by id + sha256 or downloads them via presigned URL; how "strength" maps to the worker's LoRA / IP-Adapter weights; whether one number or per-block weights **[to confirm with Aryan]** |
-| `product.image` | the brand asset of the dispatch (`productions.product_asset_id`) | presigned GET | whether the worker needs a mask or a flat-lay vs on-model image; max size **[to confirm with Aryan]** |
+| `runtime.workflow` | the capability pack's `workflow_route` / `workflow_version` | the ComfyUI wrapper maps the route to Aryan's workflow JSON (confirmed: ComfyUI); **we stop sending a graph** | route names, and which nodes take Images 1–3, the adapter and the seed: **open until Aryan shares the workflow JSON** |
+| `references.images[]` | Images 1–2: the PRODUCTION reference set (#60, roles as proposed in section 2.7). Image 3: the dispatch's product asset | **confirmed:** exactly `body_full_front`, `face_golden_crop`, `product`, in that order. The worker checks each file's sha256 before use and fails with `REFERENCE_HASH_MISMATCH` (or `PRODUCT_FETCH_FAILED` for Image 3) otherwise | size / format limits per image, and the crop spec of `face_golden_crop` (size, margin, background) **[to confirm with Aryan]** |
+| `adapter` | runtime profile / promoted capability snapshot; `PRODUCTION` only | **confirmed:** `null` by default (reference-only). 0.4 only when a tested condition benefits; 0.6 is fallback / evaluation only; never automatic on every job. Strengths come only from data, never a worker default | which tested conditions benefit, and the 0.6 watch items; whether the worker loads adapters from its own store by id + sha256 or downloads them; which ComfyUI node and input(s) "strength" sets (e.g. LoRA model / clip strength) **[to confirm with Aryan]** |
+| `product` | `product_type` from the dispatch; the image is `references.images[2]` (role `product`) | presigned GET, sha256 computed by the API | whether the worker needs a mask, or a flat-lay vs on-model image; max size **[to confirm with Aryan]** |
 | `appearance.*.descriptor` | new admin-only field on `appearance_options` (planned with AC-2) | **internal descriptors, never customer labels**; `grooming` stays `null` until defined | descriptor format (prompt text, structured tags, or a reference image per style) **[to confirm with Aryan]** |
-| `pose.control_image` | `pose_definitions.control_reference` | presigned GET; `null` if the pose has none | control type (OpenPose, depth, canny) **[to confirm with Aryan]** |
+| `pose.control_image` | `pose_definitions.control_reference` | presigned GET; `null` if the pose has none | control type (OpenPose, depth, canny), and how a chosen pose combines with Image 1, which is also the pose / framing reference **[to confirm with Aryan]** |
 | `camera` | `focal_length_mm` / `aspect_ratio` today; shot/height/angle once camera options exist | | how the worker applies focal length **[to confirm with Aryan]** |
 | `scene` | the location and lighting presets' `technical_config` | `descriptor` is internal text, not the customer label | |
 | `output.width/height` | aspect ratio × resolution (`app/services/production_presets.py`) | exact pixels, so the worker never guesses | max resolution per workflow **[to confirm with Aryan]** |
 | `output.seed` | `params.seed` (already generated) | output *i* uses `seed + i` | whether seeds are reproducible on the worker **[to confirm with Aryan]** |
 | `output.uploads[]` | presigned PUT per output to `productions/<production_id>/<index>.png` | deterministic keys make a duplicate upload overwrite rather than add | PUT TTL **[to confirm with Aryan]** |
-| `qa` | runtime profile + capability QA profiles | `scored_by: api` = the worker only generates; the API scores after the callback. `fallback_retry.enabled` mirrors `runtime_profiles.fallback_retry_enabled` (default false, Shahida's decision) | whether QA runs on the worker (it has the GPU) or in the API **[to confirm with Aryan]** |
+| `qa` | runtime profile + capability QA profiles | `scored_by: api` = the worker only generates. **Automated QA scores aren't validated yet (confirmed):** until they are, scores are recorded for information only and every output goes to manual review; `identity_hard_gate` (94.0 in the example) is a placeholder. `fallback_retry.enabled` mirrors `runtime_profiles.fallback_retry_enabled` (default false) | **open:** the result / QA format, where QA runs (worker or API), which identity metric, and when scores become a gate **[to confirm with Aryan]** |
 
 The worker gets no brand id, user id, customer label, price or credit information.
 
@@ -416,41 +469,129 @@ The codes and the `retryable` flags are **[to confirm with Aryan]**.
 - **Customer responses never contain** strategy, adapter, strength, seed, workflow, worker,
   provider or QA internals (`DESIGN.md` section 0). The plan and the callback body stay admin-only.
 
-## 3. To confirm with Aryan (summary)
+### 2.7 Reference roles: how this differs from #60, and the proposed change
 
-1. **What the worker is.** ComfyUI behind our wrapper, RunPod serverless, a custom service, or a
-   Celery consumer? Its staging URL, and the auth it supports.
-2. **References.** How many images and which roles each workflow takes, and in what form (full
-   images, face crops, embeddings precomputed on the worker?). Plus size and format limits.
-3. **Adapter.** Is it loaded from the worker's store by id + sha256, or downloaded? What does
-   "strength" map to (LoRA weight, IP-Adapter weight, both), as one number or several?
-4. **Workflows.** Route names per product type, and who owns the graph. The graph should live on
-   the worker side, versioned, and stop being sent by the API.
-5. **Appearance descriptors.** Prompt text, tags, or a reference image per style?
-6. **Pose control.** Which control type, and does each pose need its own control image?
-7. **Output.** Maximum resolution per workflow, whether seeds are reproducible, and the format
-   (PNG vs WebP).
-8. **QA.** Does it run on the worker or in the API, and with which identity metric?
-9. **Limits.** Typical and worst-case time per image, the job deadline, concurrency per GPU, and
-   whether the worker can report progress.
-10. **Errors and retries.** The error code list and `retryable` flags, and whether OOMs are retried
-    internally.
+**#60 today** (`feat/reference-sets`, in review, not merged):
+- **Roles.** `app/services/reference_sets.py` `ROLES` has five: `face_front`, `face_34`, `profile`,
+  `body_full`, `body_34`. They were marked "to be confirmed by Aryan/Shahida".
+- **Required to lock.** `REQUIRED_ROLES` = `face_front` + `body_full`.
+- **Item order.** Items are kept in the order the admin sends them.
+- **Seed.** It picks one eligible V1.0 canonical asset per role by framing and angle
+  (`SEED_ROLE_MATCH`).
+
+**What Aryan tested** (section 0):
+- The character references are two images, in a fixed order: `body_full_front` first, then
+  `face_golden_crop`.
+- The product is Image 3. It is per production, so it is not part of the reference set.
+
+**The differences:**
+
+| | #60 | Aryan's tested arrangement |
+|---|---|---|
+| Body reference | `body_full` (any front full body) | `body_full_front`: **the corrected, approved** full-body front |
+| Face reference | `face_front` (a front close-up / portrait) | `face_golden_crop`: **the golden face crop** |
+| Other roles | `face_34`, `profile`, `body_34` (optional) | not used; their effect isn't tested |
+| Required to lock | `face_front` + `body_full` | `body_full_front` + `face_golden_crop` (both, and only these) |
+| Order | as sent by the admin | fixed: body first, face second (the worker uses this order) |
+| Product | not in the set | Image 3, from the production; not in the set |
+
+**Proposed change to #60** (proposal only; #60 is not changed by this document):
+1. **Roles.** `ROLES = ("body_full_front", "face_golden_crop")`, and the router's `Role` literal to
+   match. Drop `face_34`, `profile` and `body_34` until a workflow is tested with them. Adding a
+   role later is a code change, not a migration: `role` is `varchar(30)`.
+2. **Required to lock.** Both roles, exactly one asset each. Lock refuses a set with a missing,
+   duplicated or extra role.
+3. **Order.** `sort_order` comes from the role order (`body_full_front` = 0, `face_golden_crop` =
+   1), not from the request. The set's `content_hash` covers the ordered pairs, so the order is
+   locked with the set.
+4. **Seed.**
+   - Replace the framing/angle matching with the two canonical asset ids Aryan confirms: the
+     corrected 178 cm full-body front, and the golden face crop.
+   - The seed still only builds and locks `EE-F-002_V1.0_REF_V1`. It never promotes.
+   - If the face crop isn't registered as a canonical asset yet, it needs to be registered first,
+     with its file and sha256.
+5. **Migration and data.** No migration change. No sets exist in production (#60 isn't merged), so
+   no data change is needed.
+6. **Tests.** Update the role fixtures and the seed tests; add one test that the lock order is
+   body, then face.
+
+## 3. Open items
+
+### 3.1 Resolved (confirmed by Aryan, 2026-10-24)
+
+1. **References.** Three images, in this order: `body_full_front`, `face_golden_crop`, `product`
+   (sections 0 and 2.2).
+2. **Default strategy.**
+   - Reference-only, with no active adapter.
+   - The adapter at 0.4 only when a tested condition benefits.
+   - 0.6 as the fallback / evaluation setting.
+   - Neither automatic on every job.
+3. **Runtime.** ComfyUI.
+
+### 3.2 Still open
+
+**With Aryan:**
+1. **Workflow JSON and mapping.** Aryan will share the workflow JSON. We still need:
+   - which nodes take Images 1–3, the adapter + strength, the seed and the output size;
+   - the route names per product type;
+   - who owns and versions the graph. Proposal: the worker side.
+2. **Staging and deployment.** There's no staging worker endpoint yet. Open:
+   - who runs the ComfyUI wrapper and where (GPU host or RunPod);
+   - its URL and the auth it supports;
+   - the staging environment (with Indra).
+3. **Result and QA format.** Automated QA scores aren't validated yet. Open:
+   - what the worker returns per output;
+   - where QA runs;
+   - which identity metric;
+   - when a score may gate an output.
+
+   Until then: manual review of every output.
+4. **Reference image specs.**
+   - Size and format limits per image.
+   - The `face_golden_crop` crop spec.
+   - The two canonical asset ids for the #60 seed (section 2.7).
+   - The product image requirements (mask, flat-lay vs on-model).
+5. **Adapter use.**
+   - Which tested conditions benefit from 0.4, and the watch items at 0.6.
+   - Whether the adapter is loaded from the worker's store by id + sha256, or downloaded.
+   - Which ComfyUI inputs "strength" sets.
+6. **Pose control.** The control type, and how a chosen pose combines with Image 1 as the pose /
+   framing reference.
+7. **Appearance descriptors.** Prompt text, tags, or a reference image per style.
+8. **Output.**
+   - Maximum resolution per workflow.
+   - Whether seeds are reproducible.
+   - PNG vs WebP.
+9. **Limits.**
+   - Time per image, typical and worst case.
+   - The job deadline.
+   - Concurrency per GPU.
+   - Progress reporting.
+10. **Errors and retries.** The error codes and `retryable` flags (2.4), and whether OOMs are
+    retried internally.
 11. **Retention.** How long the worker keeps inputs and outputs.
 
-Also to confirm:
-- **Indra:** the Railway worker command and queues (1.4 item 4), and the staging environment.
-- **Shahida:** charging only for delivered outputs (2.3), and the fallback retry policy.
+**With others:**
+- **Indra:**
+  - the Railway worker command and queues (1.4 item 4; #63 fixes the routing);
+  - the staging environment.
+- **Shahida:**
+  - charging only for delivered outputs (2.3);
+  - the fallback retry policy;
+  - the #60 role change (2.7), together with Aryan.
 
 ## 4. What changes on our side once agreed (not in this PR)
 
-1. **AC-5 (runtime resolver strategy).** Build the payload in 2.2 from the plan. Replace `_comfyui`
+1. **#60 roles.** Apply the role change in 2.7 once Aryan and Shahida agree (before #60 merges, or
+   as a follow-up).
+2. **AC-5 (runtime resolver strategy).** Build the payload in 2.2 from the plan. Replace `_comfyui`
    / the base workflow with a worker client: submit, then return.
-2. **The rest of the worker path:**
+3. **The rest of the worker path:**
    - add the callback route with signature checks and the reconciliation beat task;
-   - route `process_production_job` to a queue the worker consumes;
+   - route `process_production_job` to a queue the worker consumes (#63);
    - make mock mode fatal when production dispatch is enabled in production.
-3. **Customer output URLs.** Return URLs a browser can load: presigned GET or CDN, not `s3://`.
-4. **New settings, named only:** `AI_WORKER_URL`, `AI_WORKER_TOKEN`, `AI_WORKER_CALLBACK_SECRET`,
+4. **Customer output URLs.** Return URLs a browser can load: presigned GET or CDN, not `s3://`.
+5. **New settings, named only:** `AI_WORKER_URL`, `AI_WORKER_TOKEN`, `AI_WORKER_CALLBACK_SECRET`,
    the input/output URL TTLs, and the job timeout. They're checked at startup like the FASHN
    settings.
 
