@@ -6,7 +6,7 @@ from sqlalchemy import func, select, text
 from app.middleware.auth import create_access_token, hash_password
 from app.models.db import (
     AIJob, Asset, Brand, BrandMember, CharacterRegistryVersion, CreditTransaction, ModelArtifact, Production,
-    ProviderRoute, User,
+    ProviderRoute, RoutingPolicy, User,
 )
 from app.services import appearance_options as appearance_service
 from app.services import capability_packs as pack_service
@@ -203,6 +203,89 @@ async def test_missing_provider_route_returns_409_without_charge(client, db_sess
     resp = await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])
     assert resp.status_code == 409 and "temporarily unavailable" in resp.json()["detail"]
     assert queue == [] and await _count(db_session, CreditTransaction) == 0
+
+
+async def _set_route_status(db_session, status, route_ids=("RT-GARMENT-01", "RT-GARMENT-DRAFT")):
+    for route in (await db_session.execute(select(ProviderRoute).where(ProviderRoute.route_id.in_(route_ids)))
+                  ).scalars().all():
+        route.status = status
+    await db_session.commit()
+
+
+async def _assert_unavailable(client, db_session, world, queue):
+    resp = await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])
+    assert resp.status_code == 409, resp.text
+    assert "temporarily unavailable" in resp.json()["detail"] and "not been charged" in resp.json()["detail"]
+    assert queue == [] and await _count(db_session, CreditTransaction) == 0
+    assert await _credits(db_session, world["brand"]) == 100
+    assert await _count(db_session, Production) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route_status", ["DRAFT", "DISABLED", "RETIRED", None])
+async def test_route_that_is_not_active_returns_409_without_charge(client, db_session, world, queue, route_status):
+    await _set_route_status(db_session, route_status)
+    await _assert_unavailable(client, db_session, world, queue)
+
+
+@pytest.mark.asyncio
+async def test_active_route_without_production_pack_returns_409(client, db_session, world, queue):
+    await pack_service.change_status(db_session, world["pack"].internal_key, "ARCHIVED", "admin")
+    resp = await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])
+    assert resp.status_code == 409 and "aren't available" in resp.json()["detail"]
+    assert queue == [] and await _count(db_session, CreditTransaction) == 0
+
+
+@pytest.mark.asyncio
+async def test_route_enabled_through_admin_api_gates_dispatch(client, db_session, world, queue):
+    admin, reason = world["h"]["admin"], {"reason": "test"}
+    await _set_route_status(db_session, "RETIRED")
+    registered = await client.post("/api/v1/admin/provider-routes", headers=admin, json={
+        "route_id": "RT-GARMENT-02", "workflow_id": "WF-GARMENT-TRYON", "quality_mode": "STUDIO_QUALITY",
+        "provider_id": "PRV-COMFYUI"})
+    assert registered.status_code == 201 and registered.json()["status"] == "DRAFT"
+    await _assert_unavailable(client, db_session, world, queue)  # DRAFT is never live
+
+    assert (await client.post("/api/v1/admin/provider-routes/RT-GARMENT-02/enable", json=reason,
+                              headers=admin)).status_code == 200
+    resp = await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])
+    assert resp.status_code == 202, resp.text
+    production = (await db_session.execute(select(Production))).scalars().one()
+    assert production.runtime_profile["workflow"]["provider_route"]["route_id"] == "RT-GARMENT-02"
+
+    assert (await client.post("/api/v1/admin/provider-routes/RT-GARMENT-02/disable", json=reason,
+                              headers=admin)).status_code == 200
+    again = await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])
+    assert again.status_code == 409 and "temporarily unavailable" in again.json()["detail"]
+    assert len(queue) == 1 and await _count(db_session, Production) == 1
+
+
+@pytest.mark.asyncio
+async def test_disabled_primary_falls_back_to_active_fallback(client, db_session, world, queue):
+    db_session.add(ProviderRoute(route_id="RT-GARMENT-FB", workflow_id="WF-GARMENT-TRYON",
+                                 quality_mode="STUDIO_QUALITY", provider_id="PRV-FASHN", priority=5, status="ACTIVE"))
+    route = (await db_session.execute(select(ProviderRoute).where(ProviderRoute.route_id == "RT-GARMENT-01"))
+             ).scalars().one()
+    route.fallback_route_id = "RT-GARMENT-FB"
+    db_session.add(RoutingPolicy(policy_id="POL-GARMENT", workflow_id="WF-GARMENT-TRYON",
+                                 quality_mode="STUDIO_QUALITY", primary_route_id="RT-GARMENT-01",
+                                 fallback_route_id="RT-GARMENT-FB", status="ACTIVE"))
+    await db_session.commit()
+    await _set_route_status(db_session, "DISABLED", ("RT-GARMENT-01",))
+
+    resp = await client.post(DISPATCH, json=_body(world), headers=world["h"]["owner"])
+    assert resp.status_code == 202, resp.text
+    workflow = (await db_session.execute(select(Production))).scalars().one().runtime_profile["workflow"]
+    assert workflow["provider_route"]["route_id"] == "RT-GARMENT-FB"
+
+
+@pytest.mark.asyncio
+async def test_disabled_primary_without_fallback_returns_409(client, db_session, world, queue):
+    db_session.add(RoutingPolicy(policy_id="POL-GARMENT", workflow_id="WF-GARMENT-TRYON",
+                                 quality_mode="STUDIO_QUALITY", primary_route_id="RT-GARMENT-01", status="ACTIVE"))
+    await db_session.commit()
+    await _set_route_status(db_session, "DISABLED", ("RT-GARMENT-01",))
+    await _assert_unavailable(client, db_session, world, queue)
 
 
 @pytest.mark.asyncio
