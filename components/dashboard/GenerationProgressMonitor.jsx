@@ -128,13 +128,23 @@ export default function GenerationProgressMonitor({
       if (!isSubscribed) return;
       try {
         // If it's a production dispatch ID, poll the productions endpoint
-        if (jobId && (jobId.startsWith("PROD-") || jobId.startsWith("prod_") || jobId.length > 20)) {
+        if (jobId && (jobId.startsWith("PROD-") || jobId.startsWith("prod_") || jobId.startsWith("prd_") || jobId.length > 20)) {
           try {
             const prodRes = await characterRegistryApi.getProduction(jobId);
             if (prodRes && isSubscribed) {
-              if (prodRes.status) {
-                setJobStatus(prodRes.status === "QUEUED" || prodRes.status === "queued" ? "queued" : prodRes.status === "COMPLETED" || prodRes.status === "completed" ? "completed" : "generating");
+              const statusLower = (prodRes.status || "").toLowerCase();
+              if (statusLower === "queued") {
+                setJobStatus("queued");
+              } else if (statusLower === "completed") {
+                setJobStatus("completed");
+              } else if (statusLower === "failed") {
+                setJobStatus("failed");
+                if (pollInterval) clearInterval(pollInterval);
+                return;
+              } else {
+                setJobStatus("generating");
               }
+
               if (prodRes.outputs && Array.isArray(prodRes.outputs)) {
                 setCompletedCount(prodRes.outputs.length);
                 if (prodRes.outputs.length > 0) {
@@ -147,8 +157,9 @@ export default function GenerationProgressMonitor({
                   })));
                 }
               }
-              if (prodRes.status === "COMPLETED" || prodRes.status === "completed") {
+              if (statusLower === "completed") {
                 if (onComplete) onComplete(prodRes);
+                if (pollInterval) clearInterval(pollInterval);
                 return;
               }
             }
@@ -204,6 +215,11 @@ export default function GenerationProgressMonitor({
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>BATCH COMPLETE</span>
                 </span>
+              ) : jobStatus === "failed" ? (
+                <span className="px-3 py-0.5 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-mono font-semibold rounded-full flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>PRODUCTION FAILED</span>
+                </span>
               ) : (
                 <span className="px-3 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono font-semibold rounded-full flex items-center gap-1.5">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -230,11 +246,11 @@ export default function GenerationProgressMonitor({
           <div className="text-right flex flex-col items-start md:items-end gap-2">
             <div>
               <span className="text-[10px] font-mono text-zinc-500 uppercase">Batch Progress</span>
-              <p className="text-xl font-extrabold text-cyan-400">
+              <p className={`text-xl font-extrabold ${jobStatus === "failed" ? "text-rose-400" : "text-cyan-400"}`}>
                 {completedCount} / {totalCount} Angles ({progressPercent}%)
               </p>
             </div>
-            {isFinished && (
+            {isFinished ? (
               <Link
                 href={`/dashboard/results/${jobId}`}
                 className="flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-cyan-500/20"
@@ -242,7 +258,15 @@ export default function GenerationProgressMonitor({
                 <span>Proceed to QA Review</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
-            )}
+            ) : jobStatus === "failed" ? (
+              <Link
+                href="/dashboard/create"
+                className="flex items-center gap-1.5 bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 font-bold text-xs px-4 py-2 rounded-xl transition-all"
+              >
+                <span>Return to Studio</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : null}
           </div>
         </div>
 
