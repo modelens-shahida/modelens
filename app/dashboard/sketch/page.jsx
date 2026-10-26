@@ -233,50 +233,16 @@ export default function SketchStudioPage() {
             </div>
           </div>
 
-          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1 gap-1 self-start sm:self-auto">
-            <button
-              onClick={() => setActiveMainTab("multimodal")}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "multimodal"
-                  ? "bg-purple-600 text-white shadow-md"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 font-mono">
               <Sparkles className="w-3.5 h-3.5" />
               Multimodal Studio
-            </button>
-            <button
-              onClick={() => setActiveMainTab("cad_colorways")}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "cad_colorways"
-                  ? "bg-purple-600 text-white shadow-md"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              CAD Colorway Matrix
-              <span className="text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-full font-mono">Preview</span>
-            </button>
+            </span>
           </div>
         </div>
 
-        {/* Tab Selection */}
-        {activeMainTab === "cad_colorways" ? (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-800/40 text-purple-300 text-xs flex items-center gap-3">
-              <Sparkles className="w-5 h-5 text-purple-400 shrink-0" />
-              <div>
-                <strong className="block font-semibold">CAD Colorway Pipeline Upgrade in Progress</strong>
-                <span className="text-zinc-400">
-                  Automated colorway batch variants are undergoing scheduled multimodal pipeline upgrades. Please use the Multimodal Studio tab for live generations.
-                </span>
-              </div>
-            </div>
-            <SketchProductStudio />
-          </div>
-        ) : (
-          /* Tab 2: Legacy Multi-Reference Form */
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Studio Workspace */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: Uploaders */}
             <div className="space-y-5 lg:col-span-1">
               <div className="flex items-center justify-between text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800 p-2.5 rounded-xl">
@@ -446,9 +412,22 @@ export default function SketchStudioPage() {
                   <p className="text-zinc-500 text-sm">Upload sketches and submit to see the render result here</p>
                 </div>
               )}
+
+              {/* Real-time Taxonomy & Parameter Resolver Preview */}
+              <div className="mt-4">
+                <TaxonomyResolverPreview
+                  taxonomyIds={{
+                    garment_type: "dress",
+                    fabric_type: materialDesc ? materialDesc.toLowerCase().slice(0, 20) : "silk",
+                    generation_mode: modelTier,
+                  }}
+                  workflowId="WF-SKETCH-001"
+                  generationMode={modelTier}
+                  productType="garment"
+                />
+              </div>
             </div>
           </div>
-        )}
       </div>
     </div>
   );

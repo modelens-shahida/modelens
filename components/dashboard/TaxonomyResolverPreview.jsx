@@ -54,7 +54,10 @@ export default function TaxonomyResolverPreview({
 
   const hasBlocking = result?.blocking_reasons && result.blocking_reasons.length > 0;
   const hasWarnings = result?.warnings && result.warnings.length > 0;
-  const isCompatible = result?.compatibility?.is_compatible !== false && !hasBlocking;
+  const compatibilityFlag = result?.compatibility?.compatible !== undefined
+    ? result.compatibility.compatible
+    : result?.compatibility?.is_compatible;
+  const isCompatible = compatibilityFlag !== false && !hasBlocking;
 
   return (
     <div className={`rounded-xl border border-zinc-800 bg-zinc-950/80 backdrop-blur-md p-4 text-zinc-100 shadow-2xl ${className}`}>

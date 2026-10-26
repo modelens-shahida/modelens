@@ -199,8 +199,19 @@ export default function GenerationProgressMonitor({
     };
   }, [jobId]);
 
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (jobStatus === "completed" || jobStatus === "failed") return;
+    const timer = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [jobStatus]);
+
   const progressPercent = totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
   const isFinished = jobStatus === "completed" || progressPercent >= 100;
+  const isTakingLonger = elapsedSeconds > 25 && !isFinished && jobStatus !== "failed";
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -280,9 +291,36 @@ export default function GenerationProgressMonitor({
           </div>
           <div className="flex items-center justify-between text-[11px] text-zinc-500">
             <span>Asynchronous multi-angle engine active — you may safely leave this page.</span>
-            <span>{isFinished ? "Batch production complete" : "Estimated remaining: ~8 seconds"}</span>
+            <span>
+              {isFinished
+                ? "Batch production complete"
+                : `Elapsed: ${elapsedSeconds}s • ${isTakingLonger ? "Queue latency detected" : "Estimated remaining: ~8s"}`}
+            </span>
           </div>
         </div>
+
+        {/* Taking longer than expected notice */}
+        {isTakingLonger && (
+          <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex items-start gap-3 animate-in fade-in">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-bold text-amber-300 block">
+                Taking longer than expected ({elapsedSeconds}s elapsed)
+              </span>
+              <p className="text-zinc-400 text-[11px]">
+                Your photoshoot production is queued. The AI worker pool may be experiencing queue latency. You can safely navigate away; outputs will appear in your gallery once completed.
+              </p>
+              <div className="pt-1">
+                <Link
+                  href="/dashboard"
+                  className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline"
+                >
+                  Return to Dashboard &gt;
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Active Job Parameters Summary */}

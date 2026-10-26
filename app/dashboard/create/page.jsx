@@ -9,6 +9,35 @@ import { toast } from "react-hot-toast";
 import { AlertCircle, CreditCard, ArrowRight, X } from "lucide-react";
 import Link from "next/link";
 
+function getProductTypeFromCategory(category = "") {
+  const cat = (category || "").toLowerCase();
+  if (cat.includes("dress") || cat.includes("outerwear") || cat.includes("knit") || cat.includes("coat") || cat.includes("garment") || cat.includes("shirt") || cat.includes("pant") || cat.includes("top") || cat.includes("jacket")) return "garment";
+  if (cat.includes("shoe") || cat.includes("footwear") || cat.includes("boot") || cat.includes("heel") || cat.includes("sneaker")) return "shoes";
+  if (cat.includes("bag") || cat.includes("tote") || cat.includes("clutch") || cat.includes("purse")) return "bags";
+  if (cat.includes("eye") || cat.includes("glass") || cat.includes("shade") || cat.includes("spectacle")) return "eyewear";
+  if (cat.includes("jewel") || cat.includes("ring") || cat.includes("neck") || cat.includes("earring") || cat.includes("bracelet")) return "jewelry";
+  if (cat.includes("hat") || cat.includes("cap") || cat.includes("headwear") || cat.includes("beanie")) return "headwear";
+  return "garment";
+}
+
+function resolveProductAssetUrl(product) {
+  if (!product) return "asset:1";
+  if (product.asset_id) {
+    return String(product.asset_id).startsWith("asset:") ? String(product.asset_id) : `asset:${product.asset_id}`;
+  }
+  if (product.storage_path && (product.storage_path.startsWith("s3://") || product.storage_path.startsWith("/uploads/"))) {
+    return product.storage_path;
+  }
+  if (typeof product.id === "string" && (product.id.startsWith("asset:") || product.id.startsWith("s3://") || product.id.startsWith("/uploads/"))) {
+    return product.id;
+  }
+  const digits = String(product.id || "").replace(/\D/g, "");
+  if (digits) {
+    return `asset:${digits}`;
+  }
+  return "asset:1";
+}
+
 export default function CreateProductionPage() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -38,11 +67,13 @@ export default function CreateProductionPage() {
       }
 
       // 2. Dispatch batch generation job via Task 6 Runtime Dispatch
+      const resolvedProductType = getProductTypeFromCategory(data.product?.category || data.product?.product_type || "");
+      const resolvedAssetUrl = resolveProductAssetUrl(data.product);
+
       const dispatchPayload = {
         character_id: data.character?.code || data.character?.id || "EE-F-002",
-        product_asset_url: data.product?.image_url || data.product?.url || "https://assets.modelens.ai/demo-sku.png",
-        product_type: data.product?.category?.toLowerCase() || "garment",
-        beauty_direction: data.beauty_direction?.id || "beauty_quiet_luxury",
+        product_asset_url: resolvedAssetUrl,
+        product_type: resolvedProductType,
         appearance: {
           hair: data.appearance?.hair?.id || "hair_canonical",
           makeup: data.appearance?.makeup?.id || "makeup_natural",

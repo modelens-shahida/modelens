@@ -210,7 +210,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           }));
           setBackgroundOptions(list);
           const def = list.find((l) => l.is_default) || list[0];
-          setSelectedBackground((prev) => (list.some((d) => d.id === prev?.id) ? prev : def));
+          setSelectedBackground(def);
         }
       })
       .catch(() => {});
@@ -229,7 +229,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           }));
           setDirectionOptions(list);
           const def = list.find((c) => c.is_default) || list[0];
-          setSelectedDirection((prev) => (list.some((d) => d.id === prev?.id) ? prev : def));
+          setSelectedDirection(def);
         }
       })
       .catch(() => {});
@@ -261,15 +261,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
     api.get(`/api/v1/characters/${charId}/styling-options`)
       .then((data) => {
         if (data && data.categories) {
-          if (Array.isArray(data.categories.hair) && data.categories.hair.length > 0) {
-            setHairOptions(data.categories.hair.map((h) => ({ id: h.id, name: h.label || h.name, desc: h.description || h.desc, is_default: h.is_default, recommended: h.recommended })));
-          }
-          if (Array.isArray(data.categories.makeup) && data.categories.makeup.length > 0) {
-            setMakeupOptions(data.categories.makeup.map((m) => ({ id: m.id, name: m.label || m.name, desc: m.description || m.desc, is_default: m.is_default, recommended: m.recommended })));
-          }
-          if (Array.isArray(data.categories.expression) && data.categories.expression.length > 0) {
-            setExpressionOptions(data.categories.expression.map((e) => ({ id: e.id, name: e.label || e.name, desc: e.description || e.desc, is_default: e.is_default, recommended: e.recommended })));
-          }
+          let currentDir = selectedBeautyDirection;
           if (Array.isArray(data.categories.beauty_direction) && data.categories.beauty_direction.length > 0) {
             const list = data.categories.beauty_direction.map((b) => ({
               id: b.id,
@@ -281,8 +273,35 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               recommended: b.recommended,
             }));
             setBeautyDirections(list);
-            const def = list.find((b) => b.is_default) || list[0];
-            setSelectedBeautyDirection((prev) => (list.some((b) => b.id === prev?.id) ? prev : def));
+            currentDir = list.find((b) => b.is_default) || list[0];
+            setSelectedBeautyDirection(currentDir);
+          }
+
+          const defs = currentDir?.recommended_defaults || currentDir?.defaults;
+
+          if (Array.isArray(data.categories.hair) && data.categories.hair.length > 0) {
+            const hairs = data.categories.hair.map((h) => ({ id: h.id, name: h.label || h.name, desc: h.description || h.desc, is_default: h.is_default, recommended: h.recommended }));
+            setHairOptions(hairs);
+            const targetHairId = defs?.hair_id;
+            const matchHair = targetHairId ? hairs.find((h) => h.id === targetHairId || h.id === targetHairId.replace(/^hair_/, "")) : null;
+            const defHair = hairs.find((h) => h.is_default) || hairs[0];
+            setSelectedHair(matchHair || defHair);
+          }
+          if (Array.isArray(data.categories.makeup) && data.categories.makeup.length > 0) {
+            const makeups = data.categories.makeup.map((m) => ({ id: m.id, name: m.label || m.name, desc: m.description || m.desc, is_default: m.is_default, recommended: m.recommended }));
+            setMakeupOptions(makeups);
+            const targetMakeupId = defs?.makeup_id;
+            const matchMakeup = targetMakeupId ? makeups.find((m) => m.id === targetMakeupId || m.id === targetMakeupId.replace(/^makeup_/, "")) : null;
+            const defMakeup = makeups.find((m) => m.is_default) || makeups[0];
+            setSelectedMakeup(matchMakeup || defMakeup);
+          }
+          if (Array.isArray(data.categories.expression) && data.categories.expression.length > 0) {
+            const exprs = data.categories.expression.map((e) => ({ id: e.id, name: e.label || e.name, desc: e.description || e.desc, is_default: e.is_default, recommended: e.recommended }));
+            setExpressionOptions(exprs);
+            const targetExprId = defs?.expression_id;
+            const matchExpr = targetExprId ? exprs.find((e) => e.id === targetExprId || e.id === targetExprId.replace(/^expr_/, "")) : null;
+            const defExpr = exprs.find((e) => e.is_default) || exprs[0];
+            setSelectedExpression(matchExpr || defExpr);
           }
         }
       })
@@ -306,7 +325,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
           }));
           setBeautyDirections(list);
           const def = list.find((b) => b.is_default) || list[0];
-          setSelectedBeautyDirection((prev) => (list.some((b) => b.id === prev?.id) ? prev : def));
+          setSelectedBeautyDirection(def);
         }
       })
       .catch(() => {
@@ -330,10 +349,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
         if (data && Array.isArray(data.poses) && data.poses.length > 0) {
           setAvailablePoses(data.poses);
           const defaultPose = data.poses.find((p) => p.is_default) || data.poses[0];
-          setSelectedPose((prev) => {
-            const match = data.poses.find((p) => p.id === prev?.id);
-            return match || defaultPose;
-          });
+          setSelectedPose(defaultPose);
         }
       })
       .catch(() => {
