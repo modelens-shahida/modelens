@@ -211,7 +211,8 @@ export default function GenerationProgressMonitor({
 
   const progressPercent = totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
   const isFinished = jobStatus === "completed" || progressPercent >= 100;
-  const isTakingLonger = elapsedSeconds > 25 && !isFinished && jobStatus !== "failed";
+  const isTakingLonger = elapsedSeconds > 120 && !isFinished && jobStatus !== "failed";
+  const formattedElapsed = elapsedSeconds >= 60 ? `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s` : `${elapsedSeconds}s`;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -294,7 +295,7 @@ export default function GenerationProgressMonitor({
             <span>
               {isFinished
                 ? "Batch production complete"
-                : `Elapsed: ${elapsedSeconds}s • ${isTakingLonger ? "Queue latency detected" : "Estimated remaining: ~8s"}`}
+                : `Elapsed: ${formattedElapsed} • ${isTakingLonger ? "Queue latency detected" : "Estimated remaining: ~8s"}`}
             </span>
           </div>
         </div>
@@ -305,7 +306,7 @@ export default function GenerationProgressMonitor({
             <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <span className="font-bold text-amber-300 block">
-                Taking longer than expected ({elapsedSeconds}s elapsed)
+                Taking longer than expected ({formattedElapsed} elapsed)
               </span>
               <p className="text-zinc-400 text-[11px]">
                 Your photoshoot production is queued. The AI worker pool may be experiencing queue latency. You can safely navigate away; outputs will appear in your gallery once completed.
