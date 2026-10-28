@@ -63,8 +63,8 @@ this document:
    - runtime limits;
    - retention.
 
-   The workflow JSON and the node mapping are still pending: the handoff package hasn't been
-   received yet (section 2.10).
+   The workflow JSON and the node mapping are documented in section 2.10 (package r02, 27 Oct 2026).
+   Backend asset IDs are still open.
 
 ## 1. What is sent to the worker today
 
@@ -380,7 +380,7 @@ Field rules:
 | `deadline_at` | submit time + job timeout (setting) | the worker stops and reports `TIMEOUT` after it | value **[to confirm with Aryan]** |
 | `character.*` | current LOCKED `character_registry_versions` row | informational for the worker; identity comes from `references` | |
 | `runtime.strategy` | resolver step 8 | `REFERENCE_ONLY` or `REFERENCE_PLUS_ADAPTER` | |
-| `runtime.workflow` | the capability pack's `workflow_route` / `workflow_version`; `input_roles` from that route / version's declaration (section 2.8) | the ComfyUI wrapper maps the route to Aryan's workflow JSON (confirmed: ComfyUI); **we stop sending a graph**. The worker checks `input_roles` against its own definition of the route / version and fails with `INVALID_INPUT` on a difference | route names, and which nodes take Images 1–3, the adapter and the seed: **pending: package not yet received** (section 2.10) |
+| `runtime.workflow` | the capability pack's `workflow_route` / `workflow_version`; `input_roles` from that route / version's declaration (section 2.8) | the ComfyUI wrapper maps the route to Aryan's workflow JSON (confirmed: ComfyUI); **we stop sending a graph**. The worker checks `input_roles` against its own definition of the route / version and fails with `INVALID_INPUT` on a difference | route names; node mapping for Images 1–3, the adapter and the seed: see section 2.10 |
 | `references.images[]` | Images 1–2: the PRODUCTION reference set (#60, roles as proposed in section 2.7). Image 3: the dispatch's product asset | **confirmed:** exactly `body_full_front`, `face_golden_crop`, `product`, in that order. The worker checks each file's sha256 before use and fails with `REFERENCE_HASH_MISMATCH` otherwise. For Image 3, a failed download is `PRODUCT_DOWNLOAD_FAILED` and a wrong sha256 is `PRODUCT_HASH_MISMATCH` | size / format limits per image, and the crop spec of `face_golden_crop` (size, margin, background) **[to confirm with Aryan]** |
 | `adapter` | runtime profile / promoted capability snapshot; `PRODUCTION` only | **confirmed:** `null` by default (reference-only). 0.4 only when a tested condition benefits; 0.6 is fallback / evaluation only; never automatic on every job. Strengths come only from data, never a worker default | which tested conditions benefit, and the 0.6 watch items; whether the worker loads adapters from its own store by id + sha256 or downloads them; which ComfyUI node and input(s) "strength" sets (e.g. LoRA model / clip strength) **[to confirm with Aryan]** |
 | `product` | `product_type` from the dispatch; the image is `references.images[2]` (role `product`) | presigned GET, sha256 computed by the API | whether the worker needs a mask, or a flat-lay vs on-model image; max size **[to confirm with Aryan]** |
@@ -619,29 +619,24 @@ Silently ignoring a chosen pose is not an option. **[to decide: Shahida, with In
 
 ### 2.10 Workflow mapping (EE002_Q21 v01)
 
-**Pending: package not yet received.** Aryan's handoff package (ComfyUI API workflow, extracted
-prompt, three reference inputs with checksums, node mapping, example outputs, dependency details)
-hasn't been received in this repo's workspace, so nothing here is taken from the files yet.
+Source: 04_RECORDS/NODE_MAPPING.json and 04_RECORDS/INPUT_ASSET_MANIFEST.json (package r02, 27 Oct 2026).
+Workflow: 01_WORKFLOW/EE002_Q21_REFERENCE_PLUS_LORA_Reference_v01_API.json (confirm with Aryan).
 
-Reported by Aryan, **not yet checked against the file:**
-- the export is `EE002_Q21_REFERENCE_PLUS_LORA_Reference_v01`;
-- the reference-only seed is 42003;
-- the LoRA loader stays in the graph with adapter strength 0 for reference-only; the adapter file
-  and its checksum come separately;
-- Aryan offered to test a version that bypasses the loader for reference-only staging.
+| Field | Node | Input | Value |
+|---|---|---|---|
+| body_full_front | 470 | image | from BODY_FRONT.png (sha256 a06fd043…) |
+| face_golden_crop | 481 | image | from GOLDEN_FACE.png (sha256 82077595…) |
+| product | 491 | image | from BLACK_WRAP_DRESS.png (sha256 b8c1f8d5…) |
+| negative_prompt | 459:474 | negative_prompt | "" |
+| seed | 459:458 | seed | 42003 |
+| steps / cfg | 459:458 | steps / cfg | 25 / 1 |
+| sampler / scheduler / denoise | 459:458 | sampler_name / scheduler / denoise | euler / simple / 1 |
+| adapter | 459:486 | lora_name / strength_model | modelens__Eliska__EE002_Q21_BASELINE_v01_000000750.safetensors / 0 |
+| custom size switch | 459:468 | switch | false (output from TextEncodeQwenImage21 latent) |
+| save prefix | 461 | filename_prefix | EE002_PROD02_QUIET_LUXURY_BLACKWRAP_HOTEL_REFONLY_S42003_v02 |
 
-To fill in once the package arrives:
-- the node ids / inputs for Images 1–3;
-- the prompt and appearance text;
-- the seed;
-- the adapter and its strength;
-- the output size and format, and what example outputs look like;
-- the file names and sha256 of the reference inputs;
-- any mismatch with section 2.2.
-
-Only the workflow JSON and the node mapping may be committed, and only if they contain no secrets.
-Reference images, example outputs and model / LoRA files stay out of git: only their file names and
-sha256 are recorded.
+Input rule: do not place presigned URLs in these fields. Download, verify the checksum, upload to worker ComfyUI input storage, then set the image field to the returned local filename.
+Open: backend_asset_id is null for all three inputs; registry IDs must be agreed with backend before staging.
 
 ## 3. Open items
 
@@ -671,9 +666,10 @@ From Aryan's review of #62 (2026-10-27):
 ### 3.2 Still open
 
 **With Aryan:**
-1. **Workflow JSON and mapping: pending, package not yet received** (section 2.10). We still
-   need:
-   - which nodes take Images 1–3, the adapter + strength, the seed and the output size;
+1. **Workflow JSON and mapping: documented in section 2.10 (package r02).** We still need:
+   - backend asset IDs for the three inputs (currently null);
+   - Aryan's confirmation that the API JSON is the file the worker runs;
+   - output size confirmation at 4:5 (README says AS_PRODUCED, examples 832x1888, not validated);
    - the route names per product type;
    - who owns and versions the graph. Proposal: the worker side.
 2. **Staging and deployment.** There's no staging worker endpoint yet. Open:
