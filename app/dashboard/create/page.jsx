@@ -82,7 +82,7 @@ export default function CreateProductionPage() {
         pose_id: data.pose || "pose_ML-POSE-CAT-001",
         location_id: data.background?.id || "scene_env-stu-0001",
         campaign_preset: data.direction?.id || "campaign_ecommerce",
-        aspect_ratio: "3:4",
+        aspect_ratio: "4:5",
         count: angles.length,
       };
 

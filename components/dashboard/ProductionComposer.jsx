@@ -175,6 +175,7 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
   const [selectedDirection, setSelectedDirection] = useState(SAMPLE_DIRECTIONS[0]);
   const [qualityMode, setQualityMode] = useState("studio_quality"); // "fast_draft" | "studio_quality"
   const [parallelExecution, setParallelExecution] = useState(true);
+  const productType = getProductTypeFromCategory(selectedProduct?.category || "");
 
   // Active drawer toggle: "product" | "character" | "style" | "angle" | "background" | "direction"
   const [activeDrawer, setActiveDrawer] = useState(null);
@@ -645,6 +646,9 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               </h2>
               <span className="px-3 py-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-bold rounded-full font-mono">
                 {qualityMode === "studio_quality" ? "Studio Quality" : "Fast Draft"}
+              </span>
+              <span className="px-2.5 py-0.5 bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs font-medium rounded-full font-mono">
+                4:5 Portrait
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-1">
@@ -1124,19 +1128,36 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
               {/* Tab 1: Product-Aware Poses */}
               {poseDrawerTab === "pose" && (
                 <div className="space-y-2.5 overflow-y-auto max-h-[55vh] pr-1">
-                  <p className="text-[11px] text-zinc-400">
-                    Poses compatible with {selectedCharacter.display_name}&apos;s active capability pack for this product:
-                  </p>
+                  {productType === "garment" ? (
+                    <div className="p-3 bg-purple-950/20 border border-purple-500/30 rounded-xl text-xs text-purple-200 space-y-1">
+                      <p className="font-semibold flex items-center gap-1.5 text-purple-300">
+                        <Compass className="w-3.5 h-3.5 text-purple-400" />
+                        Canonical Front Locked
+                      </p>
+                      <p className="text-[11px] text-zinc-400">
+                        Pose conditioning is locked to Canonical Front for this garment route to ensure identity fidelity with the approved full-body reference.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-400">
+                      Poses compatible with {selectedCharacter.display_name}&apos;s active capability pack for this product:
+                    </p>
+                  )}
                   {availablePoses.map((p) => {
                     const isSelected = selectedPose?.id === p.id;
+                    const isLockedGarment = productType === "garment" && !p.is_default && p.id !== "pose_ML-POSE-CAT-001";
                     return (
                       <div
                         key={p.id}
-                        onClick={() => setSelectedPose(p)}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                          isSelected
-                            ? "bg-purple-500/15 border-purple-500/60 text-white shadow-md"
-                            : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                        onClick={() => {
+                          if (!isLockedGarment) setSelectedPose(p);
+                        }}
+                        className={`p-3.5 rounded-xl border transition-all flex items-center justify-between ${
+                          isLockedGarment
+                            ? "bg-zinc-950/40 border-zinc-800/60 opacity-40 cursor-not-allowed text-zinc-600"
+                            : isSelected
+                            ? "bg-purple-500/15 border-purple-500/60 text-white shadow-md cursor-pointer"
+                            : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 cursor-pointer"
                         }`}
                       >
                         <div>
@@ -1145,6 +1166,11 @@ export default function ProductionComposer({ onGenerate, isSubmitting = false })
                             {p.recommended_framing && (
                               <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-zinc-800 text-zinc-300 rounded border border-zinc-700">
                                 {p.recommended_framing}
+                              </span>
+                            )}
+                            {isLockedGarment && (
+                              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-zinc-900 text-zinc-500 rounded border border-zinc-800">
+                                Route Locked
                               </span>
                             )}
                           </div>
