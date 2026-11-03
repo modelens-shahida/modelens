@@ -1,3 +1,4 @@
+import time
 """
 Generation Pipeline Orchestrator
 Handles job lifecycle: queuing, status tracking, timeout, retries, cancellation.
@@ -163,6 +164,7 @@ class GenerationJobManager:
         # Stage 2: Submit to ComfyUI
         await self.update_job_status(job, "generating", PIPELINE_STAGES["generating"])
 
+        start_time = time.monotonic()
         prompt_id = await self.service.submit_workflow(workflow, client_id=client_id)
         print(f"[Pipeline] Job {job.id} submitted to ComfyUI: {prompt_id}")
 
@@ -183,8 +185,12 @@ class GenerationJobManager:
         else:
             image_bytes = await self.service.download_output("output.png")
 
+        runtime_seconds = round(time.monotonic() - start_time, 3)
+
         return {
             "prompt_id": prompt_id,
+            "execution_id": prompt_id,
+            "runtime_seconds": runtime_seconds,
             "image_bytes": image_bytes,
             "outputs": outputs,
         }

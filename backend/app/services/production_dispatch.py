@@ -517,7 +517,11 @@ async def run_production(db: AsyncSession, job_id: int,
     job.status = "processing"
     await db.commit()
 
+    execution_ids: list[str] = []
+    total_runtime_seconds: float = 0.0
+
     async def _comfyui(job: AIJob, profile: dict) -> list[bytes]:
+        nonlocal total_runtime_seconds
         params, layers = profile["params"], profile["layers"]
         control = layers["pose"].get("control_reference") or {}
         inputs = {
@@ -528,17 +532,43 @@ async def run_production(db: AsyncSession, job_id: int,
         }
         images = []
         for _ in range(params["count"]):
-            images.append((await manager.run_with_timeout(job, inputs))["image_bytes"])
+            gen_res = await manager.run_with_timeout(job, inputs)
+            images.append(gen_res["image_bytes"])
+            exec_id = gen_res.get("execution_id") or gen_res.get("prompt_id")
+            if exec_id:
+                execution_ids.append(str(exec_id))
+            if gen_res.get("runtime_seconds"):
+                total_runtime_seconds += float(gen_res["runtime_seconds"])
         return images
 
     try:
+        import time
+        start_time = time.monotonic()
         images = await (generate or _comfyui)(job, profile)
+        elapsed = round(time.monotonic() - start_time, 3)
+        if total_runtime_seconds == 0.0 and elapsed > 0:
+            total_runtime_seconds = elapsed
+
         outputs = []
+        total_output_bytes = 0
         for image in images:
+            if isinstance(image, (bytes, bytearray)):
+                total_output_bytes += len(image)
             asset = await manager.register_output_asset(
                 db, job, image, storage_service, metadata={"production_id": production_id})
             outputs.append({"asset_id": asset.id})
-        job.outputs = {"images": outputs}
+
+        job_outputs: dict[str, Any] = {"images": outputs}
+        if execution_ids:
+            job_outputs["execution_id"] = execution_ids[0] if len(execution_ids) == 1 else execution_ids
+        if total_runtime_seconds > 0:
+            job_outputs["runtime_seconds"] = round(total_runtime_seconds, 3)
+        if total_output_bytes > 0:
+            job_outputs["output_size_bytes"] = total_output_bytes
+        if production and production.estimated_credits is not None:
+            job_outputs["credits_used"] = production.estimated_credits
+
+        job.outputs = job_outputs
         job.status = "completed"
         await db.commit()
         await credits_sync_service.finalize_credits(production_id, db)

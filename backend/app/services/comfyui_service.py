@@ -20,9 +20,21 @@ class ComfyUIService:
     Supports mock mode for local development.
     """
 
-    def __init__(self, base_url: str = "http://localhost:8188", mock_mode: bool = True):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8188",
+        mock_mode: bool = True,
+        api_key: Optional[str] = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.mock_mode = mock_mode
+        self.api_key = api_key
+
+    def _headers(self) -> Dict[str, str]:
+        headers: Dict[str, str] = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
 
     def _build_workflow(
         self,
@@ -92,6 +104,7 @@ class ComfyUIService:
             response = await client.post(
                 f"{self.base_url}/prompt",
                 json={"prompt": workflow, "client_id": client_id},
+                headers=self._headers(),
             )
             response.raise_for_status()
             data = response.json()
@@ -110,7 +123,10 @@ class ComfyUIService:
 
         for _ in range(COMFYUI_MAX_POLLS):
             async with httpx.AsyncClient(timeout=COMFYUI_TIMEOUT) as client:
-                response = await client.get(f"{self.base_url}/history/{prompt_id}")
+                response = await client.get(
+                    f"{self.base_url}/history/{prompt_id}",
+                    headers=self._headers(),
+                )
                 if response.status_code == 200:
                     history = response.json()
                     if prompt_id in history:
@@ -212,6 +228,7 @@ class ComfyUIService:
             response = await client.get(
                 f"{self.base_url}/view",
                 params={"filename": filename, "type": "output"},
+                headers=self._headers(),
             )
             response.raise_for_status()
             return response.content
@@ -222,4 +239,6 @@ def get_comfyui_service() -> ComfyUIService:
     from app.config import settings
     base_url = getattr(settings, "COMFYUI_URL", "http://localhost:8188")
     mock_mode = getattr(settings, "COMFYUI_MOCK_MODE", True)
-    return ComfyUIService(base_url=base_url, mock_mode=mock_mode)
+    api_key_secret = getattr(settings, "COMFY_CLOUD_API_KEY", None)
+    api_key = api_key_secret.get_secret_value() if api_key_secret else None
+    return ComfyUIService(base_url=base_url, mock_mode=mock_mode, api_key=api_key)

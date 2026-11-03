@@ -133,6 +133,8 @@ class Settings(BaseSettings):
     # ComfyUI
     COMFYUI_URL: str = Field(default="http://localhost:8188")
     COMFYUI_MOCK_MODE: bool = Field(default=True)
+    # Comfy Cloud execution key (SecretStr keeps it out of reprs and logs).
+    COMFY_CLOUD_API_KEY: Optional[SecretStr] = Field(default=None)
 
     # OpenAI
     OPENAI_API_KEY: str = Field(default="sk.mock")
