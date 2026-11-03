@@ -23,6 +23,7 @@ on:
       - 'package-lock.json'
       - 'tsconfig.json'
       - '.github/workflows/frontend.yaml'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -88,10 +89,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Secrets can't be read in a job-level `if:`, so this job exposes whether the deploy secrets exist.
+  deploy-secrets:
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    outputs:
+      ssh: ${{ steps.check.outputs.ssh }}
+    steps:
+      - name: Check deploy secrets are configured
+        id: check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_USER" ] && [ -n "$DEPLOY_SSH_KEY" ]; then
+            echo "ssh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ssh=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DEPLOY_HOST, DEPLOY_USER or DEPLOY_SSH_KEY is not set; skipping the SSH deploy."
+          fi
+
   deploy:
     runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, deploy-secrets]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.deploy-secrets.outputs.ssh == 'true'
 
     steps:
       - name: Deploy to Server via SSH
