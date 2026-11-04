@@ -544,7 +544,19 @@ async def run_production(db: AsyncSession, job_id: int,
     try:
         import time
         start_time = time.monotonic()
-        images = await (generate or _comfyui)(job, profile)
+        if generate:
+            gen_res = await generate(job, profile)
+            if isinstance(gen_res, dict):
+                images = gen_res.get("images", [])
+                if gen_res.get("execution_id"):
+                    execution_ids.append(str(gen_res["execution_id"]))
+                if gen_res.get("runtime_seconds"):
+                    total_runtime_seconds = float(gen_res["runtime_seconds"])
+            else:
+                images = gen_res
+        else:
+            images = await _comfyui(job, profile)
+
         elapsed = round(time.monotonic() - start_time, 3)
         if total_runtime_seconds == 0.0 and elapsed > 0:
             total_runtime_seconds = elapsed
@@ -566,7 +578,7 @@ async def run_production(db: AsyncSession, job_id: int,
         if total_output_bytes > 0:
             job_outputs["output_size_bytes"] = total_output_bytes
         if production and production.estimated_credits is not None:
-            job_outputs["credits_used"] = production.estimated_credits
+            job_outputs["estimated_credits_used"] = production.estimated_credits
 
         job.outputs = job_outputs
         job.status = "completed"

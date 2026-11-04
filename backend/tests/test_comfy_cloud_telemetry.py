@@ -60,3 +60,73 @@ async def test_generation_pipeline_telemetry_fields():
     assert "runtime_seconds" in result
     assert isinstance(result["runtime_seconds"], float)
     assert result["image_bytes"] == b"fake_image_bytes"
+
+
+@pytest.mark.asyncio
+async def test_run_production_writes_telemetry_to_ai_jobs_outputs():
+    """run_production writes telemetry and credits to ai_jobs.outputs."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.production_dispatch import run_production
+    from app.models.db import AIJob
+
+    mock_db = AsyncMock()
+
+    mock_job = AIJob(
+        id=101,
+        job_type="production",
+        status="queued",
+        inputs={},
+        outputs={},
+    )
+    mock_production = MagicMock()
+    mock_production.production_id = "prd_test_123"
+    mock_production.runtime_profile = {
+        "params": {"count": 1, "aspect_ratio": "4:5", "resolution": "2K"},
+        "layers": {
+            "pose": {},
+            "scene": {
+                "location": {"display_name": "Studio"},
+                "lighting": {"preset_id": "LGT_01"},
+            },
+        },
+    }
+    mock_production.estimated_credits = 8
+
+    mock_db.get = AsyncMock(return_value=mock_job)
+
+    with patch(
+        "app.services.production_dispatch._first",
+        AsyncMock(return_value=mock_production),
+    ), patch(
+        "app.services.production_dispatch.credits_sync_service.finalize_credits",
+        AsyncMock(),
+    ) as mock_finalize, patch(
+        "app.services.production_dispatch.GenerationJobManager"
+    ) as mock_mgr_cls:
+
+        mock_mgr = mock_mgr_cls.return_value
+        mock_asset = MagicMock()
+        mock_asset.id = 555
+        mock_mgr.register_output_asset = AsyncMock(return_value=mock_asset)
+
+        async def fake_generator(job, profile):
+            return {
+                "images": [b"test_image_bytes_12345"],
+                "execution_id": "exec_comfy_999",
+                "runtime_seconds": 1.25,
+            }
+
+        completed_job = await run_production(
+            mock_db, 101, generate=fake_generator
+        )
+
+        assert completed_job.status == "completed"
+        outputs = completed_job.outputs
+        assert "images" in outputs and len(outputs["images"]) == 1
+        assert outputs["images"][0]["asset_id"] == 555
+        assert outputs["execution_id"] == "exec_comfy_999"
+        assert outputs["runtime_seconds"] == 1.25
+        assert outputs["output_size_bytes"] == len(b"test_image_bytes_12345")
+        assert outputs["estimated_credits_used"] == 8
+        assert "credits_used" not in outputs
+        mock_finalize.assert_awaited_once_with("prd_test_123", mock_db)
