@@ -101,7 +101,7 @@ async def test_run_production_writes_telemetry_to_ai_jobs_outputs():
         "app.services.production_dispatch.credits_sync_service.finalize_credits",
         AsyncMock(),
     ) as mock_finalize, patch(
-        "app.services.production_dispatch.GenerationJobManager"
+        "app.services.generation_pipeline.GenerationJobManager"
     ) as mock_mgr_cls:
 
         mock_mgr = mock_mgr_cls.return_value
