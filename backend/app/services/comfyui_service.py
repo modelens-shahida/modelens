@@ -33,6 +33,8 @@ class ComfyUIService:
     def _headers(self) -> Dict[str, str]:
         headers: Dict[str, str] = {}
         if self.api_key:
+            if not self.base_url.startswith("https://"):
+                raise ValueError("COMFY_CLOUD_API_KEY can only be sent to an https:// base URL")
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 

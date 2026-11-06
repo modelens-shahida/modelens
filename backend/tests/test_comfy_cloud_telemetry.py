@@ -16,13 +16,20 @@ def test_comfy_cloud_api_key_secret_str_masking():
 
 
 def test_comfyui_service_headers_with_and_without_key():
-    """ComfyUIService attaches Authorization only when key is given."""
+    """ComfyUIService attaches Authorization only when key is given over https://."""
     svc_no_auth = ComfyUIService(mock_mode=True)
     assert svc_no_auth._headers() == {}
 
-    svc_auth = ComfyUIService(mock_mode=True, api_key="test_cloud_token")
+    svc_auth = ComfyUIService(base_url="https://cloud.comfy.org", mock_mode=True, api_key="test_cloud_token")
     expected = {"Authorization": "Bearer test_cloud_token"}
     assert svc_auth._headers() == expected
+
+
+def test_comfyui_service_refuses_key_over_plain_http():
+    """Refuse to send COMFY_CLOUD_API_KEY over plain http://."""
+    svc = ComfyUIService(base_url="http://insecure.comfy.org", api_key="test_cloud_token")
+    with pytest.raises(ValueError, match="https://"):
+        svc._headers()
 
 
 @pytest.mark.asyncio
