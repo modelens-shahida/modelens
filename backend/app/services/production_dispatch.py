@@ -572,7 +572,7 @@ async def run_production(db: AsyncSession, job_id: int,
 
         job_outputs: dict[str, Any] = {"images": outputs}
         if execution_ids:
-            job_outputs["execution_id"] = execution_ids[0] if len(execution_ids) == 1 else execution_ids
+            job_outputs["execution_ids"] = execution_ids
         if total_runtime_seconds > 0:
             job_outputs["runtime_seconds"] = round(total_runtime_seconds, 3)
         if total_output_bytes > 0:

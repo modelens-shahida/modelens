@@ -124,7 +124,8 @@ async def test_run_production_writes_telemetry_to_ai_jobs_outputs():
         outputs = completed_job.outputs
         assert "images" in outputs and len(outputs["images"]) == 1
         assert outputs["images"][0]["asset_id"] == 555
-        assert outputs["execution_id"] == "exec_comfy_999"
+        assert outputs["execution_ids"] == ["exec_comfy_999"]
+        assert "execution_id" not in outputs
         assert outputs["runtime_seconds"] == 1.25
         assert outputs["output_size_bytes"] == len(b"test_image_bytes_12345")
         assert outputs["estimated_credits_used"] == 8
