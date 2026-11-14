@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { Key, Plus, Loader2, Trash2, Copy, Check, ShieldAlert, KeyRound } from "lucide-react";
+import { Key, Plus, Loader2, Trash2, Copy, Check, ShieldAlert, KeyRound, Code } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 
