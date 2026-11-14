@@ -624,8 +624,8 @@ Workflow: 01_WORKFLOW/EE002_Q21_REFERENCE_PLUS_LORA_Reference_v01_API.json (conf
 
 | Field | Node | Input | Value |
 |---|---|---|---|
-| body_full_front | 470 | image | from BODY_FRONT.png (sha256 a06fd043…) |
-| face_golden_crop | 481 | image | from GOLDEN_FACE.png (sha256 82077595…) |
+| body_full_front | 470 | image | from BODY_FRONT.png (sha256: dbaa0e5d…; historical copy: a06fd043…) |
+| face_golden_crop | 481 | image | from GOLDEN_FACE.png (sha256: 82077595…) |
 | product | 491 | image | from BLACK_WRAP_DRESS.png (sha256 b8c1f8d5…) |
 | negative_prompt | 459:474 | negative_prompt | "" |
 | seed | 459:458 | seed | 42003 |
