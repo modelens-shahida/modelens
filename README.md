@@ -284,7 +284,7 @@ docker run --rm -v "$PWD":/src:ro -e TESTING=true --entrypoint sh indra-modelens
    - **Fast tests (unit + API)**: Checks that every collected test is in exactly one of the two jobs, then runs `-m "not slow and not integration"` (~1 min). Required PR status check.
    - **Slow + integration tests**: Runs `-m "slow or integration"` in parallel.
 2. **`backend.yaml` (Backend CI & Docker)**:
-   - Runs flake8 linting, Trivy vulnerability scans, SonarQube, and Docker build.
+   - Runs flake8 linting, Trivy vulnerability scans, and Docker build.
    - SSH deploy step is guarded by secret checks (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) and supports manual trigger via `workflow_dispatch`.
 3. **`ci-cd.yml` (ModeLens CI/CD Pipeline)**:
    - Backend syntax check (`compileall`), Frontend Next.js build on Node 20.
