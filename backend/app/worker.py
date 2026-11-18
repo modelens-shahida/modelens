@@ -3636,6 +3636,7 @@ def run_volumetric_ghost_job(
     source_asset_id: Optional[int],
     workflow_params: dict,
     generation_mode: str = "studio_quality",
+    job_id: Optional[int] = None,
 ):
     """Celery task for 3D volumetric ghost mannequin (WF-GHOST-001)."""
     try:
@@ -3645,8 +3646,12 @@ def run_volumetric_ghost_job(
         asyncio.set_event_loop(loop)
     loop.run_until_complete(_run_volumetric_ghost_async(
         self, brand_id, user_id, source_asset_id,
-        workflow_params, generation_mode
+        workflow_params, generation_mode, job_id,
     ))
+
+
+class VolumetricNotConnectedError(Exception):
+    pass
 
 
 async def _run_volumetric_ghost_async(
@@ -3656,105 +3661,31 @@ async def _run_volumetric_ghost_async(
     source_asset_id: Optional[int],
     workflow_params: dict,
     generation_mode: str,
+    job_id: Optional[int] = None,
 ):
-    """Async runner for volumetric ghost pipeline."""
-    from app.models.db import Asset
-    from app.services.ghost_volumetric_service import ghost_volumetric_service
-    from app.services.c2pa_service import c2pa_service
+    """Volumetric pipeline. Real generation is not connected yet, so no output is produced and
+    no fake assets are created. The job fails and its credits are refunded."""
+    from app.models.db import GhostJob
 
     async with async_session_maker() as db:
-        try:
-            views = workflow_params.get("views", ["FRONT"])
-            resolution = workflow_params.get("resolution", "2K")
+        job = await db.get(GhostJob, job_id) if job_id else None
+        if job is None:
+            print(f"[Ghost3D] Job {job_id} not found.")
+            return
+        if job.status == "cancelled":
+            print(f"[Ghost3D] Job {job_id} was cancelled; not processing it.")
+            return
 
-            print(f"[Ghost3D] Starting WF-GHOST-001 - {len(views)} views at {resolution}")
+        job.status = "running"
+        job.progress = 10
+        await db.commit()
 
-            # Step 1: Segmenting
-            await ghost_volumetric_service.publish_ghost_event(
-                redis_client=None,
-                brand_id=brand_id,
-                job_id=task_self.request.id or 0,
-                event_type="segmenting",
-                data={"status": "segmenting garment", "views": views},
-            )
-
-            # Step 2: Reconstructing inner lining
-            await ghost_volumetric_service.publish_ghost_event(
-                redis_client=None,
-                brand_id=brand_id,
-                job_id=task_self.request.id or 0,
-                event_type="reconstructing_inner_lining",
-                data={
-                    "status": "reconstructing",
-                    "neckline_type": workflow_params.get("neckline_type"),
-                    "inner_collar": workflow_params.get("inner_collar_reconstruction"),
-                },
-            )
-
-            # Step 3: Rendering depth
-            await ghost_volumetric_service.publish_ghost_event(
-                redis_client=None,
-                brand_id=brand_id,
-                job_id=task_self.request.id or 0,
-                event_type="rendering_depth",
-                data={
-                    "status": "rendering",
-                    "ambient_occlusion": workflow_params.get("ambient_occlusion"),
-                    "alpha_mask": workflow_params.get("alpha_mask"),
-                },
-            )
-
-            created_assets = []
-
-            # Generate output per view
-            for view in views:
-                output_filename = f"ghost3d_{view}_{resolution}_{brand_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
-                storage_path = f"ghost/{output_filename}"
-
-                asset = Asset(
-                    brand_id=brand_id,
-                    name=f"Ghost 3D {view} {resolution}",
-                    filename=output_filename,
-                    storage_path=storage_path,
-                    asset_type="generated",
-                    status="active",
-                    meta={
-                        "source": "ghost_volumetric",
-                        "workflow": "WF-GHOST-001",
-                        "view": view,
-                        "resolution": resolution,
-                        "alpha_mask": workflow_params.get("alpha_mask"),
-                        "ambient_occlusion": workflow_params.get("ambient_occlusion"),
-                        "garment_type": workflow_params.get("garment_type"),
-                        "source_asset_id": source_asset_id,
-                        "generation_mode": generation_mode,
-                    }
-                )
-                db.add(asset)
-                await db.flush()
-
-                # Register version + lineage
-                await _register_asset_version(db, asset.id, storage_path)
-                if source_asset_id:
-                    await _register_asset_relationship(db, source_asset_id, asset.id, "REL-DERIVED-FROM")
-
-                # Seal C2PA
-                manifest = c2pa_service.build_manifest(
-                    asset_id=asset.id,
-                    workflow_id="WF-GHOST-001",
-                    brand_id=brand_id,
-                    brand_name=f"Brand-{brand_id}",
-                    workspace_id=str(brand_id),
-                )
-                asset.meta["c2pa_manifest"] = manifest
-                created_assets.append(asset.id)
-
-            await db.commit()
-            print(f"[Ghost3D] Complete. {len(created_assets)} assets generated.")
-
-        except Exception as e:
-            print(f"[Ghost3D] Failed: {e}")
-            raise task_self.retry(exc=e, countdown=30)
+        error = VolumetricNotConnectedError(
+            "Volumetric rendering is not connected yet. No output was produced."
+        )
+        print(f"[Ghost3D] Job {job_id} failed: {error}")
+        job = await db.get(GhostJob, job_id)
+        await _fail_or_requeue(db, job, "ghost_job", error, final=True)
 
 
 # ========================== Sketch Studio Task ==================

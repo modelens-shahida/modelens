@@ -261,6 +261,11 @@ async def retry_ghost_job(
     job = await require_writable(db, current_user, result.scalars().first(), "Ghost job not found.")
     if job.status not in ("failed",):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot retry job with status: {job.status}")
+    if (job.meta or {}).get("pipeline") == "volumetric":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Volumetric ghost jobs cannot be retried yet.",
+        )
 
     job.status = "queued"
     job.progress = 0
@@ -573,26 +578,59 @@ async def create_volumetric_ghost_job(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient credits. Need {credits_needed}, have {current_user.credits or 0}."
         )
-    current_user.credits = (current_user.credits or 0) - credits_needed
 
+    # 1. Job row and charge in one commit, so the worker always finds the row.
+    user_id = current_user.id
+    current_user.credits = (current_user.credits or 0) - credits_needed
+    job = GhostJob(
+        user_id=user_id,
+        brand_id=payload.brand_id,
+        status="queued",
+        garment_type=payload.garment_type,
+        resolution=payload.resolution,
+        generation_mode=payload.generation_mode,
+        credits_reserved=credits_needed,
+        credits_consumed=0,
+        progress=0,
+        meta={
+            "workflow_id": "WF-GHOST-001",
+            "pipeline": "volumetric",
+            "views": payload.views,
+            "source_asset_id": payload.source_asset_id,
+        },
+    )
+    db.add(job)
+    await db.flush()
+    job_id = job.id
+    await db.commit()
+
+    # 2. Dispatch. On failure: refund, mark failed, return an error. No mock task id.
     try:
         from app.worker import run_volumetric_ghost_job
         task = run_volumetric_ghost_job.delay(
+            job_id=job_id,
             brand_id=payload.brand_id,
-            user_id=current_user.id,
+            user_id=user_id,
             source_asset_id=payload.source_asset_id,
             workflow_params=workflow_params,
             generation_mode=payload.generation_mode,
         )
-        task_id = task.id if task else f"mock_ghost3d_{payload.brand_id}"
     except Exception as e:
         print(f"[Ghost3D] Celery dispatch failed: {e}")
-        task_id = f"mock_ghost3d_{payload.brand_id}"
+        failed_job = await db.get(GhostJob, job_id)
+        failed_job.status = "failed"
+        failed_job.error_message = "Render queue unavailable."
+        await refund_job(db, "ghost_job", failed_job, "dispatch failed")
+        await db.commit()
+        raise HTTPException(status_code=503, detail="Render queue unavailable. No credits were charged.")
 
+    queued_job = await db.get(GhostJob, job_id)
+    queued_job.job_id = task.id
     await db.commit()
 
     return {
-        "task_id": task_id,
+        "task_id": task.id,
+        "job_id": job_id,
         "status": "queued",
         "views": payload.views,
         "resolution": payload.resolution,
