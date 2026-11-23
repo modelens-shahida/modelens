@@ -132,7 +132,10 @@ async def test_batch_job_matches_a_single_job_for_the_worker(client, db_session,
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_worker_processes_a_batch_job_with_its_image(client, db_session, test_data, garments, queued):
+async def test_worker_processes_a_batch_job_with_its_image(client, db_session, test_data, garments, queued, monkeypatch):
+    from tests import gemini_fakes
+    gemini_fakes.install(monkeypatch)
+
     import app.models.db as models
     from app.models.db import AssetRelationship, GhostOutput
     from app.worker import _process_ghost_job_async

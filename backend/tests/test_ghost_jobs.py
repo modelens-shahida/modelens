@@ -197,7 +197,10 @@ class MockSessionContext:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_process_ghost_job_celery_task(db_session: AsyncSession, test_data: dict):
+async def test_process_ghost_job_celery_task(db_session: AsyncSession, test_data: dict, monkeypatch):
+    from tests import gemini_fakes
+    gemini_fakes.install(monkeypatch)
+
     editor_user = test_data["users"]["editor"]
     brand_id = test_data["brand"].id
 
@@ -250,7 +253,10 @@ async def test_process_ghost_job_celery_task(db_session: AsyncSession, test_data
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, test_data: dict):
+async def test_process_ghost_job_celery_task_failure(db_session: AsyncSession, test_data: dict, monkeypatch):
+    from tests import gemini_fakes
+    gemini_fakes.install(monkeypatch)
+
     editor_user = test_data["users"]["editor"]
     brand_id = test_data["brand"].id
 
@@ -410,7 +416,10 @@ async def test_batch_credit_deduction(client: AsyncClient, test_data: dict, db_s
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_process_ghost_job_with_source_assets_in_fresh_session(db_session: AsyncSession, test_data: dict):
+async def test_process_ghost_job_with_source_assets_in_fresh_session(db_session: AsyncSession, test_data: dict, monkeypatch):
+    from tests import gemini_fakes
+    gemini_fakes.install(monkeypatch)
+
     """The worker opens its own session, as in production: job.assets must not be lazy-loaded (MissingGreenlet)."""
     import app.models.db as models
     from app.models.db import AssetRelationship
